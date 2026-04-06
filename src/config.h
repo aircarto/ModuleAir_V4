@@ -3,7 +3,7 @@
 
 #include <Arduino.h>
 
-#define FIRMWARE_VERSION "0.1.7"
+#define FIRMWARE_VERSION "0.2.0"
 
 // WiFi AP
 #define AP_PASSWORD "moduleaircfg"
