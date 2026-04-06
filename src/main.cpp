@@ -6,6 +6,7 @@
 #include "wifi_manager.h"
 #include "sensors.h"
 #include "data_sender.h"
+#include "settings.h"
 
 void setup() {
   Serial.begin(115200);
@@ -20,6 +21,7 @@ void setup() {
   Logger.println();
 
   configInit();
+  settingsInit();
   displayInit();
 
   if (displayGetDebugSplash()) {

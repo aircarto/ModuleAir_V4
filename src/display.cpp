@@ -4,6 +4,7 @@
 #include "config.h"
 #include "display.h"
 #include "sensors.h"
+#include "settings.h"
 #include "logos.h"
 #include "logger.h"
 
@@ -54,7 +55,7 @@ static int currentScreen = 0;
 #define SCREEN_INTERVAL 5000
 
 // Screen IDs
-enum Screen { SCR_PM25, SCR_PM10, SCR_CO2, SCR_TEMP, SCR_HUMI, SCR_COV, SCR_LOGO, SCR_COUNT };
+enum Screen { SCR_PM1, SCR_PM25, SCR_PM10, SCR_CO2, SCR_TEMP, SCR_HUMI, SCR_COV, SCR_LOGO, SCR_COUNT };
 
 // ── Helpers ──
 
@@ -203,6 +204,12 @@ static void drawMeasurementScreen(const char* label, const char* unit,
 
 // ── Draw individual data screens ──
 
+static void drawScreenPM1() {
+  uint16_t c = colorPM(sensorCache.pm1, 10, 20, 50);
+  drawMeasurementScreen("PM1", "ug/m3", String(sensorCache.pm1, 0), c,
+                         msgPM(sensorCache.pm1, 10, 20, 50));
+}
+
 static void drawScreenPM25() {
   uint16_t c = colorPM(sensorCache.pm25, 10, 20, 50);
   drawMeasurementScreen("PM2.5", "ug/m3", String(sensorCache.pm25, 0), c,
@@ -276,19 +283,33 @@ void displayUpdate() {
   if (now - lastScreenChange < SCREEN_INTERVAL) return;
   lastScreenChange = now;
 
-  // Build list of available screens
+  // Build list of available screens (sensor data OK + screen enabled)
+  const ScreenSettings& scfg = settingsGetScreens();
   Screen avail[SCR_COUNT];
   int count = 0;
-  if (sensorCache.pm_ok)  { avail[count++] = SCR_PM25; avail[count++] = SCR_PM10; }
-  if (sensorCache.co2_ok) avail[count++] = SCR_CO2;
-  if (sensorCache.bme_ok) { avail[count++] = SCR_TEMP; avail[count++] = SCR_HUMI; }
-  if (sensorCache.ccs_ok) avail[count++] = SCR_COV;
+  if (sensorCache.pm_ok) {
+    if (scfg.pm1)  avail[count++] = SCR_PM1;
+    if (scfg.pm25) avail[count++] = SCR_PM25;
+    if (scfg.pm10) avail[count++] = SCR_PM10;
+  }
+  if (sensorCache.co2_ok && scfg.co2)  avail[count++] = SCR_CO2;
+  if (sensorCache.bme_ok) {
+    if (scfg.temp) avail[count++] = SCR_TEMP;
+    if (scfg.humi) avail[count++] = SCR_HUMI;
+  }
+  if (sensorCache.ccs_ok && scfg.tvoc) avail[count++] = SCR_COV;
   avail[count++] = SCR_LOGO;
 
   if (count == 0) return;
   currentScreen = currentScreen % count;
 
-  switch (avail[currentScreen]) {
+  static const char* screenNames[] = { "PM1", "PM2.5", "PM10", "CO2", "Temp", "Humi", "COV", "Logo" };
+
+  Screen scr = avail[currentScreen];
+  Logger.printf("[Display] Screen %d/%d: %s\n", currentScreen + 1, count, screenNames[scr]);
+
+  switch (scr) {
+    case SCR_PM1:   drawScreenPM1();  break;
     case SCR_PM25:  drawScreenPM25(); break;
     case SCR_PM10:  drawScreenPM10(); break;
     case SCR_CO2:   drawScreenCO2();  break;

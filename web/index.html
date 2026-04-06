@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ModuleAir - Configuration WiFi</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #1a1a2e;
+      color: #e0e0e0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 2rem 1rem;
+    }
+
+    .container {
+      max-width: 480px;
+      width: 100%;
+      text-align: center;
+    }
+
+    .logo {
+      font-size: 2rem;
+      font-weight: 700;
+      color: #4fc3f7;
+      margin-bottom: 0.5rem;
+    }
+
+    .subtitle {
+      color: #999;
+      font-size: 0.95rem;
+      margin-bottom: 2.5rem;
+    }
+
+    .card {
+      background: #16213e;
+      border-radius: 12px;
+      padding: 2rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .card h2 {
+      font-size: 1.2rem;
+      margin-bottom: 1rem;
+      color: #fff;
+    }
+
+    .steps {
+      text-align: left;
+      margin-bottom: 1.5rem;
+    }
+
+    .step {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.75rem;
+      margin-bottom: 1rem;
+    }
+
+    .step-number {
+      background: #4fc3f7;
+      color: #1a1a2e;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 0.85rem;
+      flex-shrink: 0;
+    }
+
+    .step-text {
+      padding-top: 3px;
+      line-height: 1.4;
+      font-size: 0.95rem;
+    }
+
+    #connect-btn {
+      background: #4fc3f7;
+      color: #1a1a2e;
+      font-size: 1.1rem;
+      font-weight: 600;
+      padding: 0.85rem 2rem;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.2s;
+      margin-top: 1.5rem;
+    }
+
+    #connect-btn:hover {
+      background: #81d4fa;
+    }
+
+    #connect-btn:disabled {
+      background: #555;
+      cursor: not-allowed;
+    }
+
+    .status-msg {
+      margin-top: 1rem;
+      font-size: 0.9rem;
+      min-height: 1.2em;
+    }
+
+    .fallback {
+      background: #1e2a45;
+      border-radius: 12px;
+      padding: 1.5rem;
+      margin-top: 1.5rem;
+    }
+
+    .fallback h3 {
+      font-size: 1rem;
+      color: #ffb74d;
+      margin-bottom: 0.75rem;
+    }
+
+    .fallback p {
+      font-size: 0.85rem;
+      color: #999;
+      line-height: 1.5;
+    }
+
+    .fallback code {
+      background: #253255;
+      padding: 0.15rem 0.4rem;
+      border-radius: 4px;
+      font-size: 0.85rem;
+      color: #e0e0e0;
+    }
+
+    .unsupported {
+      display: none;
+      background: #3e1a1a;
+      border: 1px solid #ff5252;
+      border-radius: 12px;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .unsupported h3 {
+      color: #ff5252;
+      margin-bottom: 0.5rem;
+    }
+
+    .unsupported p {
+      font-size: 0.9rem;
+      line-height: 1.5;
+    }
+
+    footer {
+      margin-top: 2rem;
+      color: #555;
+      font-size: 0.8rem;
+    }
+
+    footer a {
+      color: #4fc3f7;
+      text-decoration: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="logo">ModuleAir</div>
+    <p class="subtitle">Configuration WiFi de votre capteur</p>
+
+    <div class="unsupported" id="unsupported">
+      <h3>Navigateur non compatible</h3>
+      <p>
+        Le Bluetooth Web n'est pas disponible sur ce navigateur.
+        Utilisez <strong>Chrome</strong> ou <strong>Edge</strong> sur Android ou ordinateur.
+        Sur iPhone/iPad, suivez la méthode alternative ci-dessous.
+      </p>
+    </div>
+
+    <div class="card" id="ble-card">
+      <h2>Connecter votre ModuleAir au WiFi</h2>
+      <div class="steps">
+        <div class="step">
+          <div class="step-number">1</div>
+          <div class="step-text">Allumez votre ModuleAir et attendez quelques secondes</div>
+        </div>
+        <div class="step">
+          <div class="step-number">2</div>
+          <div class="step-text">Cliquez sur le bouton ci-dessous</div>
+        </div>
+        <div class="step">
+          <div class="step-number">3</div>
+          <div class="step-text">Sélectionnez votre ModuleAir dans la liste des appareils Bluetooth</div>
+        </div>
+        <div class="step">
+          <div class="step-number">4</div>
+          <div class="step-text">Entrez le nom et le mot de passe de votre réseau WiFi</div>
+        </div>
+      </div>
+
+      <button id="connect-btn" onclick="startImprov()">Configurer via Bluetooth</button>
+      <p id="status-msg" class="status-msg"></p>
+    </div>
+
+    <div class="fallback">
+      <h3>iPhone / iPad ou Bluetooth indisponible ?</h3>
+      <p>
+        Connectez-vous au réseau WiFi <code>ModuleAir-XXXXXX</code>
+        avec le mot de passe <code>moduleaircfg</code>, puis ouvrez
+        <code>192.168.4.1</code> dans votre navigateur pour configurer le WiFi.
+      </p>
+    </div>
+
+    <footer>
+      <a href="https://moduleair.fr">moduleair.fr</a>
+    </footer>
+  </div>
+
+  <script type="module">
+    // Improv WiFi BLE UUIDs
+    const SERVICE_UUID     = "00467768-6228-2272-4663-277478268000";
+    const CHAR_STATE       = "00467768-6228-2272-4663-277478268001";
+    const CHAR_ERROR       = "00467768-6228-2272-4663-277478268002";
+    const CHAR_RPC_COMMAND = "00467768-6228-2272-4663-277478268003";
+    const CHAR_RPC_RESULT  = "00467768-6228-2272-4663-277478268004";
+
+    const btn = document.getElementById("connect-btn");
+    const msg = document.getElementById("status-msg");
+    const bleCard = document.getElementById("ble-card");
+
+    if (!navigator.bluetooth) {
+      document.getElementById("unsupported").style.display = "block";
+      bleCard.style.display = "none";
+    }
+
+    function setStatus(text, color = "#e0e0e0") {
+      msg.textContent = text;
+      msg.style.color = color;
+    }
+
+    window.startImprov = async function() {
+      try {
+        btn.disabled = true;
+        setStatus("Recherche de votre ModuleAir...");
+
+        const device = await navigator.bluetooth.requestDevice({
+          filters: [{ services: [SERVICE_UUID] }],
+          optionalServices: [SERVICE_UUID]
+        });
+
+        setStatus("Connexion a " + device.name + "...");
+        const server = await device.gatt.connect();
+        const service = await server.getPrimaryService(SERVICE_UUID);
+
+        const charState  = await service.getCharacteristic(CHAR_STATE);
+        const charError  = await service.getCharacteristic(CHAR_ERROR);
+        const charCmd    = await service.getCharacteristic(CHAR_RPC_COMMAND);
+        const charResult = await service.getCharacteristic(CHAR_RPC_RESULT);
+
+        // Listen for state and result changes
+        await charState.startNotifications();
+        await charResult.startNotifications();
+
+        const stateVal = await charState.readValue();
+        const currentState = stateVal.getUint8(0);
+
+        if (currentState < 0x02) {
+          setStatus("L'appareil necessite une autorisation.", "#ffb74d");
+          btn.disabled = false;
+          return;
+        }
+
+        // Ask user for WiFi credentials
+        const ssid = prompt("Nom du reseau WiFi (SSID) :");
+        if (!ssid) {
+          setStatus("");
+          btn.disabled = false;
+          server.disconnect();
+          return;
+        }
+        const password = prompt("Mot de passe WiFi :");
+        if (password === null) {
+          setStatus("");
+          btn.disabled = false;
+          server.disconnect();
+          return;
+        }
+
+        // Build RPC command: [totalLen, 0x01, ssidLen, ssid..., pwLen, pw...]
+        const ssidBytes = new TextEncoder().encode(ssid);
+        const pwBytes   = new TextEncoder().encode(password);
+        const totalLen  = 1 + 1 + ssidBytes.length + 1 + pwBytes.length;
+        const payload   = new Uint8Array(2 + 1 + ssidBytes.length + 1 + pwBytes.length);
+        let i = 0;
+        payload[i++] = totalLen;
+        payload[i++] = 0x01; // CMD_WIFI_SETTINGS
+        payload[i++] = ssidBytes.length;
+        payload.set(ssidBytes, i); i += ssidBytes.length;
+        payload[i++] = pwBytes.length;
+        payload.set(pwBytes, i);
+
+        setStatus("Envoi des identifiants...", "#4fc3f7");
+
+        // Wait for result
+        const resultPromise = new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => reject(new Error("Timeout")), 30000);
+
+          charState.addEventListener("characteristicvaluechanged", (e) => {
+            const state = e.target.value.getUint8(0);
+            if (state === 0x03) {
+              setStatus("Connexion en cours...", "#4fc3f7");
+            } else if (state === 0x04) {
+              clearTimeout(timeout);
+              resolve();
+            }
+          });
+
+          charError.startNotifications().then(() => {
+            charError.addEventListener("characteristicvaluechanged", (e) => {
+              const error = e.target.value.getUint8(0);
+              if (error === 0x03) {
+                clearTimeout(timeout);
+                reject(new Error("Impossible de se connecter au WiFi. Verifiez le mot de passe."));
+              } else if (error !== 0x00) {
+                clearTimeout(timeout);
+                reject(new Error("Erreur (code " + error + ")"));
+              }
+            });
+          });
+        });
+
+        await charCmd.writeValue(payload);
+        await resultPromise;
+
+        setStatus("Connecte avec succes !", "#a5d6a7");
+
+        // Try to read redirect URL from result
+        try {
+          const resultVal = await charResult.readValue();
+          if (resultVal.byteLength > 3) {
+            const len = resultVal.getUint8(2);
+            const urlBytes = new Uint8Array(resultVal.buffer, 3, len);
+            const url = new TextDecoder().decode(urlBytes);
+            setStatus("Connecte ! Redirection vers " + url + "...", "#a5d6a7");
+            setTimeout(() => { window.location.href = url; }, 2000);
+          }
+        } catch(e) { /* redirect optional */ }
+
+        server.disconnect();
+
+      } catch(err) {
+        if (err.name === "NotFoundError") {
+          setStatus("Aucun appareil selectionne.", "#ffb74d");
+        } else {
+          setStatus(err.message, "#ef9a9a");
+        }
+      } finally {
+        btn.disabled = false;
+      }
+    };
+  </script>
+</body>
+</html>

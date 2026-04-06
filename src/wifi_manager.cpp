@@ -12,6 +12,7 @@
 #include "ble_improv.h"
 #include "sensors.h"
 #include "display.h"
+#include "settings.h"
 #include "logger.h"
 
 static WebServer server(80);
@@ -83,6 +84,14 @@ button.danger:hover{background:#f44336;}
 button.update{background:#ff9800;}
 button.update:hover{background:#ffa726;}
 #ota-btn{display:none;}
+.toggle-row{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #0f3460;}
+.toggle-row:last-child{border-bottom:none;}
+.switch{position:relative;width:40px;height:22px;flex-shrink:0;}
+.switch input{opacity:0;width:0;height:0;}
+.slider{position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background:#333;border-radius:22px;transition:.3s;}
+.slider:before{content:"";position:absolute;height:16px;width:16px;left:3px;bottom:3px;background:#888;border-radius:50%;transition:.3s;}
+input:checked+.slider{background:#4fc3f7;}
+input:checked+.slider:before{transform:translateX(18px);background:#fff;}
 )";
 
 static const char JS[] PROGMEM = R"(
@@ -317,6 +326,43 @@ static void handleRootConnected() {
            " Actif</label></span></div>";
   chunk += "</div>";
   server.sendContent(chunk);
+
+  // Capteurs actifs
+  {
+    const SensorSettings& sc = settingsGetSensors();
+    chunk = "<div class='card'><h2>Capteurs actifs</h2>"
+            "<p style='color:#888;font-size:0.8em;margin:0 0 8px'>Redemarrage requis</p>";
+    const char* sensorNames[] = { "NextPM (PM)", "MH-Z19 (CO2)", "BME280 (T/H/P)", "CCS811 (COV)" };
+    const char* sensorKeys[] = { "npm", "mhz19", "bme280", "ccs811" };
+    bool sensorVals[] = { sc.npm_enabled, sc.mhz19_enabled, sc.bme280_enabled, sc.ccs811_enabled };
+    for (int i = 0; i < 4; i++) {
+      chunk += "<div class='toggle-row'><span>" + String(sensorNames[i]) + "</span>";
+      chunk += "<label class='switch'><input type='checkbox'";
+      if (sensorVals[i]) chunk += " checked";
+      chunk += " onchange=\"fetch('/set-sensor',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'key=" + String(sensorKeys[i]) + "&val='+(this.checked?'1':'0')})\">";
+      chunk += "<span class='slider'></span></label></div>";
+    }
+    chunk += "</div>";
+    server.sendContent(chunk);
+  }
+
+  // Ecrans affichés
+  {
+    const ScreenSettings& ss = settingsGetScreens();
+    chunk = "<div class='card'><h2>Ecrans matrice</h2>";
+    const char* scrNames[] = { "PM1", "PM2.5", "PM10", "CO2", "Temperature", "Humidite", "COV (TVOC)" };
+    const char* scrKeys[] = { "pm1", "pm25", "pm10", "co2", "temp", "humi", "tvoc" };
+    bool scrVals[] = { ss.pm1, ss.pm25, ss.pm10, ss.co2, ss.temp, ss.humi, ss.tvoc };
+    for (int i = 0; i < 7; i++) {
+      chunk += "<div class='toggle-row'><span>" + String(scrNames[i]) + "</span>";
+      chunk += "<label class='switch'><input type='checkbox'";
+      if (scrVals[i]) chunk += " checked";
+      chunk += " onchange=\"fetch('/set-screen',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'key=" + String(scrKeys[i]) + "&val='+(this.checked?'1':'0')})\">";
+      chunk += "<span class='slider'></span></label></div>";
+    }
+    chunk += "</div>";
+    server.sendContent(chunk);
+  }
 
   // Logs
   server.sendContent(
@@ -553,6 +599,22 @@ static void handleReboot() {
 
 // =============================================
 // Logs
+static void handleSetSensor() {
+  String key = server.arg("key");
+  bool val = server.arg("val") == "1";
+  settingsSetSensorEnabled(key.c_str(), val);
+  Logger.printf("[Web] Sensor %s = %s (reboot required)\n", key.c_str(), val ? "on" : "off");
+  server.send(200, "text/plain", "ok");
+}
+
+static void handleSetScreen() {
+  String key = server.arg("key");
+  bool val = server.arg("val") == "1";
+  settingsSetScreenEnabled(key.c_str(), val);
+  Logger.printf("[Web] Screen %s = %s\n", key.c_str(), val ? "on" : "off");
+  server.send(200, "text/plain", "ok");
+}
+
 static void handleDebugSplash() {
   bool enabled = server.arg("enabled") == "1";
   displaySetDebugSplash(enabled);
@@ -736,6 +798,8 @@ void wifiManagerInit() {
 
   server.on("/logs", handleLogs);
   server.on("/debug-splash", HTTP_POST, handleDebugSplash);
+  server.on("/set-sensor", HTTP_POST, handleSetSensor);
+  server.on("/set-screen", HTTP_POST, handleSetScreen);
   server.on("/check-update", handleCheckUpdate);
   server.on("/do-update", handleDoUpdate);
 

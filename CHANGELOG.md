@@ -4,6 +4,16 @@ Toutes les modifications notables du firmware ModuleAir V4 sont documentées ici
 
 Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versioning [Semantic Versioning](https://semver.org/).
 
+## [0.1.3] - 2026-04-06
+
+### Ajouté
+
+- Toggles "Capteurs actifs" sur le dashboard : activer/desactiver NextPM, MH-Z19, BME280, CCS811 (persiste en NVS, redemarrage requis)
+- Toggles "Ecrans matrice" sur le dashboard : choisir quels polluants afficher sur l'ecran (PM1, PM2.5, PM10, CO2, temperature, humidite, COV), effet immediat
+- Ecran PM1 sur la matrice
+- Module settings (settings.h/settings.cpp) pour la gestion centralisee des preferences capteurs et ecrans
+- Logs des changements d'ecran matrice (`[Display] Screen X/Y: ...`)
+
 ## [0.1.2] - 2026-04-06
 
 ### Ajouté

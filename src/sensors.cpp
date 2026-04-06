@@ -6,6 +6,7 @@
 #include <Adafruit_CCS811.h>
 #include "config.h"
 #include "sensors.h"
+#include "settings.h"
 #include "logger.h"
 
 static HardwareSerial nextpmSerial(1);
@@ -173,51 +174,71 @@ static void readCCS811() {
 }
 
 void sensorsInit() {
-  nextpmSerial.begin(NEXTPM_BAUD, SERIAL_8E1, NEXTPM_RX, NEXTPM_TX);
-  nextpm.begin(NEXTPM_ADDR, nextpmSerial);
-  Logger.println("NextPM init OK (Modbus RTU)");
+  const SensorSettings& cfg = settingsGetSensors();
 
-  mhzSerial.begin(MHZ19_BAUD, SERIAL_8N1, MHZ19_RX, MHZ19_TX);
-  mhz19.begin(mhzSerial);
-  mhz19.autoCalibration(false);
-  Logger.println("MH-Z19 init OK");
+  if (cfg.npm_enabled) {
+    nextpmSerial.begin(NEXTPM_BAUD, SERIAL_8E1, NEXTPM_RX, NEXTPM_TX);
+    nextpm.begin(NEXTPM_ADDR, nextpmSerial);
+    Logger.println("NextPM init OK (Modbus RTU)");
+  } else {
+    Logger.println("NextPM disabled");
+  }
+
+  if (cfg.mhz19_enabled) {
+    mhzSerial.begin(MHZ19_BAUD, SERIAL_8N1, MHZ19_RX, MHZ19_TX);
+    mhz19.begin(mhzSerial);
+    mhz19.autoCalibration(false);
+    Logger.println("MH-Z19 init OK");
+  } else {
+    Logger.println("MH-Z19 disabled");
+  }
 
   Wire.begin(I2C_SDA, I2C_SCL);
   Wire.setClock(100000);
-  if (bme.begin(0x76)) {
-    bmeFound = true;
-    bme.setSampling(Adafruit_BME280::MODE_FORCED,
-                    Adafruit_BME280::SAMPLING_X1,
-                    Adafruit_BME280::SAMPLING_X1,
-                    Adafruit_BME280::SAMPLING_X1,
-                    Adafruit_BME280::FILTER_OFF);
-    Logger.println("BME280 init OK (0x76)");
-  } else if (bme.begin(0x77)) {
-    bmeFound = true;
-    bme.setSampling(Adafruit_BME280::MODE_FORCED,
-                    Adafruit_BME280::SAMPLING_X1,
-                    Adafruit_BME280::SAMPLING_X1,
-                    Adafruit_BME280::SAMPLING_X1,
-                    Adafruit_BME280::FILTER_OFF);
-    Logger.println("BME280 init OK (0x77)");
+
+  if (cfg.bme280_enabled) {
+    if (bme.begin(0x76)) {
+      bmeFound = true;
+      bme.setSampling(Adafruit_BME280::MODE_FORCED,
+                      Adafruit_BME280::SAMPLING_X1,
+                      Adafruit_BME280::SAMPLING_X1,
+                      Adafruit_BME280::SAMPLING_X1,
+                      Adafruit_BME280::FILTER_OFF);
+      Logger.println("BME280 init OK (0x76)");
+    } else if (bme.begin(0x77)) {
+      bmeFound = true;
+      bme.setSampling(Adafruit_BME280::MODE_FORCED,
+                      Adafruit_BME280::SAMPLING_X1,
+                      Adafruit_BME280::SAMPLING_X1,
+                      Adafruit_BME280::SAMPLING_X1,
+                      Adafruit_BME280::FILTER_OFF);
+      Logger.println("BME280 init OK (0x77)");
+    } else {
+      Logger.println("BME280 not found!");
+    }
   } else {
-    Logger.println("BME280 not found!");
+    Logger.println("BME280 disabled");
   }
 
-  if (ccs.begin()) {
-    ccsFound = true;
-    ccs.setDriveMode(CCS811_DRIVE_MODE_10SEC);
-    Logger.println("CCS811 init OK (0x5A)");
+  if (cfg.ccs811_enabled) {
+    if (ccs.begin()) {
+      ccsFound = true;
+      ccs.setDriveMode(CCS811_DRIVE_MODE_10SEC);
+      Logger.println("CCS811 init OK (0x5A)");
+    } else {
+      Logger.println("CCS811 not found!");
+    }
   } else {
-    Logger.println("CCS811 not found!");
+    Logger.println("CCS811 disabled");
   }
 }
 
 void sensorsRead() {
-  readNextPM();
-  readMHZ19();
-  readBME280();
-  readCCS811();
+  const SensorSettings& cfg = settingsGetSensors();
+  if (cfg.npm_enabled)    readNextPM();
+  if (cfg.mhz19_enabled)  readMHZ19();
+  if (cfg.bme280_enabled) readBME280();
+  if (cfg.ccs811_enabled) readCCS811();
   data.lastReadTime = millis();
 }
 
