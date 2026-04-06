@@ -14,7 +14,7 @@ void configInit() {
   deviceId.toUpperCase();
 
   // SSID AP unique avec les 6 derniers caractères du MAC
-  apSSID = "ModuleAirLight-" + deviceId.substring(deviceId.length() - 6);
+  apSSID = "ModuleAir-" + deviceId.substring(deviceId.length() - 6);
 
   Logger.printf("[Config] Device ID: %s\n", deviceId.c_str());
   Logger.printf("[Config] AP SSID:   %s\n", apSSID.c_str());

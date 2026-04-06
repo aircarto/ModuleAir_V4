@@ -12,7 +12,7 @@ void setup() {
   loggerInit();
 
   Logger.println("========================");
-  Logger.println("  ModuleAir Light");
+  Logger.println("  ModuleAir V4");
   Logger.print("  v");
   Logger.println(FIRMWARE_VERSION);
   Logger.println("========================");

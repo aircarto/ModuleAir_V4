@@ -1,8 +1,8 @@
-# ModuleAir Light
+# ModuleAir V4
 
-![ModuleAir Light](docs/images/sensor.jpg)
+![ModuleAir](docs/images/sensor.jpg)
 
-Station de mesure de qualité de l'air, version allégée sans écran.
+Version 4 du firmware du **ModuleAir**, la station de mesure de qualité de l'air développée par [AirCarto](https://github.com/aircarto). Ce firmware succède aux versions précédentes ([V2.1](https://github.com/aircarto/ModuleAir_V2.1), [V3](https://github.com/aircarto/ModuleAir_V3)) avec une base de code entièrement réécrite, plus légère et modulaire.
 
 ## Hardware
 
@@ -69,8 +69,8 @@ https://data.moduleair.fr/wifi_newDriver2026.php?device_type=ModuleAir
   "signal_quality_unit": "-52 dB",
   "version": 1,
   "version_major": 0,
-  "version_minor": 9,
-  "version_patch": 4,
+  "version_minor": 0,
+  "version_patch": 1,
   "ISO_68": 3.2,           // PM1.0 (si pm_ok)
   "ISO_68_unit": "3.2 ugm3",
   "ISO_39": 5.1,           // PM2.5 (si pm_ok)
@@ -123,10 +123,10 @@ Exemples : `0` = tous les capteurs OK, `0x88` (136) = NextPM + MH-Z19 en erreur.
 
 Au premier démarrage, le capteur crée un point d'accès WiFi :
 
-- **SSID** : `ModuleAirLight-XXXXXX` (les 6 derniers caractères du MAC, unique par capteur)
+- **SSID** : `ModuleAir-XXXXXX` (les 6 derniers caractères du MAC, unique par capteur)
 - **Mot de passe** : `moduleaircfg`
 
-La page de configuration s'ouvre automatiquement à la connexion (captive portal). Une fois connecté au WiFi, la page devient un dashboard affichant les dernières mesures, l'état des capteurs et les infos système. Elle est accessible via l'IP locale ou `http://moduleair-light.local`.
+La page de configuration s'ouvre automatiquement à la connexion (captive portal). Une fois connecté au WiFi, la page devient un dashboard affichant les dernières mesures, l'état des capteurs et les infos système. Elle est accessible via l'IP locale ou `http://moduleair.local`.
 
 ### Identification
 
@@ -159,14 +159,14 @@ Le script `ota_upload.py` est déclenché automatiquement en post-build et uploa
 ```ini
 [ota]
 server = https://gestion.aircarto.fr/api
-device = ModuleAir-light
+device = ModuleAir
 api_key = VOTRE_CLE_API
 ```
 
 **Upload manuel** (sans PlatformIO) :
 
 ```bash
-python ota_upload.py -d ModuleAir-light -v 0.9.5 -k VOTRE_CLE_API
+python ota_upload.py -d ModuleAir -v 0.0.1 -k VOTRE_CLE_API
 ```
 
 ### LEDs
@@ -225,7 +225,7 @@ Le capteur est conçu pour une alimentation permanente sur USB 5V (chargeur ou p
 src/
   config.h / config.cpp         → pins, constantes, version, device ID
   led.h / led.cpp               → animations LEDs non-bloquantes
-  sensors.h / sensors.cpp       → init et lecture des 3 capteurs
+  sensors.h / sensors.cpp       → init et lecture des capteurs
   wifi_manager.h / wifi_manager.cpp → WiFi, AP, serveur web, mDNS, OTA
   data_sender.h / data_sender.cpp   → envoi des données vers le serveur
   main.cpp                      → orchestrateur (setup/loop)

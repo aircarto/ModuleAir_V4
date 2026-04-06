@@ -1,9 +1,9 @@
 """
-OTA Upload Script for ModuleAir Light
+OTA Upload Script for ModuleAir
 Uploads firmware.bin to the OTA server after a successful build.
 
 Usage:
-  Manual:     python ota_upload.py -d ModuleAir-light -v 0.7.0 -k YOUR_API_KEY
+  Manual:     python ota_upload.py -d ModuleAir -v 0.0.1 -k YOUR_API_KEY
   PlatformIO: add "extra_scripts = post:ota_upload.py" to platformio.ini
               and configure ota_config.ini
 """
@@ -24,7 +24,7 @@ except:
 FIRMWARE_PATH = os.path.join(".pio", "build", "esp32dev", "firmware.bin")
 CONFIG_FILE = "ota_config.ini"
 DEFAULT_SERVER = "https://gestion.aircarto.fr/api"
-DEFAULT_DEVICE = "ModuleAir-light"
+DEFAULT_DEVICE = "ModuleAir"
 
 
 def get_version_from_config_h():
@@ -83,7 +83,7 @@ def main():
 
     # CLI arguments override config file
     parser = argparse.ArgumentParser(description="Upload OTA firmware")
-    parser.add_argument("-d", "--device", help="Device type (e.g. ModuleAir-light)")
+    parser.add_argument("-d", "--device", help="Device type (e.g. ModuleAir)")
     parser.add_argument("-v", "--version", help="Firmware version")
     parser.add_argument("-k", "--key", help="API key")
     parser.add_argument("-s", "--server", help="Server URL")

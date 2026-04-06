@@ -3,11 +3,11 @@
 
 #include <Arduino.h>
 
-#define FIRMWARE_VERSION "0.9.5"
+#define FIRMWARE_VERSION "0.0.1"
 
 // WiFi AP
 #define AP_PASSWORD "moduleaircfg"
-#define MDNS_NAME   "moduleair-light"
+#define MDNS_NAME   "moduleair"
 #define WIFI_CONNECT_TIMEOUT 15000
 
 // Data server
@@ -15,7 +15,7 @@
 #define DATA_SEND_INTERVAL 60000  // 60 secondes
 
 // OTA Update
-#define OTA_UPDATE_URL "https://gestion.aircarto.fr/api/ota/ModuleAir-light"
+#define OTA_UPDATE_URL "https://gestion.aircarto.fr/api/ota/ModuleAir"
 // Le serveur héberge :
 //   {OTA_UPDATE_URL}/version.txt   → contient juste "0.7.0" (la dernière version)
 //   {OTA_UPDATE_URL}/firmware.bin  → le binaire compilé
@@ -41,7 +41,7 @@
 
 // Device ID (computed from MAC at startup)
 extern String deviceId;     // ex: "AABBCCDDEEFF"
-extern String apSSID;       // ex: "ModuleAirLight-DDEEFF"
+extern String apSSID;       // ex: "ModuleAir-DDEEFF"
 
 void configInit();
 

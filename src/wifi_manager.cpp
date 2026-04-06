@@ -166,12 +166,12 @@ static void sendHeader() {
   server.sendContent("<!DOCTYPE html><html><head>"
     "<meta charset='UTF-8'>"
     "<meta name='viewport' content='width=device-width,initial-scale=1'>"
-    "<title>ModuleAir Light</title><style>");
+    "<title>ModuleAir</title><style>");
   server.sendContent(CSS);
   server.sendContent("</style><script>");
   server.sendContent(JS);
   server.sendContent("</script></head><body>"
-    "<h1>ModuleAir Light</h1>"
+    "<h1>ModuleAir</h1>"
     "<div class='version'>Firmware v" FIRMWARE_VERSION "</div>");
 }
 

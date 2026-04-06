@@ -1,4 +1,4 @@
-# ModuleAir Light — Guide utilisateur
+# ModuleAir — Guide utilisateur
 
 ## 1. Connecter le capteur à votre WiFi
 
@@ -12,7 +12,7 @@ Au démarrage, les LEDs jouent une courte animation arc-en-ciel puis passent en 
 
 Sur votre téléphone ou ordinateur, ouvrez les paramètres WiFi et connectez-vous au réseau :
 
-- **Nom du réseau** : `ModuleAirLight-XXXXXX` (les 6 derniers caractères sont propres à votre capteur)
+- **Nom du réseau** : `ModuleAir-XXXXXX` (les 6 derniers caractères sont propres à votre capteur)
 - **Mot de passe** : `moduleaircfg`
 
 ### Configurer le WiFi
@@ -50,7 +50,7 @@ Une fois le capteur connecté à votre WiFi, vous pouvez accéder à son interfa
 Ouvrez un navigateur et tapez :
 
 ```
-http://moduleair-light.local
+http://moduleair.local
 ```
 
 > **Si l'adresse ne fonctionne pas** : certains appareils (notamment sous Android) ne supportent pas les adresses `.local`. Dans ce cas, vous pouvez utiliser l'adresse IP du capteur (visible dans l'interface d'administration de votre box).
