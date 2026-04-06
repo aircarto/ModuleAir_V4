@@ -1,4 +1,5 @@
 #include "ble_improv.h"
+#include "display.h"
 #include "logger.h"
 
 #include <NimBLEDevice.h>
@@ -114,6 +115,8 @@ class RpcCallbacks : public NimBLECharacteristicCallbacks {
 
       Logger.printf("[BLE Improv] Received credentials - SSID: %s\n", ssid.c_str());
 
+      displayShowBleCredentials(ssid.c_str());
+
       setError(ERROR_NONE);
       setState(STATE_PROVISIONING);
 
@@ -134,6 +137,15 @@ class RpcCallbacks : public NimBLECharacteristicCallbacks {
 
 static RpcCallbacks rpcCallbacks;
 
+class ServerCallbacks : public NimBLEServerCallbacks {
+  void onConnect(NimBLEServer* pSrv) override {
+    Logger.println("[BLE Improv] Client connected");
+    displayShowBleConnected();
+  }
+};
+
+static ServerCallbacks serverCallbacks;
+
 void bleImprovOnCredentials(BleImprovCredentialsCallback cb) {
   credentialsCb = cb;
 }
@@ -146,6 +158,7 @@ void bleImprovInit(const String& deviceName) {
   NimBLEDevice::setMTU(517);  // Allow large characteristic reads (WiFi scan list)
 
   pServer = NimBLEDevice::createServer();
+  pServer->setCallbacks(&serverCallbacks);
 
   NimBLEService* pService = pServer->createService(SERVICE_UUID);
 
@@ -239,6 +252,8 @@ void bleImprovLoop() {
 
   Logger.printf("[BLE Improv] Attempting WiFi connection to '%s'...\n", pendingSSID.c_str());
 
+  displayShowBleWifiTrying(pendingSSID.c_str());
+
   // Try connecting to the WiFi
   WiFi.mode(WIFI_AP_STA);
   WiFi.begin(pendingSSID.c_str(), pendingPassword.c_str());
@@ -253,6 +268,8 @@ void bleImprovLoop() {
   if (WiFi.status() == WL_CONNECTED) {
     Logger.printf("[BLE Improv] Connected! IP: %s\n", WiFi.localIP().toString().c_str());
 
+    displayShowBleWifiOk(pendingSSID.c_str());
+
     setState(STATE_PROVISIONED);
 
     // Send the redirect URL as RPC result
@@ -262,14 +279,20 @@ void bleImprovLoop() {
 
     delay(1000);
 
+    displayShowBleReboot();
+    delay(1000);
+
     // Save credentials and restart via callback
     if (credentialsCb) {
       credentialsCb(pendingSSID, pendingPassword);
     }
   } else {
     Logger.println("[BLE Improv] Connection failed");
+    displayShowBleWifiFail();
     setError(ERROR_UNABLE_TO_CONNECT);
     setState(STATE_AUTHORIZED);
+    delay(2000);
+    displayShowAPMode(pendingSSID.c_str(), WiFi.softAPIP().toString().c_str());
     // Go back to AP only
     WiFi.mode(WIFI_AP);
   }

@@ -26,6 +26,7 @@ void setup() {
   configInit();
   settingsInit();
   displayInit();
+  displayShowBootAnim();
 
   if (displayGetDebugSplash()) {
     displayShowDebugSplash();
@@ -66,6 +67,7 @@ void loop() {
     lastCycle = millis();
     sensorsRead();
     displaySetSensorData(sensorsGetData());
+    displayShowInterieur();
     if (connected) {
       dataSenderSend();
     }

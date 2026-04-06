@@ -4,6 +4,20 @@ Toutes les modifications notables du firmware ModuleAir V4 sont documentées ici
 
 Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versioning [Semantic Versioning](https://semver.org/).
 
+## [0.2.2] - 2026-04-06
+
+### Ajouté
+
+- Animation de demarrage : pixel colore parcourant le perimetre de l'ecran (3 tours, easing)
+- Ecrans matrice pendant le provisioning BLE : connexion, identifiants recus, tentative WiFi, succes/echec, reboot
+- Ecran "air interieur" affiche au debut de chaque cycle de mesure (60s)
+- SFA40 (HCHO) documente dans le README : tableau capteurs, mesures, JSON, error_flags
+
+### Modifié
+
+- Ecran Mode AP simplifie : "Config / WiFi..." (sans SSID ni IP)
+- Ecran HCHO : valeur affichee en entier (sans decimale)
+
 ## [0.2.1] - 2026-04-06
 
 ### Ajouté

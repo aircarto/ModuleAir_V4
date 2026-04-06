@@ -129,18 +129,17 @@ Affiche apres la connexion WiFi en attendant la premiere mesure des capteurs.
 ```
 ┌────────────────────────────────────────────────────────────────┐
 │                                                                │
-│       M o d e     A P                                          │
 │                                                                │
-│      A i r - 3 B 0 1 5 C                                      │
+│    C o n f i g                                                 │
 │                                                                │
-│    1 9 2 . 1 6 8 . 4 . 1                                      │
+│    W i F i . . .                                               │
+│                                                                │
 │                                                                │
 └────────────────────────────────────────────────────────────────┘
-       orange            blanc (centre)             gris
+       orange                  blanc
 ```
 
-- Le SSID de l'AP est affiche (ex: "ModuleAir-3B015C", tronque aux 10 derniers chars)
-- L'IP de l'AP est affichee pour faciliter la connexion
+Indique que le capteur attend une configuration WiFi (via le portail captif ou BLE).
 
 ## Ecrans de donnees (rotation automatique)
 
@@ -241,6 +240,157 @@ Les seuils du CO2 sont editables depuis le dashboard (Seuils d'alerte). Les autr
 | 220 - 660 | Jaune | Moyen |
 | 660 - 2200 | Orange | Degrade |
 | >= 2200 | Rouge | Mauvais |
+
+#### HCHO (ppb)
+
+| Plage | Couleur | Message |
+|-------|---------|---------|
+| < 10 | Vert | Bon |
+| 10 - 30 | Jaune | Moyen |
+| 30 - 100 | Orange | Degrade |
+| >= 100 | Rouge | Mauvais |
+
+## Ecrans BLE (configuration WiFi via Bluetooth)
+
+Affiches sur la matrice pendant le flux de provisioning BLE (depuis la page web de configuration).
+
+### Flow BLE
+
+```
+  ┌──────────────────┐
+  │  Client BLE      │
+  │  se connecte     │
+  └────────┬─────────┘
+           │
+           ▼
+  ┌──────────────────┐
+  │  BLE CONNECTE    │
+  └────────┬─────────┘
+           │
+           ▼
+  ┌──────────────────┐
+  │  IDENTIFIANTS    │
+  │  RECUS           │
+  └────────┬─────────┘
+           │
+           ▼
+  ┌──────────────────┐
+  │  CONNEXION WiFi  │
+  │  EN COURS        │
+  └────────┬─────────┘
+           │
+     ┌─────┴──────┐
+     │             │
+     ▼             ▼
+  succes         echec
+     │             │
+     ▼             ▼
+  ┌──────────┐  ┌──────────┐
+  │ WiFi OK  │  │ WiFi     │
+  │          │  │ Echec    │
+  └────┬─────┘  └────┬─────┘
+       │              │
+       ▼              ▼
+  ┌──────────┐  ┌──────────┐
+  │ Config OK│  │ Retour   │
+  │ Reboot...│  │ Mode AP  │
+  └────┬─────┘  └──────────┘
+       │
+       ▼
+    Reboot
+```
+
+### BLE Connecte
+
+```
+┌────────────────────────────────────────────────────────────────┐
+│                                                                │
+│                                                                │
+│              B L E                                             │
+│                                                                │
+│    C o n n e c t e                                             │
+│                                                                │
+│                                                                │
+└────────────────────────────────────────────────────────────────┘
+       cyan                    blanc
+```
+
+### Identifiants recus
+
+```
+┌────────────────────────────────────────────────────────────────┐
+│                                                                │
+│    I d e n t i f i a n t                                       │
+│                                                                │
+│       r e c u s                                                │
+│                                                                │
+│    M a B o x W i F i                                           │
+│                                                                │
+└────────────────────────────────────────────────────────────────┘
+       cyan              orange               blanc
+```
+
+### Connexion WiFi en cours
+
+```
+┌────────────────────────────────────────────────────────────────┐
+│                                                                │
+│    C o n n e x i o n                                           │
+│                                                                │
+│    M a B o x W i F i                                           │
+│                                                                │
+│    . . .                                                       │
+│                                                                │
+└────────────────────────────────────────────────────────────────┘
+       bleu                   blanc                  gris
+```
+
+### WiFi OK
+
+```
+┌────────────────────────────────────────────────────────────────┐
+│                                                                │
+│                                                                │
+│       W i F i   O K !                                          │
+│                                                                │
+│    M a B o x W i F i                                           │
+│                                                                │
+│                                                                │
+└────────────────────────────────────────────────────────────────┘
+       vert                    blanc
+```
+
+### WiFi Echec
+
+```
+┌────────────────────────────────────────────────────────────────┐
+│                                                                │
+│                                                                │
+│          W i F i                                               │
+│                                                                │
+│        E c h e c !                                             │
+│                                                                │
+│                                                                │
+└────────────────────────────────────────────────────────────────┘
+       rouge                   orange
+```
+
+Affiche 2 secondes, puis retour a l'ecran Mode AP.
+
+### Config OK / Reboot
+
+```
+┌────────────────────────────────────────────────────────────────┐
+│                                                                │
+│                                                                │
+│    C o n f i g   O K                                           │
+│                                                                │
+│      R e b o o t . . .                                         │
+│                                                                │
+│                                                                │
+└────────────────────────────────────────────────────────────────┘
+       vert                    blanc
+```
 
 ## WiFi perdu (en fonctionnement)
 
@@ -348,10 +498,16 @@ Le refresh de l'ecran est mis en pause pendant le telechargement pour eviter le 
 | Tentative connexion WiFi | "Connexion" + SSID + points | Jusqu'au resultat (max 15s) |
 | Connexion reussie | "Connecte" + SSID + signal | 3s |
 | Attente premiere mesure | Logo ModuleAir | Jusqu'a la 1ere mesure (~60s) |
-| Fonctionnement normal | Rotation PM1/PM2.5/PM10/CO2/Temp/Humi/COV/Logo | 5s par ecran |
+| Fonctionnement normal | Rotation PM1/PM2.5/PM10/CO2/Temp/Humi/COV/HCHO/Logo | 5s par ecran |
 | Pas de credentials / echec | "Mode AP" + SSID AP + IP | Permanent |
 | Perte WiFi en fonctionnement | "WiFi Deconnecte" | Jusqu'a reconnexion |
 | Reconnexion WiFi | Retour a la rotation des donnees | - |
+| BLE client connecte | "BLE / Connecte" | Jusqu'a reception credentials |
+| BLE identifiants recus | "Identifiant / recus / SSID" | Jusqu'a tentative WiFi |
+| BLE connexion WiFi | "Connexion / SSID / ..." | Jusqu'au resultat (max 15s) |
+| BLE WiFi OK | "WiFi OK! / SSID" | 1s |
+| BLE WiFi echec | "WiFi / Echec!" | 2s puis retour Mode AP |
+| BLE reboot | "Config OK / Reboot..." | 1s puis reboot |
 | OTA telechargement | "Mise a jour" + barre + % (refresh pause) | Duree du telechargement |
 | OTA succes | "OK ! Reboot" | 2s puis reboot |
 | OTA echec | "Echec !" | Permanent (retour dashboard) |

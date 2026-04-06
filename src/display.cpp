@@ -306,7 +306,7 @@ static void drawScreenCOV() {
 
 static void drawScreenHCHO() {
   uint16_t c = colorHCHO(sensorCache.hcho);
-  drawMeasurementScreen("HCHO", UNIT_PPB, String(sensorCache.hcho, 1), c,
+  drawMeasurementScreen("HCHO", UNIT_PPB, String(sensorCache.hcho, 0), c,
                          msgHCHO(sensorCache.hcho));
 }
 
@@ -399,6 +399,12 @@ void displayShowLogo() {
   drawImage(0, 0, MATRIX_HEIGHT, MATRIX_WIDTH, logo_moduleair);
 }
 
+void displayShowInterieur() {
+  Logger.println("[Display] Interieur (no connection)");
+  display.clearDisplay();
+  drawImage(0, 0, MATRIX_HEIGHT, MATRIX_WIDTH, interieur_no_connection);
+}
+
 static void displayShowLogoAirCarto() {
   Logger.println("[Display] Logo AirCarto");
   display.clearDisplay();
@@ -471,19 +477,12 @@ void displayShowAPMode(const char* apName, const char* apIP) {
   display.setTextSize(1);
 
   display.setTextColor(COLOR_ORANGE);
-  display.setCursor(7, 1);
-  display.print("Mode  AP");
+  display.setCursor(4, 4);
+  display.print("Config");
 
   display.setTextColor(COLOR_WHITE);
-  String name(apName);
-  if (name.length() > 10) name = name.substring(name.length() - 10);
-  int nameWidth = name.length() * 6;
-  display.setCursor((MATRIX_WIDTH - nameWidth) / 2, 13);
-  display.print(name);
-
-  display.setTextColor(COLOR_GRAY);
-  display.setCursor(1, 24);
-  display.print(apIP);
+  display.setCursor(4, 18);
+  display.print("WiFi...");
 }
 
 void displayShowWifiLost() {
@@ -505,7 +504,7 @@ void displayShowWifiReconnected() {
   lastScreenChange = 0;
 }
 
-// ── OTA screens ──
+// ── Boot animation & BLE provisioning screens ──
 
 // Force a few display refresh cycles (for use when refresh is paused)
 static void manualRefresh(int cycles = 50) {
@@ -514,6 +513,143 @@ static void manualRefresh(int cycles = 50) {
     delayMicroseconds(200);
   }
 }
+
+void displayShowBootAnim() {
+  Logger.println("[Display] Boot animation");
+  display.clearDisplay();
+
+  // Perimeter path: top→right→bottom→left = 188 positions per lap
+  const int perim = 2 * (MATRIX_WIDTH + MATRIX_HEIGHT) - 4;  // 188
+  const int laps = 3;
+  const int total = perim * laps;
+
+  // Color cycle: cyan → blue → green → yellow → orange → red
+  const uint16_t colors[] = { COLOR_CYAN, COLOR_BLUE, COLOR_GREEN, COLOR_YELLOW, COLOR_ORANGE, COLOR_RED };
+  const int nColors = 6;
+
+  for (int i = 0; i < total; i++) {
+    int pos = i % perim;
+
+    // Position on perimeter
+    int x, y;
+    if (pos < MATRIX_WIDTH) {
+      x = pos; y = 0;                                    // top edge →
+    } else if (pos < MATRIX_WIDTH + MATRIX_HEIGHT - 1) {
+      x = MATRIX_WIDTH - 1; y = pos - MATRIX_WIDTH + 1;  // right edge ↓
+    } else if (pos < 2 * MATRIX_WIDTH + MATRIX_HEIGHT - 2) {
+      x = MATRIX_WIDTH - 1 - (pos - MATRIX_WIDTH - MATRIX_HEIGHT + 2); y = MATRIX_HEIGHT - 1;  // bottom edge ←
+    } else {
+      x = 0; y = MATRIX_HEIGHT - 1 - (pos - 2 * MATRIX_WIDTH - MATRIX_HEIGHT + 3);  // left edge ↑
+    }
+
+    // Color: smooth cycle over the 3 laps
+    float colorPos = (float)i / total * nColors;
+    uint16_t c = colors[(int)colorPos % nColors];
+
+    // Easing: cosine ease-in-out on delay (slow→fast→slow)
+    float t = (float)i / (total - 1);
+    float ease = (1.0f - cosf(t * 2.0f * M_PI)) * 0.5f;  // 0→1→0
+    int delayMs = 2 + (int)(ease * 18);                    // 2ms (fast) to 20ms (slow)
+
+    display.drawPixel(x, y, c);
+    manualRefresh(15);
+    delay(delayMs);
+
+    // Clear pixel for next frame
+    display.drawPixel(x, y, 0);
+  }
+
+  display.clearDisplay();
+}
+
+void displayShowBleConnected() {
+  Logger.println("[Display] BLE connected");
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(COLOR_CYAN);
+  display.setCursor(13, 4);
+  display.print("BLE");
+  display.setTextColor(COLOR_WHITE);
+  display.setCursor(4, 18);
+  display.print("Connect");
+  display.write(130);
+  manualRefresh(100);
+}
+
+void displayShowBleCredentials(const char* ssid) {
+  Logger.printf("[Display] BLE credentials for: %s\n", ssid);
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(COLOR_CYAN);
+  display.setCursor(1, 0);
+  display.print("Identifiant");
+  display.setTextColor(COLOR_ORANGE);
+  display.setCursor(7, 10);
+  display.print("re");
+  display.write(131);
+  display.print("us");
+  display.setTextColor(COLOR_WHITE);
+  display.setCursor(4, 22);
+  display.print(truncSSID(ssid));
+  manualRefresh(100);
+}
+
+void displayShowBleWifiTrying(const char* ssid) {
+  Logger.printf("[Display] BLE WiFi trying: %s\n", ssid);
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(COLOR_BLUE);
+  display.setCursor(4, 2);
+  display.print("Connexion");
+  display.setTextColor(COLOR_WHITE);
+  display.setCursor(4, 14);
+  display.print(truncSSID(ssid));
+  display.setTextColor(COLOR_GRAY);
+  display.setCursor(4, 24);
+  display.print("...");
+  manualRefresh(100);
+}
+
+void displayShowBleWifiOk(const char* ssid) {
+  Logger.printf("[Display] BLE WiFi OK: %s\n", ssid);
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(COLOR_GREEN);
+  display.setCursor(7, 4);
+  display.print("WiFi OK!");
+  display.setTextColor(COLOR_WHITE);
+  display.setCursor(4, 18);
+  display.print(truncSSID(ssid));
+  manualRefresh(100);
+}
+
+void displayShowBleWifiFail() {
+  Logger.println("[Display] BLE WiFi failed");
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(COLOR_RED);
+  display.setCursor(10, 4);
+  display.print("WiFi");
+  display.setTextColor(COLOR_ORANGE);
+  display.setCursor(7, 18);
+  display.print("Echec!");
+  manualRefresh(100);
+}
+
+void displayShowBleReboot() {
+  Logger.println("[Display] BLE reboot");
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(COLOR_GREEN);
+  display.setCursor(7, 4);
+  display.print("Config OK");
+  display.setTextColor(COLOR_WHITE);
+  display.setCursor(7, 18);
+  display.print("Reboot...");
+  manualRefresh(100);
+}
+
+// ── OTA screens ──
 
 void displayShowOtaUpdate() {
   Logger.println("[Display] OTA update starting");

@@ -18,6 +18,7 @@ Board custom basée sur un **ESP32-WROOM-32U** (240 MHz, 16 MB flash, WiFi avec 
 | **MH-Z19** | CO2 (ppm) + température interne | UART2 (9600 8N1) | IO36 (RX) / IO27 (TX) |
 | **BME280** | Température, humidité, pression atmosphérique | I2C (0x76 ou 0x77) | IO21 (SDA) / IO22 (SCL) |
 | **CCS811 (CJMCU-811)** | COV (TVOC en ppb) et eCO2 (ppm) | I2C (0x5A) | IO21 (SDA) / IO22 (SCL) |
+| **SFA40** | Formaldéhyde (HCHO en ppb) | I2C (0x5D) | IO21 (SDA) / IO22 (SCL) |
 
 ### Documentation hardware complète
 
@@ -39,6 +40,7 @@ Toutes les 60 secondes (une fois connecté au WiFi), les capteurs sont lus et le
 - **CO2** (ppm) — MH-Z19
 - **Température** (°C), **humidité** (%), **pression** (hPa) — BME280
 - **TVOC** (ppb), **eCO2** (ppm) — CCS811
+- **HCHO** (ppb) — SFA40 (formaldéhyde)
 
 ### Envoi des données
 
@@ -59,6 +61,7 @@ https://data.moduleair.fr/wifi_newDriver2026.php?device_type=ModuleAir
 | Pression | ISO_53 |
 | TVOC | ISO_100 |
 | eCO2 | ISO_101 |
+| HCHO | ISO_102 |
 
 #### Structure complète du JSON
 
@@ -89,6 +92,8 @@ https://data.moduleair.fr/wifi_newDriver2026.php?device_type=ModuleAir
   "ISO_100_unit": "35 ppb",
   "ISO_101": 410,          // eCO2 (si ccs_ok)
   "ISO_101_unit": "410 ppm",
+  "ISO_102": 8.5,          // HCHO (si sfa40_ok)
+  "ISO_102_unit": "8.5 ppb",
   "error_flags": 0,
   "npm_status": 0,
   "device_status": 2
@@ -106,6 +111,7 @@ https://data.moduleair.fr/wifi_newDriver2026.php?device_type=ModuleAir
 | 2 | `0x04` | BME280 en erreur (température/humidité/pression) |
 | 3 | `0x08` | NextPM en erreur (particules fines) |
 | 4 | `0x10` | CCS811 en erreur (TVOC/eCO2) |
+| 5 | `0x20` | SFA40 en erreur (HCHO) |
 | 7 | `0x80` | MH-Z19 en erreur (CO2) |
 
 Exemples : `0` = tous les capteurs OK, `0x88` (136) = NextPM + MH-Z19 en erreur.
