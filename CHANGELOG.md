@@ -4,6 +4,14 @@ Toutes les modifications notables du firmware ModuleAir V4 sont documentées ici
 
 Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versioning [Semantic Versioning](https://semver.org/).
 
+## [0.2.1] - 2026-04-06
+
+### Ajouté
+
+- Ecran formaldehyde (HCHO) sur la matrice LED avec seuils couleur (10/30/100 ppb)
+- Carte formaldehyde sur le dashboard web, badge SFA40 dans Systeme
+- Toggles SFA40 (capteurs) et Formaldehyde (ecrans) sur le dashboard
+
 ## [0.2.0] - 2026-04-06
 
 ### Ajouté
