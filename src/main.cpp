@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <WiFi.h>
+#include <esp_ota_ops.h>
 #include "config.h"
 #include "logger.h"
 #include "display.h"
@@ -14,6 +15,10 @@ bool wasConnected = false;
 void setup() {
   Serial.begin(115200);
   delay(1000);
+
+  // Confirm OTA partition is valid (prevents rollback on next reboot)
+  esp_ota_mark_app_valid_cancel_rollback();
+
   loggerInit();
 
   Logger.println("========================");
