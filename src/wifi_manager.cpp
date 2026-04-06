@@ -9,8 +9,9 @@
 #include <WiFiClientSecure.h>
 #include "config.h"
 #include "wifi_manager.h"
+#include "ble_improv.h"
 #include "sensors.h"
-
+#include "display.h"
 #include "logger.h"
 
 static WebServer server(80);
@@ -309,6 +310,11 @@ static void handleRootConnected() {
   if (d.lastReadTime > 0) {
     chunk += "<div class='data-row'><span class='data-label'>Derniere mesure</span><span class='data-value'>il y a " + String(ago) + " <span class='data-unit'>s</span></span></div>";
   }
+  chunk += "<div class='data-row'><span class='data-label'>Ecran debug au demarrage</span><span class='data-value'>"
+           "<label style='cursor:pointer'><input type='checkbox' id='dbg-splash' "
+           + String(displayGetDebugSplash() ? "checked" : "") +
+           " onchange=\"fetch('/debug-splash',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'enabled='+(this.checked?'1':'0')})\">"
+           " Actif</label></span></div>";
   chunk += "</div>";
   server.sendContent(chunk);
 
@@ -547,6 +553,13 @@ static void handleReboot() {
 
 // =============================================
 // Logs
+static void handleDebugSplash() {
+  bool enabled = server.arg("enabled") == "1";
+  displaySetDebugSplash(enabled);
+  Logger.printf("[Web] Debug splash %s\n", enabled ? "enabled" : "disabled");
+  server.send(200, "text/plain", "ok");
+}
+
 // =============================================
 
 static void handleLogs() {
@@ -604,22 +617,34 @@ static void handleDoUpdate() {
   server.send(200, "application/json", "{\"ok\":true}");
   delay(500);  // Laisser le temps d'envoyer la réponse
 
+  displayShowOtaUpdate();
+
   WiFiClientSecure secClient;
   secClient.setInsecure();  // Skip certificate validation
   String firmwareUrl = String(OTA_UPDATE_URL) + "/firmware.bin?sensor=" + deviceId + "&current_version=" + FIRMWARE_VERSION;
 
   Logger.printf("[OTA] Downloading from: %s\n", firmwareUrl.c_str());
 
+  httpUpdate.onProgress([](int current, int total) {
+    if (total > 0) {
+      int pct = (current * 100) / total;
+      displayShowOtaProgress(pct);
+      Logger.printf("[OTA] Progress: %d%%\n", pct);
+    }
+  });
+
   t_httpUpdate_return ret = httpUpdate.update(secClient, firmwareUrl);
 
   switch (ret) {
     case HTTP_UPDATE_OK:
       Logger.println("[OTA] Update successful! Rebooting...");
-      delay(500);
+      displayShowOtaDone();
+      delay(2000);
       ESP.restart();
       break;
     case HTTP_UPDATE_FAILED:
       Logger.printf("[OTA] Update failed: %s\n", httpUpdate.getLastErrorString().c_str());
+      displayShowOtaFailed();
       break;
     case HTTP_UPDATE_NO_UPDATES:
       Logger.println("[OTA] No update available");
@@ -640,6 +665,7 @@ void wifiManagerInit() {
   if (ssid.length() > 0) {
     Logger.printf("[WiFi] Saved SSID found: %s\n", ssid.c_str());
     Logger.printf("[WiFi] Connecting to %s...\n", ssid.c_str());
+    displayShowWifiConnecting(ssid.c_str());
     WiFi.mode(WIFI_STA);
     WiFi.setHostname(MDNS_NAME);
     WiFi.begin(ssid.c_str(), password.c_str());
@@ -647,6 +673,7 @@ void wifiManagerInit() {
     unsigned long start = millis();
     while (WiFi.status() != WL_CONNECTED && millis() - start < WIFI_CONNECT_TIMEOUT) {
       delay(500);
+      displayShowWifiDots();
       Logger.print(".");
     }
     Logger.println();
@@ -661,6 +688,9 @@ void wifiManagerInit() {
       Logger.printf("[WiFi] MAC:     %s\n", WiFi.macAddress().c_str());
       Logger.printf("[WiFi] RSSI:    %d dBm\n", WiFi.RSSI());
       Logger.printf("[WiFi] Channel: %d\n", WiFi.channel());
+      displayShowWifiConnected(ssid.c_str(), WiFi.RSSI());
+      delay(3000);
+      displayShowLogo();
     } else {
       Logger.printf("[WiFi] Connection failed (status: %d)\n", WiFi.status());
       Logger.println("[WiFi] Falling back to AP mode...");
@@ -678,10 +708,17 @@ void wifiManagerInit() {
     Logger.printf("[WiFi] Password: %s\n", AP_PASSWORD);
     Logger.printf("[WiFi] AP IP:    %s\n", WiFi.softAPIP().toString().c_str());
     Logger.printf("[WiFi] AP MAC:   %s\n", WiFi.softAPmacAddress().c_str());
+    displayShowAPMode(apSSID.c_str(), WiFi.softAPIP().toString().c_str());
 
     // DNS captive portal : toutes les requêtes DNS → IP de l'AP
     dnsServer.start(53, "*", WiFi.softAPIP());
     Logger.println("[DNS] Captive portal DNS started");
+
+    // BLE Improv WiFi : configuration via Bluetooth (Chrome/Edge)
+    bleImprovOnCredentials([](const String& ssid, const String& password) {
+      wifiSaveCredentialsAndRestart(ssid, password);
+    });
+    bleImprovInit(apSSID);
   }
 
   if (MDNS.begin(MDNS_NAME)) {
@@ -698,6 +735,7 @@ void wifiManagerInit() {
   server.on("/reboot", HTTP_POST, handleReboot);
 
   server.on("/logs", handleLogs);
+  server.on("/debug-splash", HTTP_POST, handleDebugSplash);
   server.on("/check-update", handleCheckUpdate);
   server.on("/do-update", handleDoUpdate);
 
@@ -731,9 +769,22 @@ void wifiManagerInit() {
   }
 }
 
+void wifiSaveCredentialsAndRestart(const String& ssid, const String& password) {
+  preferences.begin("wifi", false);
+  preferences.putString("ssid", ssid);
+  preferences.putString("password", password);
+  preferences.end();
+
+  Logger.printf("[WiFi] Credentials saved - SSID: %s (via BLE)\n", ssid.c_str());
+  Logger.println("[WiFi] Restarting in 2 seconds...");
+  delay(2000);
+  ESP.restart();
+}
+
 void wifiManagerLoop() {
   if (apMode) {
     dnsServer.processNextRequest();
+    bleImprovLoop();
   }
   server.handleClient();
 

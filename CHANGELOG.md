@@ -4,12 +4,37 @@ Toutes les modifications notables du firmware ModuleAir V4 sont documentées ici
 
 Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versioning [Semantic Versioning](https://semver.org/).
 
+## [0.1.2] - 2026-04-06
+
+### Ajouté
+
+- Affichage cyclique des polluants sur l'ecran matrix (PM2.5, PM10, CO2, temperature, humidite, COV) avec codes couleur et messages status
+- Logo ModuleAir affiche en attente de la premiere mesure apres connexion WiFi
+- Ecrans OTA sur la matrice : progression avec barre, succes/echec
+- BLE Improv WiFi : configuration WiFi via Bluetooth (NimBLE)
+
+### Modifie
+
+- Ecran "Connecte" simplifie (SSID + signal, sans IP), affiche 3s puis retour au logo
+
+## [0.1.1] - 2026-04-06
+
+### Ajouté
+
+- Suivi WiFi sur l'ecran matrix : connexion en cours (SSID + points animes), connecte (IP + barres signal), mode AP (SSID AP + IP), WiFi perdu
+- Option "Ecran debug au demarrage" configurable depuis le dashboard web (persistee en NVS)
+- Documentation des ecrans matrix (`docs/DISPLAY_SCREENS.md`) : flow, schemas ASCII, transitions
+
+### Modifie
+
+- Splash screen debug passe de flag compile-time (`-D DISPLAY_DEBUG_SPLASH`) a preference runtime via l'UI web
+
 ## [0.1.0] - 2026-04-06
 
 ### Ajouté
 
 - Ecran Matrix LED HUB75 64x32 (PxMatrix) avec affichage du logo ModuleAir au demarrage
-- Splash screen debug optionnel (`-D DISPLAY_DEBUG_SPLASH` dans platformio.ini)
+- Splash screen debug optionnel
 - Bouton "Rafraichir" sur le dashboard web
 - Documentation hardware complete (`docs/HARDWARE.md`) : schematic, PCB, pinout, BOM
 

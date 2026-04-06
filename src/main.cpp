@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <WiFi.h>
 #include "config.h"
 #include "logger.h"
 #include "display.h"
@@ -21,9 +22,9 @@ void setup() {
   configInit();
   displayInit();
 
-#ifdef DISPLAY_DEBUG_SPLASH
-  displayShowDebugSplash();
-#endif
+  if (displayGetDebugSplash()) {
+    displayShowDebugSplash();
+  }
 
   displayShowLogo();
   wifiManagerInit();
@@ -50,8 +51,11 @@ void loop() {
   // Détection perte / retour WiFi
   if (wasConnected && !connected) {
     Logger.println("[WiFi] Deconnexion detectee");
+    displayShowWifiLost();
   } else if (!wasConnected && connected) {
     Logger.println("[WiFi] Reconnexion detectee");
+    displayShowWifiConnected(WiFi.SSID().c_str(), WiFi.RSSI());
+    displayShowWifiReconnected();
   }
   wasConnected = connected;
 
@@ -59,5 +63,8 @@ void loop() {
     lastCycle = millis();
     sensorsRead();
     dataSenderSend();
+    displaySetSensorData(sensorsGetData());
   }
+
+  displayUpdate();
 }
