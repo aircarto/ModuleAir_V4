@@ -350,60 +350,45 @@ void displayUpdate() {
   if (now - lastScreenChange < SCREEN_INTERVAL) return;
   lastScreenChange = now;
 
-  // Build list of available screens (sensor data OK + screen enabled)
+  // Build list of available screens: all data screens, then 1 logo (rotated each cycle)
   const ScreenSettings& scfg = settingsGetScreens();
   Screen avail[SCR_COUNT];
   int count = 0;
-  // Build data screens
-  Screen dataScreens[SCR_COUNT];
-  int dataCount = 0;
-  if (sensorCache.pm_ok) {
-    if (scfg.pm1)  dataScreens[dataCount++] = SCR_PM1;
-    if (scfg.pm25) dataScreens[dataCount++] = SCR_PM25;
-    if (scfg.pm10) dataScreens[dataCount++] = SCR_PM10;
-  }
-  if (sensorCache.co2_ok && scfg.co2)  dataScreens[dataCount++] = SCR_CO2;
-  if (sensorCache.bme_ok) {
-    if (scfg.temp) dataScreens[dataCount++] = SCR_TEMP;
-    if (scfg.humi) dataScreens[dataCount++] = SCR_HUMI;
-  }
-  if (sensorCache.ccs_ok && scfg.tvoc) dataScreens[dataCount++] = SCR_COV;
-  if (sensorCache.sfa40_ok && scfg.hcho) dataScreens[dataCount++] = SCR_HCHO;
 
-  // Collect active logos
+  // Data screens
+  if (sensorCache.pm_ok) {
+    if (scfg.pm1)  avail[count++] = SCR_PM1;
+    if (scfg.pm25) avail[count++] = SCR_PM25;
+    if (scfg.pm10) avail[count++] = SCR_PM10;
+  }
+  if (sensorCache.co2_ok && scfg.co2)  avail[count++] = SCR_CO2;
+  if (sensorCache.bme_ok) {
+    if (scfg.temp) avail[count++] = SCR_TEMP;
+    if (scfg.humi) avail[count++] = SCR_HUMI;
+  }
+  if (sensorCache.ccs_ok && scfg.tvoc) avail[count++] = SCR_COV;
+  if (sensorCache.sfa40_ok && scfg.hcho) avail[count++] = SCR_HCHO;
+
+  // Active logos
   Screen logos[3];
   int logoCount = 0;
   if (scfg.logo_moduleair) logos[logoCount++] = SCR_LOGO_MA;
   if (scfg.logo_aircarto)  logos[logoCount++] = SCR_LOGO_AC;
   if (scfg.logo_atmosud)   logos[logoCount++] = SCR_LOGO_AS;
 
-  // Interleave: spread logos evenly among data screens
-  if (logoCount == 0) {
-    // No logos, just data
-    for (int i = 0; i < dataCount; i++) avail[count++] = dataScreens[i];
-  } else if (dataCount == 0) {
-    // No data, just logos
-    for (int i = 0; i < logoCount; i++) avail[count++] = logos[i];
-  } else {
-    // Insert each logo at evenly spaced positions
-    // E.g. 5 data + 2 logos: logo after screen 2 and after screen 4
-    int totalScreens = dataCount + logoCount;
-    int logoIdx = 0;
-    int dataIdx = 0;
-    float spacing = (float)totalScreens / logoCount;
-    float nextLogoAt = spacing;  // first logo after 'spacing' screens
-    for (int i = 0; i < totalScreens; i++) {
-      if (logoIdx < logoCount && (float)(i + 1) >= nextLogoAt - 0.01f) {
-        avail[count++] = logos[logoIdx++];
-        nextLogoAt += spacing;
-      } else if (dataIdx < dataCount) {
-        avail[count++] = dataScreens[dataIdx++];
-      }
-    }
+  // Append one logo at the end (rotated across cycles)
+  static int logoRotationIdx = 0;
+  if (logoCount > 0) {
+    avail[count++] = logos[logoRotationIdx % logoCount];
   }
 
   if (count == 0) return;
-  currentScreen = currentScreen % count;
+
+  // Detect end of cycle: when we wrap back to 0, advance logo
+  if (currentScreen >= count) {
+    currentScreen = 0;
+    if (logoCount > 0) logoRotationIdx = (logoRotationIdx + 1) % logoCount;
+  }
 
   static const char* screenNames[] = { "PM1", "PM2.5", "PM10", "CO2", "Temp", "Humi", "COV", "HCHO", "Logo ModuleAir", "Logo AirCarto", "Logo AtmoSud" };
 

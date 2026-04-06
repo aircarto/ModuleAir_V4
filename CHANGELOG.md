@@ -4,6 +4,12 @@ Toutes les modifications notables du firmware ModuleAir V4 sont documentées ici
 
 Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versioning [Semantic Versioning](https://semver.org/).
 
+## [0.2.7] - 2026-04-06
+
+### Modifié
+
+- Rotation ecran : tous les polluants puis 1 logo (alterne entre les logos actifs a chaque cycle)
+
 ## [0.2.6] - 2026-04-06
 
 ### Corrige
