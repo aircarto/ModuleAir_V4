@@ -1,7 +1,7 @@
 #include <Arduino.h>
 #include "config.h"
 #include "logger.h"
-#include "led.h"
+#include "display.h"
 #include "wifi_manager.h"
 #include "sensors.h"
 #include "data_sender.h"
@@ -19,16 +19,20 @@ void setup() {
   Logger.println();
 
   configInit();
-  ledInit();
+  displayInit();
+
+#ifdef DISPLAY_DEBUG_SPLASH
+  displayShowDebugSplash();
+#endif
+
+  displayShowLogo();
   wifiManagerInit();
 
   if (wifiIsConnected()) {
-    ledStartConnectedAnim();
     sensorsInit();
     Logger.println();
     Logger.println("Waiting for sensor warm-up...");
   } else {
-    ledSetApMode(true);
     Logger.println();
     Logger.println("Waiting for WiFi configuration...");
   }
@@ -39,28 +43,21 @@ unsigned long lastCycle = 0;
 bool wasConnected = false;
 
 void loop() {
-  ledUpdate();
   wifiManagerLoop();
 
   bool connected = wifiIsConnected();
 
   // Détection perte / retour WiFi
   if (wasConnected && !connected) {
-    Logger.println("[WiFi] Deconnexion detectee - LEDs damier rouge");
-    ledSetWifiLost(true);
+    Logger.println("[WiFi] Deconnexion detectee");
   } else if (!wasConnected && connected) {
     Logger.println("[WiFi] Reconnexion detectee");
-    ledSetWifiLost(false);
-    ledStartConnectedAnim();
   }
   wasConnected = connected;
 
   if (connected && millis() - lastCycle >= DATA_SEND_INTERVAL) {
     lastCycle = millis();
-    ledTriggerPulse();
     sensorsRead();
-    SendResult result = dataSenderSend();
-    ledSetNoInternet(result == SEND_NO_INTERNET);
-    ledSetServerDown(result == SEND_SERVER_DOWN);
+    dataSenderSend();
   }
 }

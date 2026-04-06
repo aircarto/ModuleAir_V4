@@ -3,7 +3,7 @@
 
 #include <Arduino.h>
 
-#define FIRMWARE_VERSION "0.0.1"
+#define FIRMWARE_VERSION "0.1.0"
 
 // WiFi AP
 #define AP_PASSWORD "moduleaircfg"
@@ -35,9 +35,16 @@
 #define I2C_SDA 21
 #define I2C_SCL 22
 
-// LEDs WS2812B
-#define LED_PIN 25
-#define LED_COUNT 8
+// Matrix LED HUB75 (SPI HSPI + control)
+#define MATRIX_WIDTH  64
+#define MATRIX_HEIGHT 32
+#define P_LAT 25
+#define P_A   17
+#define P_B   33
+#define P_C   4
+#define P_D   12
+#define P_E   15
+#define P_OE  16
 
 // Device ID (computed from MAC at startup)
 extern String deviceId;     // ex: "AABBCCDDEEFF"

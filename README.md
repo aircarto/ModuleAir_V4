@@ -1,6 +1,6 @@
 # ModuleAir V4
 
-![ModuleAir](docs/images/sensor.jpg)
+![ModuleAir](https://aircarto.fr/images/moduleAir/ModuleAir_mini_carre.jpg)
 
 Version 4 du firmware du **ModuleAir**, la station de mesure de qualité de l'air développée par [AirCarto](https://github.com/aircarto). Ce firmware succède aux versions précédentes ([V2.1](https://github.com/aircarto/ModuleAir_V2.1), [V3](https://github.com/aircarto/ModuleAir_V3)) avec une base de code entièrement réécrite, plus légère et modulaire.
 
@@ -19,15 +19,15 @@ Board custom basée sur un **ESP32-WROOM-32U** (240 MHz, 16 MB flash, WiFi avec 
 | **BME280** | Température, humidité, pression atmosphérique | I2C (0x76 ou 0x77) | IO21 (SDA) / IO22 (SCL) |
 | **CCS811 (CJMCU-811)** | COV (TVOC en ppb) et eCO2 (ppm) | I2C (0x5A) | IO21 (SDA) / IO22 (SCL) |
 
+### Documentation hardware complète
+
+Schematic, PCB, pinout ESP32, connecteurs et BOM : **[docs/HARDWARE.md](docs/HARDWARE.md)**
+
 ### Boîtier
 
 ![Boîtier imprimé en 3D](docs/images/sensor_3D.png)
 
 Le boîtier est composé d'éléments imprimés en 3D, conçus sur mesure pour accueillir le PCB et les capteurs. Il intègre des ouvertures pour la circulation de l'air (nécessaire aux mesures de particules et de gaz), le passage du câble USB et l'antenne WiFi externe. Le logo AirCarto est directement intégré au design.
-
-### Autres composants
-
-- **Bandeau LEDs WS2812B** (8 LEDs, IO25) : animation au démarrage, respiration continue, impulsion à chaque lecture
 
 ## Fonctionnalités
 
@@ -169,26 +169,6 @@ api_key = VOTRE_CLE_API
 python ota_upload.py -d ModuleAir -v 0.0.1 -k VOTRE_CLE_API
 ```
 
-### LEDs
-
-Les 8 LEDs WS2812B indiquent l'état du capteur en temps réel. Voici les différents modes, dans l'ordre du cycle de vie :
-
-| Animation | Couleur | Signification | Comportement attendu |
-|-----------|---------|---------------|----------------------|
-| Chenillard + clignotements | Arc-en-ciel puis blanc | **Démarrage** | Le capteur s'initialise, dure ~2 secondes |
-| Respiration | Orange/rouge | **Mode AP** | En attente de configuration WiFi via le captive portal |
-| Clignotement rapide (5s) | Bleu | **Connexion WiFi** | Le capteur vient de se connecter au WiFi |
-| Respiration | Bleu | **Mode connecté** | Tout fonctionne, le capteur envoie les données normalement |
-| Flash rapide | Bleu vif | **Impulsion** | Lecture des capteurs et envoi des données en cours |
-| Damier alternant (1/2) | Rouge | **WiFi perdu** | La connexion WiFi est coupée (box éteinte, hors portée...). Le capteur tente de se reconnecter automatiquement. Les mesures ne sont pas envoyées |
-| Damier alternant (1/2) | Orange | **Pas d'internet** | Le WiFi est connecté mais il n'y a pas d'accès internet (résolution DNS échoue). Les mesures sont lues mais ne peuvent pas être envoyées |
-| Damier alternant (1/2) | Violet | **Serveur indisponible** | Internet fonctionne mais le serveur de données (`data.moduleair.fr`) ne répond pas. Les mesures sont lues mais ne peuvent pas être envoyées |
-
-**Notes :**
-- En mode connecté, les LEDs sont **éteintes par défaut**. Elles peuvent être activées/désactivées et leur luminosité réglée depuis le dashboard web
-- Les **animations d'erreur** (damier rouge/orange/violet) s'affichent toujours, même si les LEDs sont désactivées par l'utilisateur, et disparaissent automatiquement dès que la situation revient à la normale
-- Les préférences LEDs (état on/off, luminosité) sont **persistées en mémoire** (NVS) et conservées après un redémarrage
-
 ## Consommation électrique
 
 ![Profil de consommation électrique](docs/images/conso_electrique.png)
@@ -224,7 +204,6 @@ Le capteur est conçu pour une alimentation permanente sur USB 5V (chargeur ou p
 ```
 src/
   config.h / config.cpp         → pins, constantes, version, device ID
-  led.h / led.cpp               → animations LEDs non-bloquantes
   sensors.h / sensors.cpp       → init et lecture des capteurs
   wifi_manager.h / wifi_manager.cpp → WiFi, AP, serveur web, mDNS, OTA
   data_sender.h / data_sender.cpp   → envoi des données vers le serveur

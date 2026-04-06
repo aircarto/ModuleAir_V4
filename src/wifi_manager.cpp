@@ -10,7 +10,7 @@
 #include "config.h"
 #include "wifi_manager.h"
 #include "sensors.h"
-#include "led.h"
+
 #include "logger.h"
 
 static WebServer server(80);
@@ -28,11 +28,18 @@ static bool scanInProgress = false;
 // CSS commun (stocké en PROGMEM pour économiser la RAM)
 static const char CSS[] PROGMEM = R"(
 body{font-family:system-ui,sans-serif;background:#1a1a2e;color:#e0e0e0;margin:0;padding:20px;}
+.header{max-width:1200px;margin:0 auto 15px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;}
+.header h1{margin:0;flex:1;}
+.header .version{margin:0;flex:1;text-align:center;}
+.refresh-btn{background:#16213e;border:1px solid #4fc3f7;color:#4fc3f7;padding:8px 16px;border-radius:8px;
+cursor:pointer;font-size:0.9em;width:auto;transition:background 0.2s;}
+.refresh-btn:hover{background:#0f3460;}
 .grid{max-width:1200px;margin:0 auto;display:grid;grid-template-columns:1fr;gap:15px;}
 @media(min-width:600px){.grid{grid-template-columns:repeat(2,1fr);}}
 @media(min-width:960px){.grid{grid-template-columns:repeat(3,1fr);}}
 .card{background:#16213e;border-radius:12px;padding:20px;box-shadow:0 4px 15px rgba(0,0,0,0.3);}
 .card.wide{grid-column:1/-1;}
+@media(min-width:960px){.card.span2{grid-column:span 2;}}
 h1{text-align:center;color:#4fc3f7;margin-bottom:5px;}
 h2{color:#4fc3f7;margin:0 0 15px 0;font-size:1.1em;}
 .version{text-align:center;color:#888;font-size:0.85em;margin-bottom:20px;}
@@ -170,9 +177,7 @@ static void sendHeader() {
   server.sendContent(CSS);
   server.sendContent("</style><script>");
   server.sendContent(JS);
-  server.sendContent("</script></head><body>"
-    "<h1>ModuleAir</h1>"
-    "<div class='version'>Firmware v" FIRMWARE_VERSION "</div>");
+  server.sendContent("</script></head><body>");
 }
 
 static void sendFooter() {
@@ -204,13 +209,20 @@ static String formatUptime(unsigned long ms) {
 static void handleRootConnected() {
   sendHeader();
 
+  server.sendContent(
+    "<div class='header'>"
+    "<h1>ModuleAir</h1>"
+    "<div class='version'>Firmware v" FIRMWARE_VERSION "</div>"
+    "<button class='refresh-btn' onclick='location.reload()'>&#8635; Rafraichir</button>"
+    "</div>");
+
   const SensorData& d = sensorsGetData();
   unsigned long ago = (d.lastReadTime > 0) ? (millis() - d.lastReadTime) / 1000 : 0;
 
   server.sendContent("<div class='grid'>");
 
   // Status WiFi
-  String chunk = "<div class='card wide'><h2>Connexion</h2>";
+  String chunk = "<div class='card span2'><h2>Connexion</h2>";
   chunk += "<div class='data-row'><span class='data-label'>Reseau</span><span class='data-value'>" + WiFi.SSID() + "</span></div>";
   chunk += "<div class='data-row'><span class='data-label'>IP</span><span class='data-value'>" + WiFi.localIP().toString() + "</span></div>";
   {
@@ -300,22 +312,6 @@ static void handleRootConnected() {
   chunk += "</div>";
   server.sendContent(chunk);
 
-  // LEDs on/off + luminosité
-  chunk = "<div class='card'><h2>LEDs</h2>";
-  chunk += "<form action='/leds' method='POST'>";
-  if (ledIsEnabled()) {
-    chunk += "<button type='submit' name='state' value='off' class='danger'>Eteindre les LEDs</button>";
-  } else {
-    chunk += "<button type='submit' name='state' value='on'>Allumer les LEDs</button>";
-  }
-  chunk += "</form>";
-  chunk += "<form action='/leds-brightness' method='POST' style='margin-top:10px'>";
-  chunk += "<div class='data-row'><span class='data-label'>Luminosite</span><span class='data-value'>" + String(ledGetBrightness()) + " / 255</span></div>";
-  chunk += "<input type='range' name='brightness' min='5' max='255' value='" + String(ledGetBrightness()) + "' style='width:100%;margin:8px 0;'>";
-  chunk += "<button type='submit'>Appliquer</button>";
-  chunk += "</form></div>";
-  server.sendContent(chunk);
-
   // Logs
   server.sendContent(
     "<div class='card wide'><h2>Logs</h2>"
@@ -368,6 +364,10 @@ static void handleRootAP() {
   if (n == WIFI_SCAN_FAILED) n = 0;
 
   sendHeader();
+
+  server.sendContent(
+    "<h1>ModuleAir</h1>"
+    "<div class='version'>Firmware v" FIRMWARE_VERSION "</div>");
 
   // Status AP
   String apStatus = "<div class='card'><h2>Statut</h2>"
@@ -545,23 +545,6 @@ static void handleReboot() {
   ESP.restart();
 }
 
-static void handleLeds() {
-  String state = server.arg("state");
-  ledSetEnabled(state == "on");
-  Logger.printf("[Web] LEDs %s\n", state == "on" ? "enabled" : "disabled");
-  server.sendHeader("Location", "/", true);
-  server.send(302, "text/plain", "");
-}
-
-static void handleLedsBrightness() {
-  uint8_t brightness = (uint8_t)server.arg("brightness").toInt();
-  if (brightness < 5) brightness = 5;
-  ledSetBrightness(brightness);
-  Logger.printf("[Web] LEDs brightness: %d\n", brightness);
-  server.sendHeader("Location", "/", true);
-  server.send(302, "text/plain", "");
-}
-
 // =============================================
 // Logs
 // =============================================
@@ -713,8 +696,7 @@ void wifiManagerInit() {
   server.on("/save", HTTP_POST, handleSave);
   server.on("/reset", HTTP_POST, handleReset);
   server.on("/reboot", HTTP_POST, handleReboot);
-  server.on("/leds", HTTP_POST, handleLeds);
-  server.on("/leds-brightness", HTTP_POST, handleLedsBrightness);
+
   server.on("/logs", handleLogs);
   server.on("/check-update", handleCheckUpdate);
   server.on("/do-update", handleDoUpdate);
