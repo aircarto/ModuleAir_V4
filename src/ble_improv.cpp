@@ -47,6 +47,12 @@ static String pendingSSID;
 static String pendingPassword;
 static bool pendingConnect = false;
 
+// WiFi scan results (stored, sent via notify)
+static String wifiScanResults[20];
+static int wifiScanCount = 0;
+static bool wifiScanReady = false;
+static bool wifiScanSent = false;
+
 static void setState(uint8_t state) {
   charState->setValue(&state, 1);
   charState->notify();
@@ -176,28 +182,27 @@ void bleImprovInit(const String& deviceName) {
   uint8_t caps = 0x01;
   charCapabilities->setValue(&caps, 1);
 
-  // WiFi scan results: "ssid\trssi\tenc\n..." (readable by web page)
+  // WiFi scan results: sent as notifications, one per network
   charWifiScan = pService->createCharacteristic(
     CHAR_WIFI_SCAN,
-    NIMBLE_PROPERTY::READ
+    NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY
   );
-
-  // Run WiFi scan and populate results
-  Logger.println("[BLE Improv] Scanning WiFi networks...");
-  int n = WiFi.scanNetworks();
-  if (n < 0) n = 0;
-  Logger.printf("[BLE Improv] Found %d networks\n", n);
-
-  String scanData = "";
-  for (int i = 0; i < n && i < 20; i++) {
-    if (i > 0) scanData += "\n";
-    scanData += WiFi.SSID(i) + "\t" + String(WiFi.RSSI(i)) + "\t" + String(WiFi.encryptionType(i) != WIFI_AUTH_OPEN ? 1 : 0);
-  }
-  charWifiScan->setValue(scanData.c_str());
-  Logger.printf("[BLE Improv] Scan data (%d bytes): %s\n", scanData.length(), scanData.c_str());
-  WiFi.scanDelete();
+  charWifiScan->setValue("pending");
 
   pService->start();
+
+  // Run WiFi scan and store results (sent when client subscribes)
+  Logger.println("[BLE Improv] Scanning WiFi networks...");
+  wifiScanCount = WiFi.scanNetworks();
+  if (wifiScanCount < 0) wifiScanCount = 0;
+  if (wifiScanCount > 20) wifiScanCount = 20;
+  Logger.printf("[BLE Improv] Found %d networks\n", wifiScanCount);
+  for (int i = 0; i < wifiScanCount; i++) {
+    wifiScanResults[i] = WiFi.SSID(i) + "\t" + String(WiFi.RSSI(i)) + "\t" + String(WiFi.encryptionType(i) != WIFI_AUTH_OPEN ? 1 : 0);
+    Logger.printf("[BLE Improv]   %s\n", wifiScanResults[i].c_str());
+  }
+  WiFi.scanDelete();
+  wifiScanReady = true;
 
   NimBLEAdvertising* pAdv = NimBLEDevice::getAdvertising();
   pAdv->addServiceUUID(SERVICE_UUID);
@@ -209,7 +214,24 @@ void bleImprovInit(const String& deviceName) {
 }
 
 void bleImprovLoop() {
-  if (!bleRunning || !pendingConnect) return;
+  if (!bleRunning) return;
+
+  // Send WiFi scan results once a client subscribes to notifications
+  if (wifiScanReady && !wifiScanSent && pServer->getConnectedCount() > 0 && charWifiScan->getSubscribedCount() > 0) {
+    wifiScanSent = true;
+    Logger.printf("[BLE Improv] Sending %d scan results via notify\n", wifiScanCount);
+    for (int i = 0; i < wifiScanCount; i++) {
+      charWifiScan->setValue(wifiScanResults[i].c_str());
+      charWifiScan->notify();
+      delay(50);  // small delay between notifications
+    }
+    // End marker
+    charWifiScan->setValue("END");
+    charWifiScan->notify();
+    Logger.println("[BLE Improv] Scan results sent");
+  }
+
+  if (!pendingConnect) return;
   pendingConnect = false;
 
   Logger.printf("[BLE Improv] Attempting WiFi connection to '%s'...\n", pendingSSID.c_str());

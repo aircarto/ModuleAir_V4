@@ -374,7 +374,7 @@
     </div>
 
     <footer>
-      <a href="https://moduleair.fr">moduleair.fr</a>
+      <a href="https://moduleair.fr">moduleair.fr</a> &middot; page v1.2
     </footer>
   </div>
 
@@ -465,20 +465,40 @@
           return;
         }
 
-        // Read WiFi scan results from ESP32
+        // Read WiFi scan results via BLE notifications
         try {
           const charScan = await service.getCharacteristic(CHAR_WIFI_SCAN);
-          const scanVal = await charScan.readValue();
-          const scanBytes = new Uint8Array(scanVal.buffer, scanVal.byteOffset, scanVal.byteLength);
-          const scanStr = new TextDecoder().decode(scanBytes);
-          console.log("[Improv] WiFi scan data:", scanStr);
+          const networks = [];
 
-          if (scanStr.length > 0) {
-            const networks = scanStr.split("\n").map(line => {
-              const [ssid, rssi, enc] = line.split("\t");
-              return { ssid, rssi: parseInt(rssi), encrypted: enc === "1" };
-            }).filter(n => n.ssid);
+          const scanDone = new Promise((resolve) => {
+            charScan.addEventListener("characteristicvaluechanged", (e) => {
+              const bytes = new Uint8Array(e.target.value.buffer, e.target.value.byteOffset, e.target.value.byteLength);
+              const line = new TextDecoder().decode(bytes);
+              console.log("[Improv] Scan notify:", line);
+              if (line === "END") {
+                resolve();
+              } else {
+                const [ssid, rssi, enc] = line.split("\t");
+                if (ssid) networks.push({ ssid, rssi: parseInt(rssi), encrypted: enc === "1" });
+              }
+            });
+          });
 
+          // Subscribe to trigger the ESP32 to send results
+          await charScan.startNotifications();
+          console.log("[Improv] Waiting for WiFi scan results...");
+          setStatus("Reception des reseaux WiFi...", "#4fc3f7");
+
+          // Wait for END marker (max 10s)
+          await Promise.race([
+            scanDone,
+            new Promise((_, reject) => setTimeout(() => reject(new Error("scan timeout")), 10000))
+          ]).catch(e => console.log("[Improv] Scan wait:", e.message));
+
+          await charScan.stopNotifications();
+          console.log("[Improv] Got", networks.length, "networks");
+
+          if (networks.length > 0) {
             let html = '<div class="wifi-list-info">' + networks.length + ' reseau(x) detecte(s)</div>';
             for (const net of networks) {
               const bars = net.rssi > -50 ? "\u25cf\u25cf\u25cf\u25cf"
