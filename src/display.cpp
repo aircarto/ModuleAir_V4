@@ -463,62 +463,67 @@ void displayShowOtaUpdate() {
   display.clearDisplay();
   display.setTextSize(1);
   display.setTextColor(COLOR_ORANGE);
-  display.setCursor(4, 1);
+  display.setCursor(1, 0);
   display.print("Mise a jour");
   display.setTextColor(COLOR_GRAY);
-  display.setCursor(1, 13);
+  display.setCursor(1, 10);
   display.print("Telecharg...");
-  display.drawRect(2, 24, 60, 7, COLOR_GRAY);
-  manualRefresh();
+  display.drawRect(2, 22, 60, 7, COLOR_GRAY);
+  manualRefresh(100);
 }
 
 void displayShowOtaProgress(int percent) {
-  static int lastPercent = -1;
-  if (percent == lastPercent) return;
-  lastPercent = percent;
-
+  static int lastDisplayed = -1;
   if (percent < 0) percent = 0;
   if (percent > 100) percent = 100;
+
+  // Only refresh every 5% to reduce flicker
+  int rounded = (percent / 5) * 5;
+  if (rounded == lastDisplayed && percent != 100) return;
+  lastDisplayed = rounded;
+
   int barWidth = (56 * percent) / 100;
-  display.fillRect(4, 26, 56, 3, 0);
+  display.fillRect(4, 24, 56, 3, 0);
   if (barWidth > 0) {
     uint16_t color = percent < 50 ? COLOR_ORANGE : COLOR_GREEN;
-    display.fillRect(4, 26, barWidth, 3, color);
+    display.fillRect(4, 24, barWidth, 3, color);
   }
-  display.fillRect(1, 13, 62, 8, 0);
+  display.fillRect(1, 10, 62, 8, 0);
   display.setTextSize(1);
   display.setTextColor(COLOR_WHITE);
   String pct = String(percent) + "%";
   int pctWidth = pct.length() * 6;
-  display.setCursor((MATRIX_WIDTH - pctWidth) / 2, 13);
+  display.setCursor((MATRIX_WIDTH - pctWidth) / 2, 10);
   display.print(pct);
-  manualRefresh();
+  manualRefresh(100);
 }
 
 void displayShowOtaDone() {
   Logger.println("[Display] OTA done - rebooting");
-  refreshPaused = false;
   display.clearDisplay();
   display.setTextSize(1);
   display.setTextColor(COLOR_GREEN);
-  display.setCursor(4, 4);
+  display.setCursor(1, 4);
   display.print("Mise a jour");
   display.setTextColor(COLOR_WHITE);
   display.setCursor(7, 18);
-  display.print("OK ! Reboot");
+  display.print("OK! Reboot");
+  manualRefresh(100);
+  refreshPaused = false;
 }
 
 void displayShowOtaFailed() {
   Logger.println("[Display] OTA failed");
-  refreshPaused = false;
   display.clearDisplay();
   display.setTextSize(1);
   display.setTextColor(COLOR_RED);
-  display.setCursor(4, 4);
+  display.setCursor(1, 4);
   display.print("Mise a jour");
   display.setTextColor(COLOR_ORANGE);
-  display.setCursor(10, 18);
-  display.print("Echec !");
+  display.setCursor(13, 18);
+  display.print("Echec!");
+  manualRefresh(100);
+  refreshPaused = false;
 }
 
 // ── Preferences ──

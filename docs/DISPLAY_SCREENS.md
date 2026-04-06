@@ -165,67 +165,82 @@ Les ecrans affichables sont configurables depuis le dashboard (Ecrans matrice).
                              message status: couleur
 ```
 
+### Palette de couleurs
+
+| Apercu | Nom | Code RGB565 | RGB | Utilisation |
+|--------|-----|-------------|-----|-------------|
+| ![#00FF00](https://via.placeholder.com/16/00FF00/00FF00.png) | Vert | `0x07E0` | `(0, 255, 0)` | Bon / OK / Ideal |
+| ![#FFFF00](https://via.placeholder.com/16/FFFF00/FFFF00.png) | Jaune | `0xFFE0` | `(255, 255, 0)` | Moyen |
+| ![#FF7C00](https://via.placeholder.com/16/FF7C00/FF7C00.png) | Orange | `0xFBE0` | `(255, 124, 0)` | Degrade / Aerer |
+| ![#FF0000](https://via.placeholder.com/16/FF0000/FF0000.png) | Rouge | `0xF800` | `(255, 0, 0)` | Mauvais / Chaud / Sec / Humide |
+| ![#0000FF](https://via.placeholder.com/16/0000FF/0000FF.png) | Bleu | `rgb565` | `(0, 0, 255)` | Froid (temperature uniquement) |
+| ![#00FFFF](https://via.placeholder.com/16/00FFFF/00FFFF.png) | Cyan | `0x07FF` | `(0, 255, 255)` | Labels polluants |
+| ![#FFFFFF](https://via.placeholder.com/16/FFFFFF/FFFFFF.png) | Blanc | `0xFFFF` | `(255, 255, 255)` | Valeurs numeriques |
+| ![#6B6B6B](https://via.placeholder.com/16/6B6B6B/6B6B6B.png) | Gris | `0x6B4D` | `(107, 107, 107)` | Unites, texte secondaire |
+
 ### Seuils de couleur et messages
+
+Les seuils du CO2 sont editables depuis le dashboard (Seuils d'alerte). Les autres sont fixes.
 
 #### PM2.5 (ug/m3)
 
 | Plage | Couleur | Message |
 |-------|---------|---------|
-| < 10 | Vert | Bon |
-| 10 - 20 | Jaune | Moyen |
-| 20 - 50 | Orange | Degrade |
-| >= 50 | Rouge | Mauvais |
+| < 10 | ![#00FF00](https://via.placeholder.com/12/00FF00/00FF00.png) Vert | Bon |
+| 10 - 20 | ![#FFFF00](https://via.placeholder.com/12/FFFF00/FFFF00.png) Jaune | Moyen |
+| 20 - 50 | ![#FF7C00](https://via.placeholder.com/12/FF7C00/FF7C00.png) Orange | Degrade |
+| >= 50 | ![#FF0000](https://via.placeholder.com/12/FF0000/FF0000.png) Rouge | Mauvais |
 
 #### PM10 (ug/m3)
 
 | Plage | Couleur | Message |
 |-------|---------|---------|
-| < 15 | Vert | Bon |
-| 15 - 30 | Jaune | Moyen |
-| 30 - 75 | Orange | Degrade |
-| >= 75 | Rouge | Mauvais |
+| < 15 | ![#00FF00](https://via.placeholder.com/12/00FF00/00FF00.png) Vert | Bon |
+| 15 - 30 | ![#FFFF00](https://via.placeholder.com/12/FFFF00/FFFF00.png) Jaune | Moyen |
+| 30 - 75 | ![#FF7C00](https://via.placeholder.com/12/FF7C00/FF7C00.png) Orange | Degrade |
+| >= 75 | ![#FF0000](https://via.placeholder.com/12/FF0000/FF0000.png) Rouge | Mauvais |
 
 #### PM1 (ug/m3)
 
 | Plage | Couleur | Message |
 |-------|---------|---------|
-| < 10 | Vert | Bon |
-| 10 - 20 | Jaune | Moyen |
-| 20 - 50 | Orange | Degrade |
-| >= 50 | Rouge | Mauvais |
+| < 10 | ![#00FF00](https://via.placeholder.com/12/00FF00/00FF00.png) Vert | Bon |
+| 10 - 20 | ![#FFFF00](https://via.placeholder.com/12/FFFF00/FFFF00.png) Jaune | Moyen |
+| 20 - 50 | ![#FF7C00](https://via.placeholder.com/12/FF7C00/FF7C00.png) Orange | Degrade |
+| >= 50 | ![#FF0000](https://via.placeholder.com/12/FF0000/FF0000.png) Rouge | Mauvais |
 
-#### CO2 (ppm)
+#### CO2 (ppm) — seuils editables, defaut 800/1500
 
 | Plage | Couleur | Message |
 |-------|---------|---------|
-| < 800 | Vert | Bon |
-| 800 - 1500 | Orange | Aerer SVP |
-| >= 1500 | Rouge | Mauvais |
+| < 800 | ![#00FF00](https://via.placeholder.com/12/00FF00/00FF00.png) Vert | Bon |
+| 800 - 1500 | ![#FF7C00](https://via.placeholder.com/12/FF7C00/FF7C00.png) Orange | Aerer SVP |
+| >= 1500 | ![#FF0000](https://via.placeholder.com/12/FF0000/FF0000.png) Rouge | Mauvais |
 
 #### Temperature (C)
 
 | Plage | Couleur | Message |
 |-------|---------|---------|
-| < 19 | Bleu | Froid |
-| 19 - 28 | Vert | OK |
-| >= 28 | Rouge | Chaud |
+| < 19 | ![#0000FF](https://via.placeholder.com/12/0000FF/0000FF.png) Bleu | Froid |
+| 19 - 28 | ![#00FF00](https://via.placeholder.com/12/00FF00/00FF00.png) Vert | OK |
+| >= 28 | ![#FF0000](https://via.placeholder.com/12/FF0000/FF0000.png) Rouge | Chaud |
 
 #### Humidite (%)
 
 | Plage | Couleur | Message |
 |-------|---------|---------|
-| < 40 | Rouge | Sec |
-| 40 - 60 | Vert | Ideal |
-| >= 60 | Rouge | Humide |
+| < 40 | ![#FF0000](https://via.placeholder.com/12/FF0000/FF0000.png) Rouge | Sec |
+| 40 - 60 | ![#00FF00](https://via.placeholder.com/12/00FF00/00FF00.png) Vert | Ideal |
+| >= 60 | ![#FF0000](https://via.placeholder.com/12/FF0000/FF0000.png) Rouge | Humide |
 
 #### COV / TVOC (ppb)
 
 | Plage | Couleur | Message |
 |-------|---------|---------|
-| < 220 | Vert | Bon |
-| 220 - 660 | Jaune | Moyen |
-| 660 - 2200 | Orange | Degrade |
-| >= 2200 | Rouge | Mauvais |
+| < 220 | ![#00FF00](https://via.placeholder.com/12/00FF00/00FF00.png) Vert | Bon |
+| 220 - 660 | ![#FFFF00](https://via.placeholder.com/12/FFFF00/FFFF00.png) Jaune | Moyen |
+| 660 - 2200 | ![#FF7C00](https://via.placeholder.com/12/FF7C00/FF7C00.png) Orange | Degrade |
+| >= 2200 | ![#FF0000](https://via.placeholder.com/12/FF0000/FF0000.png) Rouge | Mauvais |
 
 ## WiFi perdu (en fonctionnement)
 

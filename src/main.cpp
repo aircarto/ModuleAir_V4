@@ -8,6 +8,9 @@
 #include "data_sender.h"
 #include "settings.h"
 
+unsigned long lastCycle = 0;
+bool wasConnected = false;
+
 void setup() {
   Serial.begin(115200);
   delay(1000);
@@ -29,20 +32,19 @@ void setup() {
   }
 
   wifiManagerInit();
+  sensorsInit();
 
   if (wifiIsConnected()) {
-    sensorsInit();
     Logger.println();
     Logger.println("Waiting for sensor warm-up...");
   } else {
     Logger.println();
-    Logger.println("Waiting for WiFi configuration...");
+    Logger.println("Mode AP - mesures locales actives");
   }
   Logger.println();
-}
 
-unsigned long lastCycle = 0;
-bool wasConnected = true;  // avoid false "reconnection" on first loop
+  wasConnected = wifiIsConnected();
+}
 
 void loop() {
   wifiManagerLoop();
@@ -60,11 +62,13 @@ void loop() {
   }
   wasConnected = connected;
 
-  if (connected && millis() - lastCycle >= DATA_SEND_INTERVAL) {
+  if (millis() - lastCycle >= DATA_SEND_INTERVAL) {
     lastCycle = millis();
     sensorsRead();
-    dataSenderSend();
     displaySetSensorData(sensorsGetData());
+    if (connected) {
+      dataSenderSend();
+    }
   }
 
   displayUpdate();
