@@ -319,6 +319,12 @@ static void handleRootConnected() {
   if (d.lastReadTime > 0) {
     chunk += "<div class='data-row'><span class='data-label'>Derniere mesure</span><span class='data-value'>il y a " + String(ago) + " <span class='data-unit'>s</span></span></div>";
   }
+  chunk += "<div class='data-row'><span class='data-label'>Luminosite ecran</span><span class='data-value'>"
+           "<span id='bri-val'>" + String(displayGetBrightness()) + "</span>/255"
+           "<input type='range' min='10' max='255' value='" + String(displayGetBrightness()) + "' style='width:80px;margin-left:8px;vertical-align:middle;'"
+           " oninput=\"document.getElementById('bri-val').textContent=this.value\""
+           " onchange=\"fetch('/set-brightness',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'val='+this.value})\">"
+           "</span></div>";
   chunk += "<div class='data-row'><span class='data-label'>Ecran debug au demarrage</span><span class='data-value'>"
            "<label style='cursor:pointer'><input type='checkbox' id='dbg-splash' "
            + String(displayGetDebugSplash() ? "checked" : "") +
@@ -615,6 +621,13 @@ static void handleSetScreen() {
   server.send(200, "text/plain", "ok");
 }
 
+static void handleSetBrightness() {
+  uint8_t val = (uint8_t)server.arg("val").toInt();
+  if (val < 10) val = 10;
+  displaySetBrightness(val);
+  server.send(200, "text/plain", "ok");
+}
+
 static void handleDebugSplash() {
   bool enabled = server.arg("enabled") == "1";
   displaySetDebugSplash(enabled);
@@ -798,6 +811,7 @@ void wifiManagerInit() {
 
   server.on("/logs", handleLogs);
   server.on("/debug-splash", HTTP_POST, handleDebugSplash);
+  server.on("/set-brightness", HTTP_POST, handleSetBrightness);
   server.on("/set-sensor", HTTP_POST, handleSetSensor);
   server.on("/set-screen", HTTP_POST, handleSetScreen);
   server.on("/check-update", handleCheckUpdate);

@@ -10,6 +10,8 @@ void displayShowDebugSplash();
 bool displayGetDebugSplash();
 void displaySetDebugSplash(bool enabled);
 void displaySetSensorData(const SensorData& data);
+void displaySetBrightness(uint8_t brightness);
+uint8_t displayGetBrightness();
 
 // WiFi status screens
 void displayShowWifiConnecting(const char* ssid);

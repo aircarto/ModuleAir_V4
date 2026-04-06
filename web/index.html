@@ -469,7 +469,8 @@
         try {
           const charScan = await service.getCharacteristic(CHAR_WIFI_SCAN);
           const scanVal = await charScan.readValue();
-          const scanStr = new TextDecoder().decode(scanVal.buffer);
+          const scanBytes = new Uint8Array(scanVal.buffer, scanVal.byteOffset, scanVal.byteLength);
+          const scanStr = new TextDecoder().decode(scanBytes);
           console.log("[Improv] WiFi scan data:", scanStr);
 
           if (scanStr.length > 0) {
@@ -600,23 +601,41 @@
         await resultPromise;
 
         console.log("[Improv] Provisioned!");
-        setStatus("Connecte avec succes !", "#a5d6a7");
 
-        // Try to read redirect URL from result
+        // Read IP from RPC result and show success with links
+        let ip = "";
         try {
           const resultVal = await bleCharResult.readValue();
-          console.log("[Improv] RPC result bytes:", Array.from(new Uint8Array(resultVal.buffer)));
+          const rawBytes = new Uint8Array(resultVal.buffer, resultVal.byteOffset, resultVal.byteLength);
+          console.log("[Improv] RPC result bytes:", Array.from(rawBytes));
           if (resultVal.byteLength > 3) {
             const len = resultVal.getUint8(2);
-            const urlBytes = new Uint8Array(resultVal.buffer, 3, len);
-            const url = new TextDecoder().decode(urlBytes);
-            console.log("[Improv] Redirect URL:", url);
-            setStatus("Connecte ! Redirection vers " + url + "...", "#a5d6a7");
-            setTimeout(() => { window.location.href = url; }, 2000);
+            const urlBytes = rawBytes.slice(3, 3 + len);
+            ip = new TextDecoder().decode(urlBytes);
+            console.log("[Improv] Device URL:", ip);
           }
         } catch(e) {
           console.log("[Improv] Could not read redirect URL:", e);
         }
+
+        // Show success screen
+        wifiForm.classList.remove("active");
+        wifiList.innerHTML = "";
+        msg.innerHTML = "";
+
+        let successHtml = '<div style="text-align:center;margin-top:1rem;">'
+          + '<div style="font-size:1.5rem;margin-bottom:0.5rem;">&#9989;</div>'
+          + '<div style="color:#a5d6a7;font-size:1.1rem;font-weight:600;margin-bottom:1rem;">Connexion WiFi reussie !</div>'
+          + '<p style="color:#999;font-size:0.85rem;margin-bottom:1.2rem;">Pour acceder au tableau de bord de votre capteur, connectez-vous au meme reseau WiFi puis utilisez un des liens ci-dessous :</p>';
+
+        if (ip) {
+          successHtml += '<a href="' + ip + '" style="display:block;background:#0f3460;color:#4fc3f7;padding:0.7rem;border-radius:8px;margin-bottom:0.5rem;text-decoration:none;font-weight:600;">' + ip + '</a>';
+        }
+        successHtml += '<a href="http://moduleair.local" style="display:block;background:#0f3460;color:#4fc3f7;padding:0.7rem;border-radius:8px;text-decoration:none;font-weight:600;">http://moduleair.local</a>'
+          + '<p style="color:#666;font-size:0.75rem;margin-top:0.8rem;">moduleair.local peut ne pas fonctionner sur certains appareils</p>'
+          + '</div>';
+
+        msg.innerHTML = successHtml;
 
         bleServer.disconnect();
 

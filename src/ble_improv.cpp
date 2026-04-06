@@ -137,6 +137,7 @@ void bleImprovInit(const String& deviceName) {
 
   NimBLEDevice::init(deviceName.c_str());
   NimBLEDevice::setPower(ESP_PWR_LVL_P6);
+  NimBLEDevice::setMTU(517);  // Allow large characteristic reads (WiFi scan list)
 
   pServer = NimBLEDevice::createServer();
 
@@ -193,6 +194,7 @@ void bleImprovInit(const String& deviceName) {
     scanData += WiFi.SSID(i) + "\t" + String(WiFi.RSSI(i)) + "\t" + String(WiFi.encryptionType(i) != WIFI_AUTH_OPEN ? 1 : 0);
   }
   charWifiScan->setValue(scanData.c_str());
+  Logger.printf("[BLE Improv] Scan data (%d bytes): %s\n", scanData.length(), scanData.c_str());
   WiFi.scanDelete();
 
   pService->start();

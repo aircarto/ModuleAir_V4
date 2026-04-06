@@ -11,13 +11,16 @@
 // ── Hardware ──
 
 static uint8_t display_draw_time = 30;
+static uint8_t displayBrightness = 128;
 static bool debugSplashEnabled = false;
+static bool refreshPaused = false;
 static hw_timer_t *timer = NULL;
 static SemaphoreHandle_t displaySem;
 
 static PxMATRIX display(MATRIX_WIDTH, MATRIX_HEIGHT, P_LAT, P_OE, P_A, P_B, P_C, P_D, P_E);
 
 static void IRAM_ATTR displayISR() {
+  if (refreshPaused) return;
   BaseType_t woken = pdFALSE;
   xSemaphoreGiveFromISR(displaySem, &woken);
   if (woken) portYIELD_FROM_ISR();
@@ -252,11 +255,13 @@ void displayInit() {
   Preferences prefs;
   prefs.begin("display", true);
   debugSplashEnabled = prefs.getBool("dbgSplash", false);
+  displayBrightness = prefs.getUChar("brightness", 128);
   prefs.end();
 
   display.begin(16);
   display.setDriverChip(SHIFT);
   display.setColorOrder(RRBBGG);
+  display.setBrightness(displayBrightness);
   display.clearDisplay();
 
   displaySem = xSemaphoreCreateBinary();
@@ -431,8 +436,17 @@ void displayShowWifiReconnected() {
 
 // ── OTA screens ──
 
+// Force a few display refresh cycles (for use when refresh is paused)
+static void manualRefresh(int cycles = 50) {
+  for (int i = 0; i < cycles; i++) {
+    display.display(display_draw_time);
+    delayMicroseconds(200);
+  }
+}
+
 void displayShowOtaUpdate() {
   Logger.println("[Display] OTA update starting");
+  refreshPaused = true;
   display.clearDisplay();
   display.setTextSize(1);
   display.setTextColor(COLOR_ORANGE);
@@ -442,9 +456,14 @@ void displayShowOtaUpdate() {
   display.setCursor(1, 13);
   display.print("Telecharg...");
   display.drawRect(2, 24, 60, 7, COLOR_GRAY);
+  manualRefresh();
 }
 
 void displayShowOtaProgress(int percent) {
+  static int lastPercent = -1;
+  if (percent == lastPercent) return;
+  lastPercent = percent;
+
   if (percent < 0) percent = 0;
   if (percent > 100) percent = 100;
   int barWidth = (56 * percent) / 100;
@@ -460,10 +479,12 @@ void displayShowOtaProgress(int percent) {
   int pctWidth = pct.length() * 6;
   display.setCursor((MATRIX_WIDTH - pctWidth) / 2, 13);
   display.print(pct);
+  manualRefresh();
 }
 
 void displayShowOtaDone() {
   Logger.println("[Display] OTA done - rebooting");
+  refreshPaused = false;
   display.clearDisplay();
   display.setTextSize(1);
   display.setTextColor(COLOR_GREEN);
@@ -476,6 +497,7 @@ void displayShowOtaDone() {
 
 void displayShowOtaFailed() {
   Logger.println("[Display] OTA failed");
+  refreshPaused = false;
   display.clearDisplay();
   display.setTextSize(1);
   display.setTextColor(COLOR_RED);
@@ -498,4 +520,18 @@ void displaySetDebugSplash(bool enabled) {
   prefs.begin("display", false);
   prefs.putBool("dbgSplash", enabled);
   prefs.end();
+}
+
+uint8_t displayGetBrightness() {
+  return displayBrightness;
+}
+
+void displaySetBrightness(uint8_t brightness) {
+  displayBrightness = brightness;
+  display.setBrightness(brightness);
+  Preferences prefs;
+  prefs.begin("display", false);
+  prefs.putUChar("brightness", brightness);
+  prefs.end();
+  Logger.printf("[Display] Brightness set to %d\n", brightness);
 }
