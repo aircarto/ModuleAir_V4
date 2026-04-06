@@ -28,7 +28,6 @@ void setup() {
     displayShowDebugSplash();
   }
 
-  displayShowLogo();
   wifiManagerInit();
 
   if (wifiIsConnected()) {
@@ -43,7 +42,7 @@ void setup() {
 }
 
 unsigned long lastCycle = 0;
-bool wasConnected = false;
+bool wasConnected = true;  // avoid false "reconnection" on first loop
 
 void loop() {
   wifiManagerLoop();

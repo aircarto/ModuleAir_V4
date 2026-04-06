@@ -13,6 +13,7 @@ struct SensorSettings {
 
 // Display screen enable/disable
 struct ScreenSettings {
+  // Polluants
   bool pm1;
   bool pm25;
   bool pm10;
@@ -20,6 +21,9 @@ struct ScreenSettings {
   bool temp;
   bool humi;
   bool tvoc;
+  // Logos
+  bool logo_moduleair;
+  bool logo_aircarto;
 };
 
 void settingsInit();
@@ -29,5 +33,14 @@ ScreenSettings& settingsGetScreens();
 
 void settingsSetSensorEnabled(const char* key, bool enabled);
 void settingsSetScreenEnabled(const char* key, bool enabled);
+
+// Thresholds
+struct ThresholdsCO2 {
+  int good;    // below = green
+  int bad;     // above = red, between = orange
+};
+
+ThresholdsCO2& settingsGetThresholdsCO2();
+void settingsSetThresholdsCO2(int good, int bad);
 
 #endif

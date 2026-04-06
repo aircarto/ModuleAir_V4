@@ -321,10 +321,12 @@ static void handleRootConnected() {
   }
   chunk += "<div class='data-row'><span class='data-label'>Luminosite ecran</span><span class='data-value'>"
            "<span id='bri-val'>" + String(displayGetBrightness()) + "</span>/255"
-           "<input type='range' min='10' max='255' value='" + String(displayGetBrightness()) + "' style='width:80px;margin-left:8px;vertical-align:middle;'"
-           " oninput=\"document.getElementById('bri-val').textContent=this.value\""
+           "<input type='range' min='0' max='255' value='" + String(displayGetBrightness()) + "' style='width:80px;margin-left:8px;vertical-align:middle;'"
+           " oninput=\"document.getElementById('bri-val').textContent=this.value;document.getElementById('bri-warn').style.display=this.value==='0'?'block':'none'\""
            " onchange=\"fetch('/set-brightness',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'val='+this.value})\">"
-           "</span></div>";
+           "</span></div>"
+           "<div id='bri-warn' style='display:" + String(displayGetBrightness() == 0 ? "block" : "none") + ";color:#ffcc80;font-size:0.8em;padding:4px 0 8px;'>"
+           "&#9888; Ecran eteint. Pour le rallumer, revenir sur cette page et ajuster le curseur.</div>";
   chunk += "<div class='data-row'><span class='data-label'>Ecran debug au demarrage</span><span class='data-value'>"
            "<label style='cursor:pointer'><input type='checkbox' id='dbg-splash' "
            + String(displayGetDebugSplash() ? "checked" : "") +
@@ -356,16 +358,51 @@ static void handleRootConnected() {
   {
     const ScreenSettings& ss = settingsGetScreens();
     chunk = "<div class='card'><h2>Ecrans matrice</h2>";
-    const char* scrNames[] = { "PM1", "PM2.5", "PM10", "CO2", "Temperature", "Humidite", "COV (TVOC)" };
-    const char* scrKeys[] = { "pm1", "pm25", "pm10", "co2", "temp", "humi", "tvoc" };
-    bool scrVals[] = { ss.pm1, ss.pm25, ss.pm10, ss.co2, ss.temp, ss.humi, ss.tvoc };
+
+    // Polluants
+    chunk += "<p style='color:#4fc3f7;font-size:0.85em;margin:0 0 6px;font-weight:bold'>Polluants</p>";
+    const char* pollNames[] = { "PM1", "PM2.5", "PM10", "CO2", "Temperature", "Humidite", "COV (TVOC)" };
+    const char* pollKeys[] = { "pm1", "pm25", "pm10", "co2", "temp", "humi", "tvoc" };
+    bool pollVals[] = { ss.pm1, ss.pm25, ss.pm10, ss.co2, ss.temp, ss.humi, ss.tvoc };
     for (int i = 0; i < 7; i++) {
-      chunk += "<div class='toggle-row'><span>" + String(scrNames[i]) + "</span>";
+      chunk += "<div class='toggle-row'><span>" + String(pollNames[i]) + "</span>";
       chunk += "<label class='switch'><input type='checkbox'";
-      if (scrVals[i]) chunk += " checked";
-      chunk += " onchange=\"fetch('/set-screen',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'key=" + String(scrKeys[i]) + "&val='+(this.checked?'1':'0')})\">";
+      if (pollVals[i]) chunk += " checked";
+      chunk += " onchange=\"fetch('/set-screen',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'key=" + String(pollKeys[i]) + "&val='+(this.checked?'1':'0')})\">";
       chunk += "<span class='slider'></span></label></div>";
     }
+
+    // Logos
+    chunk += "<p style='color:#4fc3f7;font-size:0.85em;margin:12px 0 6px;font-weight:bold'>Logos</p>";
+    const char* logoNames[] = { "ModuleAir", "AirCarto" };
+    const char* logoKeys[] = { "logo_ma", "logo_ac" };
+    bool logoVals[] = { ss.logo_moduleair, ss.logo_aircarto };
+    for (int i = 0; i < 2; i++) {
+      chunk += "<div class='toggle-row'><span>" + String(logoNames[i]) + "</span>";
+      chunk += "<label class='switch'><input type='checkbox'";
+      if (logoVals[i]) chunk += " checked";
+      chunk += " onchange=\"fetch('/set-screen',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'key=" + String(logoKeys[i]) + "&val='+(this.checked?'1':'0')})\">";
+      chunk += "<span class='slider'></span></label></div>";
+    }
+
+    chunk += "</div>";
+    server.sendContent(chunk);
+  }
+
+  // Seuils
+  {
+    const ThresholdsCO2& co2th = settingsGetThresholdsCO2();
+    chunk = "<div class='card'><h2>Seuils d'alerte</h2>";
+    chunk += "<p style='color:#4fc3f7;font-size:0.85em;margin:0 0 6px;font-weight:bold'>CO2 (ppm)</p>";
+    chunk += "<div class='data-row'><span class='data-label' style='color:#a5d6a7'>Bon &lt;</span>";
+    chunk += "<span class='data-value'><input type='number' id='co2-good' value='" + String(co2th.good) + "' style='width:60px;background:#0f3460;color:#fff;border:1px solid #333;border-radius:4px;padding:4px;text-align:center;'></span></div>";
+    chunk += "<div class='data-row'><span class='data-label' style='color:#ef9a9a'>Mauvais &ge;</span>";
+    chunk += "<span class='data-value'><input type='number' id='co2-bad' value='" + String(co2th.bad) + "' style='width:60px;background:#0f3460;color:#fff;border:1px solid #333;border-radius:4px;padding:4px;text-align:center;'></span></div>";
+    chunk += "<div style='color:#888;font-size:0.8em;padding:4px 0;'>Entre les deux = orange (Aerer SVP)</div>";
+    chunk += "<div style='display:flex;gap:8px;margin-top:4px;'>"
+             "<button style='width:auto;padding:8px 20px;' onclick=\"fetch('/set-thresholds-co2',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'good='+document.getElementById('co2-good').value+'&bad='+document.getElementById('co2-bad').value}).then(()=>{this.textContent='OK !';setTimeout(()=>this.textContent='Appliquer',1500)})\">Appliquer</button>"
+             "<button style='width:auto;padding:8px 12px;background:#333;color:#aaa;' onclick=\"document.getElementById('co2-good').value='800';document.getElementById('co2-bad').value='1500';fetch('/set-thresholds-co2',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'good=800&bad=1500'}).then(()=>{this.textContent='Restaure !';setTimeout(()=>this.textContent='Par defaut',1500)})\">Par defaut</button>"
+             "</div>";
     chunk += "</div>";
     server.sendContent(chunk);
   }
@@ -621,9 +658,20 @@ static void handleSetScreen() {
   server.send(200, "text/plain", "ok");
 }
 
+static void handleSetThresholdsCO2() {
+  int good = server.arg("good").toInt();
+  int bad = server.arg("bad").toInt();
+  if (good > 0 && bad > good) {
+    settingsSetThresholdsCO2(good, bad);
+    server.send(200, "text/plain", "ok");
+  } else {
+    server.send(400, "text/plain", "invalid: good must be < bad");
+  }
+}
+
 static void handleSetBrightness() {
   uint8_t val = (uint8_t)server.arg("val").toInt();
-  if (val < 10) val = 10;
+  // val 0 = screen off (allowed)
   displaySetBrightness(val);
   server.send(200, "text/plain", "ok");
 }
@@ -812,6 +860,7 @@ void wifiManagerInit() {
   server.on("/logs", handleLogs);
   server.on("/debug-splash", HTTP_POST, handleDebugSplash);
   server.on("/set-brightness", HTTP_POST, handleSetBrightness);
+  server.on("/set-thresholds-co2", HTTP_POST, handleSetThresholdsCO2);
   server.on("/set-sensor", HTTP_POST, handleSetSensor);
   server.on("/set-screen", HTTP_POST, handleSetScreen);
   server.on("/check-update", handleCheckUpdate);

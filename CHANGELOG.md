@@ -4,6 +4,17 @@ Toutes les modifications notables du firmware ModuleAir V4 sont documentées ici
 
 Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versioning [Semantic Versioning](https://semver.org/).
 
+## [0.1.6] - 2026-04-06
+
+### Ajouté
+
+- Seuils d'alerte CO2 editables depuis le dashboard (bon/mauvais, persistes en NVS)
+- Bouton "Par defaut" pour restaurer les seuils officiels (800/1500 ppm)
+- Ecran logo AirCarto dans la rotation matrix (activable/desactivable)
+- Toggles logos (ModuleAir, AirCarto) et polluants separes en 2 categories sur l'UI
+- Luminosite ecran reglable jusqu'a 0 (ecran eteint) avec warning
+- Simplification du flow WiFi au demarrage (suppression logo/reconnexion parasites)
+
 ## [0.1.5] - 2026-04-06
 
 ### Ajouté

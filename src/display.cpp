@@ -58,7 +58,7 @@ static int currentScreen = 0;
 #define SCREEN_INTERVAL 5000
 
 // Screen IDs
-enum Screen { SCR_PM1, SCR_PM25, SCR_PM10, SCR_CO2, SCR_TEMP, SCR_HUMI, SCR_COV, SCR_LOGO, SCR_COUNT };
+enum Screen { SCR_PM1, SCR_PM25, SCR_PM10, SCR_CO2, SCR_TEMP, SCR_HUMI, SCR_COV, SCR_LOGO_MA, SCR_LOGO_AC, SCR_COUNT };
 
 // ── Helpers ──
 
@@ -112,16 +112,18 @@ static const char* msgPM(float val, float s1, float s2, float s3) {
   return "Mauvais";
 }
 
-// CO2: 3 levels
+// CO2: 3 levels (thresholds from settings)
 static uint16_t colorCO2(int val) {
-  if (val < 800)  return COLOR_GREEN;
-  if (val < 1500) return COLOR_ORANGE;
+  const ThresholdsCO2& th = settingsGetThresholdsCO2();
+  if (val < th.good) return COLOR_GREEN;
+  if (val < th.bad)  return COLOR_ORANGE;
   return COLOR_RED;
 }
 
 static const char* msgCO2(int val) {
-  if (val < 800)  return "Bon";
-  if (val < 1500) return "Aerer SVP";
+  const ThresholdsCO2& th = settingsGetThresholdsCO2();
+  if (val < th.good) return "Bon";
+  if (val < th.bad)  return "Aerer SVP";
   return "Mauvais";
 }
 
@@ -206,6 +208,9 @@ static void drawMeasurementScreen(const char* label, const char* unit,
 }
 
 // ── Draw individual data screens ──
+
+// Forward declarations
+static void displayShowLogoAirCarto();
 
 static void drawScreenPM1() {
   uint16_t c = colorPM(sensorCache.pm1, 10, 20, 50);
@@ -303,12 +308,13 @@ void displayUpdate() {
     if (scfg.humi) avail[count++] = SCR_HUMI;
   }
   if (sensorCache.ccs_ok && scfg.tvoc) avail[count++] = SCR_COV;
-  avail[count++] = SCR_LOGO;
+  if (scfg.logo_moduleair) avail[count++] = SCR_LOGO_MA;
+  if (scfg.logo_aircarto)  avail[count++] = SCR_LOGO_AC;
 
   if (count == 0) return;
   currentScreen = currentScreen % count;
 
-  static const char* screenNames[] = { "PM1", "PM2.5", "PM10", "CO2", "Temp", "Humi", "COV", "Logo" };
+  static const char* screenNames[] = { "PM1", "PM2.5", "PM10", "CO2", "Temp", "Humi", "COV", "Logo ModuleAir", "Logo AirCarto" };
 
   Screen scr = avail[currentScreen];
   Logger.printf("[Display] Screen %d/%d: %s\n", currentScreen + 1, count, screenNames[scr]);
@@ -321,7 +327,8 @@ void displayUpdate() {
     case SCR_TEMP:  drawScreenTemp(); break;
     case SCR_HUMI:  drawScreenHumi(); break;
     case SCR_COV:   drawScreenCOV();  break;
-    case SCR_LOGO:  displayShowLogo(); break;
+    case SCR_LOGO_MA: displayShowLogo(); break;
+    case SCR_LOGO_AC: displayShowLogoAirCarto(); break;
     default: break;
   }
 
@@ -332,6 +339,12 @@ void displayShowLogo() {
   Logger.println("[Display] Logo ModuleAir");
   display.clearDisplay();
   drawImage(0, 0, MATRIX_HEIGHT, MATRIX_WIDTH, logo_moduleair);
+}
+
+static void displayShowLogoAirCarto() {
+  Logger.println("[Display] Logo AirCarto");
+  display.clearDisplay();
+  drawImage(0, 0, MATRIX_HEIGHT, MATRIX_WIDTH, logo_aircarto);
 }
 
 void displayShowDebugSplash() {
