@@ -29,6 +29,7 @@ void settingsInit() {
   screens.hcho = prefs.getBool("hcho", true);
   screens.logo_moduleair = prefs.getBool("logo_ma", true);
   screens.logo_aircarto  = prefs.getBool("logo_ac", true);
+  screens.logo_atmosud   = prefs.getBool("logo_as", true);
   prefs.end();
 
   prefs.begin("thresholds", true);
@@ -39,9 +40,9 @@ void settingsInit() {
   Logger.printf("[Settings] Thresholds CO2: good<%d, bad>=%d\n", thCO2.good, thCO2.bad);
   Logger.printf("[Settings] Sensors: NPM=%d MHZ19=%d BME280=%d CCS811=%d SFA40=%d\n",
     sensors.npm_enabled, sensors.mhz19_enabled, sensors.bme280_enabled, sensors.ccs811_enabled, sensors.sfa40_enabled);
-  Logger.printf("[Settings] Screens: PM1=%d PM2.5=%d PM10=%d CO2=%d Temp=%d Humi=%d COV=%d HCHO=%d Logo=%d AirCarto=%d\n",
+  Logger.printf("[Settings] Screens: PM1=%d PM2.5=%d PM10=%d CO2=%d Temp=%d Humi=%d COV=%d HCHO=%d Logo=%d AirCarto=%d AtmoSud=%d\n",
     screens.pm1, screens.pm25, screens.pm10, screens.co2, screens.temp, screens.humi, screens.tvoc, screens.hcho,
-    screens.logo_moduleair, screens.logo_aircarto);
+    screens.logo_moduleair, screens.logo_aircarto, screens.logo_atmosud);
 }
 
 SensorSettings& settingsGetSensors() { return sensors; }
@@ -80,6 +81,7 @@ void settingsSetScreenEnabled(const char* key, bool enabled) {
   screens.hcho = prefs.getBool("hcho", true);
   screens.logo_moduleair = prefs.getBool("logo_ma", true);
   screens.logo_aircarto  = prefs.getBool("logo_ac", true);
+  screens.logo_atmosud   = prefs.getBool("logo_as", true);
   prefs.end();
 }
 

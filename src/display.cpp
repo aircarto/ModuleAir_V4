@@ -59,7 +59,7 @@ static int currentScreen = 0;
 #define SCREEN_INTERVAL 5000
 
 // Screen IDs
-enum Screen { SCR_PM1, SCR_PM25, SCR_PM10, SCR_CO2, SCR_TEMP, SCR_HUMI, SCR_COV, SCR_HCHO, SCR_LOGO_MA, SCR_LOGO_AC, SCR_COUNT };
+enum Screen { SCR_PM1, SCR_PM25, SCR_PM10, SCR_CO2, SCR_TEMP, SCR_HUMI, SCR_COV, SCR_HCHO, SCR_LOGO_MA, SCR_LOGO_AC, SCR_LOGO_AS, SCR_COUNT };
 
 // ── Helpers ──
 
@@ -261,6 +261,7 @@ static void drawMeasurementScreen(const char* label, UnitType unit,
 
 // Forward declarations
 static void displayShowLogoAirCarto();
+static void displayShowLogoAtmoSud();
 
 static void drawScreenPM1() {
   uint16_t c = colorPM(sensorCache.pm1, 10, 20, 50);
@@ -370,10 +371,11 @@ void displayUpdate() {
   if (sensorCache.sfa40_ok && scfg.hcho) dataScreens[dataCount++] = SCR_HCHO;
 
   // Collect active logos
-  Screen logos[2];
+  Screen logos[3];
   int logoCount = 0;
   if (scfg.logo_moduleair) logos[logoCount++] = SCR_LOGO_MA;
   if (scfg.logo_aircarto)  logos[logoCount++] = SCR_LOGO_AC;
+  if (scfg.logo_atmosud)   logos[logoCount++] = SCR_LOGO_AS;
 
   // Interleave: spread logos evenly among data screens
   if (logoCount == 0) {
@@ -403,7 +405,7 @@ void displayUpdate() {
   if (count == 0) return;
   currentScreen = currentScreen % count;
 
-  static const char* screenNames[] = { "PM1", "PM2.5", "PM10", "CO2", "Temp", "Humi", "COV", "HCHO", "Logo ModuleAir", "Logo AirCarto" };
+  static const char* screenNames[] = { "PM1", "PM2.5", "PM10", "CO2", "Temp", "Humi", "COV", "HCHO", "Logo ModuleAir", "Logo AirCarto", "Logo AtmoSud" };
 
   Screen scr = avail[currentScreen];
   Logger.printf("[Display](%ds) Screen %d/%d: %s\n", SCREEN_INTERVAL / 1000, currentScreen + 1, count, screenNames[scr]);
@@ -419,6 +421,7 @@ void displayUpdate() {
     case SCR_HCHO:  drawScreenHCHO(); break;
     case SCR_LOGO_MA: displayShowLogo(); break;
     case SCR_LOGO_AC: displayShowLogoAirCarto(); break;
+    case SCR_LOGO_AS: displayShowLogoAtmoSud(); break;
     default: break;
   }
 
@@ -439,6 +442,11 @@ void displayShowInterieur() {
 static void displayShowLogoAirCarto() {
   display.clearDisplay();
   drawImage(0, 0, MATRIX_HEIGHT, MATRIX_WIDTH, logo_aircarto);
+}
+
+static void displayShowLogoAtmoSud() {
+  display.clearDisplay();
+  drawImage(0, 0, MATRIX_HEIGHT, MATRIX_WIDTH, logo_atmo);
 }
 
 void displayShowDebugSplash() {
@@ -546,14 +554,15 @@ static void manualRefresh(int cycles = 50) {
 
 void displayShowBootAnim() {
   Logger.println("[Display] Boot animation");
+  refreshPaused = true;
   display.clearDisplay();
 
-  // Circle centered on screen, radius 8
+  // Circle centered on screen, radius 12
   const float cx = MATRIX_WIDTH / 2.0f - 0.5f;   // 31.5
   const float cy = MATRIX_HEIGHT / 2.0f - 0.5f;   // 15.5
-  const float radius = 8.0f;
-  const int stepsPerLap = 60;
-  const int laps = 3;
+  const float radius = 12.0f;
+  const int stepsPerLap = 48;
+  const int laps = 2;
   const int total = stepsPerLap * laps;
 
   // Color cycle
@@ -565,22 +574,24 @@ void displayShowBootAnim() {
     int x = (int)roundf(cx + radius * cosf(angle));
     int y = (int)roundf(cy + radius * sinf(angle));
 
-    // Color: cycle over the 3 laps
+    // Color: cycle over the laps
     float colorPos = (float)i / total * nColors;
     uint16_t c = colors[(int)colorPos % nColors];
 
-    // Easing: slow → fast → slow
+    // Easing: very slow at edges → very fast in middle
     float t = (float)i / (total - 1);
     float ease = (1.0f - cosf(t * 2.0f * M_PI)) * 0.5f;
-    int delayMs = 1 + (int)(ease * 12);
+    ease = ease * ease;  // square for sharper contrast
+    int delayMs = 1 + (int)(ease * 30);
 
     display.drawPixel(x, y, c);
-    manualRefresh(15);
+    manualRefresh(30);
     delay(delayMs);
     display.drawPixel(x, y, 0);
   }
 
   display.clearDisplay();
+  refreshPaused = false;
 }
 
 void displayShowBleConnected() {
@@ -692,17 +703,12 @@ void displayShowOtaProgress(int percent) {
   if (percent < 0) percent = 0;
   if (percent > 100) percent = 100;
 
-  // Only refresh every 5% to reduce flicker
-  int rounded = (percent / 5) * 5;
+  // Only refresh every 10% to reduce flicker
+  int rounded = (percent / 10) * 10;
   if (rounded == lastDisplayed && percent != 100) return;
   lastDisplayed = rounded;
 
-  int barWidth = (56 * percent) / 100;
-  display.fillRect(4, 24, 56, 3, 0);
-  if (barWidth > 0) {
-    uint16_t color = percent < 50 ? COLOR_ORANGE : COLOR_GREEN;
-    display.fillRect(4, 24, barWidth, 3, color);
-  }
+  // Update only the percentage text (clear just that zone)
   display.fillRect(1, 10, 62, 8, 0);
   display.setTextSize(1);
   display.setTextColor(COLOR_WHITE);
@@ -710,7 +716,16 @@ void displayShowOtaProgress(int percent) {
   int pctWidth = pct.length() * 6;
   display.setCursor((MATRIX_WIDTH - pctWidth) / 2, 10);
   display.print(pct);
-  manualRefresh(100);
+
+  // Update only the bar fill (clear just the bar interior)
+  display.fillRect(4, 24, 56, 3, 0);
+  int barWidth = (56 * percent) / 100;
+  if (barWidth > 0) {
+    uint16_t color = percent < 50 ? COLOR_ORANGE : COLOR_GREEN;
+    display.fillRect(4, 24, barWidth, 3, color);
+  }
+
+  manualRefresh(30);
 }
 
 void displayShowOtaDone() {

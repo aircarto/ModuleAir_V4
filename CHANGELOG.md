@@ -4,6 +4,24 @@ Toutes les modifications notables du firmware ModuleAir V4 sont documentées ici
 
 Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versioning [Semantic Versioning](https://semver.org/).
 
+## [0.2.5] - 2026-04-06
+
+### Ajouté
+
+- Logo AtmoSud dans la rotation ecran (toggle sur le dashboard, persiste en NVS)
+
+### Modifié
+
+- Animation boot : cercle plus grand (rayon 12), 2 tours, easing plus prononce (ease²)
+
+## [0.2.4] - 2026-04-06
+
+### Corrige
+
+- OTA : fix reboot sur ancienne partition (rebootOnUpdate false + restart manuel)
+- Animation boot : pause du refresh display pour eviter le ghosting
+- OTA progress : rafraichissement tous les 10% avec manualRefresh reduit (moins de scintillement)
+
 ## [0.2.3] - 2026-04-06
 
 ### Modifié

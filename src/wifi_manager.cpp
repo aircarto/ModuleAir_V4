@@ -386,10 +386,10 @@ static void handleRootConnected() {
 
     // Logos
     chunk += "<p style='color:#4fc3f7;font-size:0.85em;margin:12px 0 6px;font-weight:bold'>Logos</p>";
-    const char* logoNames[] = { "ModuleAir", "AirCarto" };
-    const char* logoKeys[] = { "logo_ma", "logo_ac" };
-    bool logoVals[] = { ss.logo_moduleair, ss.logo_aircarto };
-    for (int i = 0; i < 2; i++) {
+    const char* logoNames[] = { "ModuleAir", "AirCarto", "AtmoSud" };
+    const char* logoKeys[] = { "logo_ma", "logo_ac", "logo_as" };
+    bool logoVals[] = { ss.logo_moduleair, ss.logo_aircarto, ss.logo_atmosud };
+    for (int i = 0; i < 3; i++) {
       chunk += "<div class='toggle-row'><span>" + String(logoNames[i]) + "</span>";
       chunk += "<label class='switch'><input type='checkbox'";
       if (logoVals[i]) chunk += " checked";
@@ -760,6 +760,7 @@ static void handleDoUpdate() {
 
   Logger.printf("[OTA] Downloading from: %s\n", firmwareUrl.c_str());
 
+  httpUpdate.rebootOnUpdate(false);  // Don't auto-reboot, we handle it manually
   httpUpdate.onProgress([](int current, int total) {
     if (total > 0) {
       int pct = (current * 100) / total;

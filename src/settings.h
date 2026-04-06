@@ -26,6 +26,7 @@ struct ScreenSettings {
   // Logos
   bool logo_moduleair;
   bool logo_aircarto;
+  bool logo_atmosud;
 };
 
 void settingsInit();
