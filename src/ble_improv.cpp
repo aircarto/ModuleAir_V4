@@ -219,14 +219,17 @@ void bleImprovLoop() {
   // Send WiFi scan results once a client subscribes to notifications
   if (wifiScanReady && !wifiScanSent && pServer->getConnectedCount() > 0 && charWifiScan->getSubscribedCount() > 0) {
     wifiScanSent = true;
+    delay(200);  // let client settle after subscribing
     Logger.printf("[BLE Improv] Sending %d scan results via notify\n", wifiScanCount);
     for (int i = 0; i < wifiScanCount; i++) {
-      charWifiScan->setValue(wifiScanResults[i].c_str());
+      const String& s = wifiScanResults[i];
+      Logger.printf("[BLE Improv]   Notify[%d] (%d bytes): %s\n", i, s.length(), s.c_str());
+      charWifiScan->setValue((const uint8_t*)s.c_str(), s.length());
       charWifiScan->notify();
-      delay(50);  // small delay between notifications
+      delay(150);
     }
     // End marker
-    charWifiScan->setValue("END");
+    charWifiScan->setValue((const uint8_t*)"END", 3);
     charWifiScan->notify();
     Logger.println("[BLE Improv] Scan results sent");
   }

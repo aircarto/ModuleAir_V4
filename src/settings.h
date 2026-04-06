@@ -9,6 +9,7 @@ struct SensorSettings {
   bool mhz19_enabled;
   bool bme280_enabled;
   bool ccs811_enabled;
+  bool sfa40_enabled;
 };
 
 // Display screen enable/disable
@@ -21,6 +22,7 @@ struct ScreenSettings {
   bool temp;
   bool humi;
   bool tvoc;
+  bool hcho;
   // Logos
   bool logo_moduleair;
   bool logo_aircarto;

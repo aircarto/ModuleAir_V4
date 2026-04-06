@@ -374,7 +374,7 @@
     </div>
 
     <footer>
-      <a href="https://moduleair.fr">moduleair.fr</a> &middot; page v1.2
+      <a href="https://moduleair.fr">moduleair.fr</a> &middot; page v1.3
     </footer>
   </div>
 
@@ -583,42 +583,76 @@
         console.log("[Improv] Sending credentials - SSID:", ssid, "payload:", Array.from(payload));
         setStatus("Envoi des identifiants...", "#4fc3f7");
 
-        // Wait for result
+        // Read current state before sending to confirm we start from AUTHORIZED
+        const preState = await bleCharState.readValue();
+        console.log("[Improv] Pre-send state:", "0x" + preState.getUint8(0).toString(16));
+
+        // Setup error notifications
+        await bleCharError.startNotifications();
+
+        // Wait for provisioning result
         const resultPromise = new Promise((resolve, reject) => {
+          let settled = false;
           const timeout = setTimeout(() => {
+            if (settled) return;
+            settled = true;
             console.log("[Improv] Timeout after 30s");
+            cleanup();
             reject(new Error("Timeout - pas de reponse du capteur apres 30s"));
           }, 30000);
 
-          bleCharState.addEventListener("characteristicvaluechanged", (e) => {
+          function onStateChange(e) {
             const state = e.target.value.getUint8(0);
             console.log("[Improv] State changed:", "0x" + state.toString(16));
             if (state === 0x03) {
               setStatus("Connexion au WiFi en cours...", "#4fc3f7");
             } else if (state === 0x04) {
+              if (settled) return;
+              settled = true;
               clearTimeout(timeout);
+              cleanup();
               resolve();
             }
-          });
+          }
 
-          bleCharError.startNotifications().then(() => {
-            bleCharError.addEventListener("characteristicvaluechanged", (e) => {
-              const error = e.target.value.getUint8(0);
-              console.log("[Improv] Error changed:", "0x" + error.toString(16));
-              if (error === 0x03) {
-                clearTimeout(timeout);
-                reject(new Error("Impossible de se connecter au WiFi. Verifiez le SSID et le mot de passe."));
-              } else if (error !== 0x00) {
-                clearTimeout(timeout);
-                reject(new Error("Erreur (code 0x" + error.toString(16) + ")"));
-              }
-            });
-          });
+          function onErrorChange(e) {
+            const error = e.target.value.getUint8(0);
+            console.log("[Improv] Error changed:", "0x" + error.toString(16));
+            if (error === 0x03) {
+              if (settled) return;
+              settled = true;
+              clearTimeout(timeout);
+              cleanup();
+              reject(new Error("Impossible de se connecter au WiFi. Verifiez le SSID et le mot de passe."));
+            } else if (error !== 0x00) {
+              if (settled) return;
+              settled = true;
+              clearTimeout(timeout);
+              cleanup();
+              reject(new Error("Erreur (code 0x" + error.toString(16) + ")"));
+            }
+          }
+
+          function cleanup() {
+            bleCharState.removeEventListener("characteristicvaluechanged", onStateChange);
+            bleCharError.removeEventListener("characteristicvaluechanged", onErrorChange);
+          }
+
+          bleCharState.addEventListener("characteristicvaluechanged", onStateChange);
+          bleCharError.addEventListener("characteristicvaluechanged", onErrorChange);
         });
 
         await bleCharCmd.writeValue(payload);
         console.log("[Improv] Command sent, waiting for response...");
         await resultPromise;
+
+        // Double-check state is really PROVISIONED
+        const postState = await bleCharState.readValue();
+        const finalState = postState.getUint8(0);
+        console.log("[Improv] Final state:", "0x" + finalState.toString(16));
+        if (finalState !== 0x04) {
+          throw new Error("Etat inattendu apres provisioning (0x" + finalState.toString(16) + ")");
+        }
 
         console.log("[Improv] Provisioned!");
 

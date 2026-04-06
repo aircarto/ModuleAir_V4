@@ -15,6 +15,7 @@ void settingsInit() {
   sensors.mhz19_enabled  = prefs.getBool("mhz19", true);
   sensors.bme280_enabled = prefs.getBool("bme280", true);
   sensors.ccs811_enabled = prefs.getBool("ccs811", true);
+  sensors.sfa40_enabled  = prefs.getBool("sfa40", true);
   prefs.end();
 
   prefs.begin("screens", true);
@@ -25,6 +26,7 @@ void settingsInit() {
   screens.temp = prefs.getBool("temp", true);
   screens.humi = prefs.getBool("humi", true);
   screens.tvoc = prefs.getBool("tvoc", true);
+  screens.hcho = prefs.getBool("hcho", true);
   screens.logo_moduleair = prefs.getBool("logo_ma", true);
   screens.logo_aircarto  = prefs.getBool("logo_ac", true);
   prefs.end();
@@ -35,10 +37,10 @@ void settingsInit() {
   prefs.end();
 
   Logger.printf("[Settings] Thresholds CO2: good<%d, bad>=%d\n", thCO2.good, thCO2.bad);
-  Logger.printf("[Settings] Sensors: NPM=%d MHZ19=%d BME280=%d CCS811=%d\n",
-    sensors.npm_enabled, sensors.mhz19_enabled, sensors.bme280_enabled, sensors.ccs811_enabled);
-  Logger.printf("[Settings] Screens: PM1=%d PM2.5=%d PM10=%d CO2=%d Temp=%d Humi=%d COV=%d Logo=%d AirCarto=%d\n",
-    screens.pm1, screens.pm25, screens.pm10, screens.co2, screens.temp, screens.humi, screens.tvoc,
+  Logger.printf("[Settings] Sensors: NPM=%d MHZ19=%d BME280=%d CCS811=%d SFA40=%d\n",
+    sensors.npm_enabled, sensors.mhz19_enabled, sensors.bme280_enabled, sensors.ccs811_enabled, sensors.sfa40_enabled);
+  Logger.printf("[Settings] Screens: PM1=%d PM2.5=%d PM10=%d CO2=%d Temp=%d Humi=%d COV=%d HCHO=%d Logo=%d AirCarto=%d\n",
+    screens.pm1, screens.pm25, screens.pm10, screens.co2, screens.temp, screens.humi, screens.tvoc, screens.hcho,
     screens.logo_moduleair, screens.logo_aircarto);
 }
 
@@ -57,6 +59,7 @@ void settingsSetSensorEnabled(const char* key, bool enabled) {
   sensors.mhz19_enabled  = prefs.getBool("mhz19", true);
   sensors.bme280_enabled = prefs.getBool("bme280", true);
   sensors.ccs811_enabled = prefs.getBool("ccs811", true);
+  sensors.sfa40_enabled  = prefs.getBool("sfa40", true);
   prefs.end();
 }
 
@@ -74,6 +77,7 @@ void settingsSetScreenEnabled(const char* key, bool enabled) {
   screens.temp = prefs.getBool("temp", true);
   screens.humi = prefs.getBool("humi", true);
   screens.tvoc = prefs.getBool("tvoc", true);
+  screens.hcho = prefs.getBool("hcho", true);
   screens.logo_moduleair = prefs.getBool("logo_ma", true);
   screens.logo_aircarto  = prefs.getBool("logo_ac", true);
   prefs.end();

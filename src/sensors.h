@@ -13,11 +13,13 @@ struct SensorData {
   float pressure;
   int tvoc;
   int eco2;
+  float hcho;       // formaldehyde in ppb (SFA40)
   uint8_t npmStatus;
   bool pm_ok;
   bool co2_ok;
   bool bme_ok;
   bool ccs_ok;
+  bool sfa40_ok;
   unsigned long lastReadTime;
 };
 

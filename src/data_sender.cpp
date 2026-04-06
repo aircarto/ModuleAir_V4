@@ -80,12 +80,19 @@ SendResult dataSenderSend() {
     json += ",\"ISO_101_unit\":\"" + String(d.eco2) + " ppm\"";
   }
 
+  // Formaldéhyde (SFA40)
+  if (d.sfa40_ok) {
+    json += ",\"ISO_102\":" + String(d.hcho, 1);
+    json += ",\"ISO_102_unit\":\"" + String(d.hcho, 1) + " ppb\"";
+  }
+
   // error_flags (bitmask)
   uint8_t errorFlags = 0;
-  if (!d.bme_ok)  errorFlags |= 0x04;  // Bit 2 = BME280_ERROR
-  if (!d.pm_ok)   errorFlags |= 0x08;  // Bit 3 = NPM_ERROR
-  if (!d.ccs_ok)  errorFlags |= 0x10;  // Bit 4 = CCS811_ERROR (ENVEA_ERROR)
-  if (!d.co2_ok)  errorFlags |= 0x80;  // Bit 7 = MHZ19_ERROR (WIND_ERROR)
+  if (!d.bme_ok)   errorFlags |= 0x04;  // Bit 2 = BME280_ERROR
+  if (!d.pm_ok)    errorFlags |= 0x08;  // Bit 3 = NPM_ERROR
+  if (!d.ccs_ok)   errorFlags |= 0x10;  // Bit 4 = CCS811_ERROR
+  if (!d.sfa40_ok) errorFlags |= 0x20;  // Bit 5 = SFA40_ERROR
+  if (!d.co2_ok)   errorFlags |= 0x80;  // Bit 7 = MHZ19_ERROR
   json += ",\"error_flags\":" + String(errorFlags);
 
   // npm_status (registre statut NextPM)

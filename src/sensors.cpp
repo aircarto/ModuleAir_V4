@@ -21,7 +21,12 @@ static bool bmeFound = false;
 static Adafruit_CCS811 ccs;
 static bool ccsFound = false;
 
-static SensorData data = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0xFF, false, false, false, false, 0};
+// SFA40 formaldehyde sensor (I2C, raw driver)
+#define SFA40_ADDR 0x5D
+static bool sfa40Found = false;
+static bool sfa40Started = false;
+
+static SensorData data = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xFF, false, false, false, false, false, 0};
 
 // Registres NextPM
 #define REG_STATUS     0x13
@@ -173,6 +178,103 @@ static void readCCS811() {
   Logger.println();
 }
 
+// ── SFA40 helpers ──
+
+static uint8_t sfa40Crc(uint8_t d0, uint8_t d1) {
+  uint8_t crc = 0xFF;
+  uint8_t bytes[] = {d0, d1};
+  for (int i = 0; i < 2; i++) {
+    crc ^= bytes[i];
+    for (int b = 0; b < 8; b++) {
+      crc = (crc & 0x80) ? ((crc << 1) ^ 0x31) : (crc << 1);
+    }
+  }
+  return crc;
+}
+
+static bool sfa40SendCmd(uint16_t cmd) {
+  Wire.beginTransmission(SFA40_ADDR);
+  Wire.write((uint8_t)(cmd >> 8));
+  Wire.write((uint8_t)(cmd & 0xFF));
+  return Wire.endTransmission() == 0;
+}
+
+static void readSFA40() {
+  Logger.println("[SFA40] Reading...");
+
+  if (!sfa40Found) {
+    data.sfa40_ok = false;
+    Logger.println("  Sensor not found");
+    Logger.println();
+    return;
+  }
+
+  // Start measurement if not yet started
+  if (!sfa40Started) {
+    sfa40SendCmd(0x00AC);  // Start Measurement
+    sfa40Started = true;
+    Logger.println("  Measurement started, waiting for next cycle");
+    Logger.println();
+    return;
+  }
+
+  // Read measurement data (command 0xE06D, returns 12 bytes)
+  if (!sfa40SendCmd(0xE06D)) {
+    data.sfa40_ok = false;
+    Logger.println("  I2C command failed");
+    Logger.println();
+    return;
+  }
+
+  delay(5);  // sensor needs a short delay before data is ready
+
+  uint8_t buf[12];
+  Wire.requestFrom((uint8_t)SFA40_ADDR, (uint8_t)12);
+  if (Wire.available() < 12) {
+    data.sfa40_ok = false;
+    Logger.println("  Not enough data received");
+    Logger.println();
+    return;
+  }
+  for (int i = 0; i < 12; i++) buf[i] = Wire.read();
+
+  // Check status byte (byte 10): 0 = data ready
+  uint8_t status = buf[10];
+  if (status != 0) {
+    data.sfa40_ok = false;
+    if (status & 0x01) Logger.println("  Sensor warming up...");
+    else Logger.printf("  Sensor status: 0x%02X\n", status);
+    Logger.println();
+    return;
+  }
+
+  // Verify CRC for each 2-byte group
+  if (sfa40Crc(buf[0], buf[1]) != buf[2] ||
+      sfa40Crc(buf[3], buf[4]) != buf[5] ||
+      sfa40Crc(buf[6], buf[7]) != buf[8]) {
+    data.sfa40_ok = false;
+    Logger.println("  CRC error");
+    Logger.println();
+    return;
+  }
+
+  // Parse values
+  uint16_t hchoRaw = ((uint16_t)buf[0] << 8) | buf[1];
+  data.hcho = hchoRaw / 10.0;
+  data.sfa40_ok = true;
+
+  // Humidity and temperature from SFA40 (for logging, not stored — BME280 is primary)
+  uint16_t humRaw  = ((uint16_t)buf[3] << 8) | buf[4];
+  uint16_t tempRaw = ((uint16_t)buf[6] << 8) | buf[7];
+  float sfa40Hum  = 125.0 * (humRaw / 65535.0) - 6.0;
+  float sfa40Temp = 175.0 * (tempRaw / 65535.0) - 45.0;
+
+  Logger.printf("  HCHO:     %.1f ppb\n", data.hcho);
+  Logger.printf("  Temp (SFA40): %.1f C\n", sfa40Temp);
+  Logger.printf("  Hum  (SFA40): %.1f %%\n", sfa40Hum);
+  Logger.println();
+}
+
 void sensorsInit() {
   const SensorSettings& cfg = settingsGetSensors();
 
@@ -231,6 +333,23 @@ void sensorsInit() {
   } else {
     Logger.println("CCS811 disabled");
   }
+
+  if (cfg.sfa40_enabled) {
+    // Check if SFA40 is present on I2C
+    Wire.beginTransmission(SFA40_ADDR);
+    if (Wire.endTransmission() == 0) {
+      sfa40Found = true;
+      sfa40SendCmd(0x50D2);  // Stop (reset to known state)
+      delay(50);
+      sfa40SendCmd(0x00AC);  // Start Measurement
+      sfa40Started = true;
+      Logger.println("SFA40 init OK (0x5D)");
+    } else {
+      Logger.println("SFA40 not found!");
+    }
+  } else {
+    Logger.println("SFA40 disabled");
+  }
 }
 
 void sensorsRead() {
@@ -239,6 +358,7 @@ void sensorsRead() {
   if (cfg.mhz19_enabled)  readMHZ19();
   if (cfg.bme280_enabled) readBME280();
   if (cfg.ccs811_enabled) readCCS811();
+  if (cfg.sfa40_enabled)  readSFA40();
   data.lastReadTime = millis();
 }
 
