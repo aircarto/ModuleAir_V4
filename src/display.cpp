@@ -59,7 +59,7 @@ static int currentScreen = 0;
 #define SCREEN_INTERVAL 5000
 
 // Screen IDs
-enum Screen { SCR_PM1, SCR_PM25, SCR_PM10, SCR_CO2, SCR_TEMP, SCR_HUMI, SCR_COV, SCR_LOGO_MA, SCR_LOGO_AC, SCR_COUNT };
+enum Screen { SCR_PM1, SCR_PM25, SCR_PM10, SCR_CO2, SCR_TEMP, SCR_HUMI, SCR_COV, SCR_HCHO, SCR_LOGO_MA, SCR_LOGO_AC, SCR_COUNT };
 
 // ── Helpers ──
 
@@ -166,6 +166,20 @@ static const char* msgCOV(int val) {
   if (val < 220)  return "Bon";
   if (val < 660)  return "Moyen";
   if (val < 2200) return "Degrade";
+  return "Mauvais";
+}
+
+static uint16_t colorHCHO(float val) {
+  if (val < 10)  return COLOR_GREEN;
+  if (val < 30)  return COLOR_YELLOW;
+  if (val < 100) return COLOR_ORANGE;
+  return COLOR_RED;
+}
+
+static const char* msgHCHO(float val) {
+  if (val < 10)  return "Bon";
+  if (val < 30)  return "Moyen";
+  if (val < 100) return "Degrade";
   return "Mauvais";
 }
 
@@ -290,6 +304,12 @@ static void drawScreenCOV() {
                          msgCOV(sensorCache.tvoc));
 }
 
+static void drawScreenHCHO() {
+  uint16_t c = colorHCHO(sensorCache.hcho);
+  drawMeasurementScreen("HCHO", UNIT_PPB, String(sensorCache.hcho, 1), c,
+                         msgHCHO(sensorCache.hcho));
+}
+
 // ── Public API ──
 
 void displayInit() {
@@ -344,13 +364,14 @@ void displayUpdate() {
     if (scfg.humi) avail[count++] = SCR_HUMI;
   }
   if (sensorCache.ccs_ok && scfg.tvoc) avail[count++] = SCR_COV;
+  if (sensorCache.sfa40_ok && scfg.hcho) avail[count++] = SCR_HCHO;
   if (scfg.logo_moduleair) avail[count++] = SCR_LOGO_MA;
   if (scfg.logo_aircarto)  avail[count++] = SCR_LOGO_AC;
 
   if (count == 0) return;
   currentScreen = currentScreen % count;
 
-  static const char* screenNames[] = { "PM1", "PM2.5", "PM10", "CO2", "Temp", "Humi", "COV", "Logo ModuleAir", "Logo AirCarto" };
+  static const char* screenNames[] = { "PM1", "PM2.5", "PM10", "CO2", "Temp", "Humi", "COV", "HCHO", "Logo ModuleAir", "Logo AirCarto" };
 
   Screen scr = avail[currentScreen];
   Logger.printf("[Display] Screen %d/%d: %s\n", currentScreen + 1, count, screenNames[scr]);
@@ -363,6 +384,7 @@ void displayUpdate() {
     case SCR_TEMP:  drawScreenTemp(); break;
     case SCR_HUMI:  drawScreenHumi(); break;
     case SCR_COV:   drawScreenCOV();  break;
+    case SCR_HCHO:  drawScreenHCHO(); break;
     case SCR_LOGO_MA: displayShowLogo(); break;
     case SCR_LOGO_AC: displayShowLogoAirCarto(); break;
     default: break;
