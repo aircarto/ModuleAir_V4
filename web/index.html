@@ -110,6 +110,153 @@
       min-height: 1.2em;
     }
 
+    /* WiFi form (shown after BLE connection) */
+    .wifi-form {
+      display: none;
+      text-align: left;
+      margin-top: 1.5rem;
+    }
+
+    .wifi-form.active {
+      display: block;
+    }
+
+    .wifi-form label {
+      display: block;
+      font-size: 0.9rem;
+      color: #999;
+      margin-bottom: 0.4rem;
+      margin-top: 1rem;
+    }
+
+    .wifi-form label:first-child {
+      margin-top: 0;
+    }
+
+    .wifi-form input {
+      width: 100%;
+      padding: 0.7rem 0.9rem;
+      border: 1px solid #333;
+      border-radius: 8px;
+      background: #0f3460;
+      color: #fff;
+      font-size: 1rem;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .wifi-form input:focus {
+      border-color: #4fc3f7;
+    }
+
+    .pw-wrap {
+      position: relative;
+    }
+
+    .pw-wrap input {
+      padding-right: 44px;
+    }
+
+    .pw-toggle {
+      position: absolute;
+      right: 8px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: none;
+      border: none;
+      color: #888;
+      font-size: 1.2rem;
+      cursor: pointer;
+      padding: 4px;
+    }
+
+    .pw-toggle:hover {
+      color: #fff;
+    }
+
+    #send-btn {
+      width: 100%;
+      background: #4fc3f7;
+      color: #1a1a2e;
+      font-size: 1.05rem;
+      font-weight: 600;
+      padding: 0.75rem;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      margin-top: 1.5rem;
+      transition: background 0.2s;
+    }
+
+    #send-btn:hover {
+      background: #81d4fa;
+    }
+
+    #send-btn:disabled {
+      background: #555;
+      cursor: not-allowed;
+    }
+
+    .device-name {
+      display: inline-block;
+      background: #0f3460;
+      padding: 0.3rem 0.8rem;
+      border-radius: 6px;
+      font-size: 0.9rem;
+      color: #4fc3f7;
+      margin-bottom: 0.5rem;
+    }
+
+    .wifi-list {
+      margin-bottom: 0.5rem;
+    }
+
+    .wifi-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.65rem 0.8rem;
+      margin: 0.4rem 0;
+      background: #0f3460;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.2s;
+      border: 1px solid transparent;
+    }
+
+    .wifi-item:hover {
+      background: #1a4a7a;
+    }
+
+    .wifi-item.selected {
+      background: #1a4a7a;
+      border-color: #4fc3f7;
+    }
+
+    .wifi-item-name {
+      font-weight: 600;
+      font-size: 0.95rem;
+    }
+
+    .wifi-item-lock {
+      color: #ffa726;
+      margin-left: 6px;
+      font-size: 0.85rem;
+    }
+
+    .wifi-item-signal {
+      color: #888;
+      font-size: 0.8rem;
+      flex-shrink: 0;
+    }
+
+    .wifi-list-info {
+      color: #888;
+      font-size: 0.85rem;
+      text-align: center;
+      margin: 0.5rem 0;
+    }
+
     .fallback {
       background: #1e2a45;
       border-radius: 12px;
@@ -178,39 +325,49 @@
       <p>
         Le Bluetooth Web n'est pas disponible sur ce navigateur.
         Utilisez <strong>Chrome</strong> ou <strong>Edge</strong> sur Android ou ordinateur.
-        Sur iPhone/iPad, suivez la méthode alternative ci-dessous.
+        Sur iPhone/iPad, suivez la m&eacute;thode alternative ci-dessous.
       </p>
     </div>
 
     <div class="card" id="ble-card">
       <h2>Connecter votre ModuleAir au WiFi</h2>
-      <div class="steps">
+      <div id="steps-section" class="steps">
         <div class="step">
           <div class="step-number">1</div>
           <div class="step-text">Allumez votre ModuleAir et attendez quelques secondes</div>
         </div>
         <div class="step">
           <div class="step-number">2</div>
-          <div class="step-text">Cliquez sur le bouton ci-dessous</div>
+          <div class="step-text">Cliquez sur le bouton ci-dessous pour vous connecter en Bluetooth</div>
         </div>
         <div class="step">
           <div class="step-number">3</div>
-          <div class="step-text">Sélectionnez votre ModuleAir dans la liste des appareils Bluetooth</div>
-        </div>
-        <div class="step">
-          <div class="step-number">4</div>
-          <div class="step-text">Entrez le nom et le mot de passe de votre réseau WiFi</div>
+          <div class="step-text">Entrez le nom et le mot de passe de votre r&eacute;seau WiFi</div>
         </div>
       </div>
 
       <button id="connect-btn" onclick="startImprov()">Configurer via Bluetooth</button>
+
+      <div id="wifi-form" class="wifi-form">
+        <div class="device-name" id="device-label"></div>
+        <div id="wifi-list" class="wifi-list"></div>
+        <label for="ssid-input">Nom du r&eacute;seau WiFi (SSID)</label>
+        <input type="text" id="ssid-input" placeholder="Ex: Livebox-A1B2" autocomplete="off" autocapitalize="off">
+        <label for="pw-input">Mot de passe</label>
+        <div class="pw-wrap">
+          <input type="password" id="pw-input" placeholder="Mot de passe WiFi">
+          <button type="button" class="pw-toggle" id="pw-toggle">&#128065;</button>
+        </div>
+        <button id="send-btn">Connecter au WiFi</button>
+      </div>
+
       <p id="status-msg" class="status-msg"></p>
     </div>
 
     <div class="fallback">
       <h3>iPhone / iPad ou Bluetooth indisponible ?</h3>
       <p>
-        Connectez-vous au réseau WiFi <code>ModuleAir-XXXXXX</code>
+        Connectez-vous au r&eacute;seau WiFi <code>ModuleAir-XXXXXX</code>
         avec le mot de passe <code>moduleaircfg</code>, puis ouvrez
         <code>192.168.4.1</code> dans votre navigateur pour configurer le WiFi.
       </p>
@@ -228,10 +385,26 @@
     const CHAR_ERROR       = "00467768-6228-2272-4663-277478268002";
     const CHAR_RPC_COMMAND = "00467768-6228-2272-4663-277478268003";
     const CHAR_RPC_RESULT  = "00467768-6228-2272-4663-277478268004";
+    const CHAR_WIFI_SCAN   = "00467768-6228-2272-4663-277478268010";
 
-    const btn = document.getElementById("connect-btn");
-    const msg = document.getElementById("status-msg");
-    const bleCard = document.getElementById("ble-card");
+    const connectBtn  = document.getElementById("connect-btn");
+    const stepsEl     = document.getElementById("steps-section");
+    const wifiForm    = document.getElementById("wifi-form");
+    const deviceLabel = document.getElementById("device-label");
+    const ssidInput   = document.getElementById("ssid-input");
+    const pwInput     = document.getElementById("pw-input");
+    const pwToggle    = document.getElementById("pw-toggle");
+    const sendBtn     = document.getElementById("send-btn");
+    const wifiList    = document.getElementById("wifi-list");
+    const msg         = document.getElementById("status-msg");
+    const bleCard     = document.getElementById("ble-card");
+
+    // BLE state shared between connect and send
+    let bleCharCmd = null;
+    let bleCharState = null;
+    let bleCharError = null;
+    let bleCharResult = null;
+    let bleServer = null;
 
     if (!navigator.bluetooth) {
       document.getElementById("unsupported").style.display = "block";
@@ -243,53 +416,135 @@
       msg.style.color = color;
     }
 
+    // Toggle password visibility
+    pwToggle.addEventListener("click", () => {
+      if (pwInput.type === "password") {
+        pwInput.type = "text";
+        pwToggle.innerHTML = "&#128584;";
+      } else {
+        pwInput.type = "password";
+        pwToggle.innerHTML = "&#128065;";
+      }
+    });
+
+    // Step 1: Connect to BLE device
     window.startImprov = async function() {
       try {
-        btn.disabled = true;
+        connectBtn.disabled = true;
         setStatus("Recherche de votre ModuleAir...");
+        console.log("[Improv] Requesting BLE device...");
 
         const device = await navigator.bluetooth.requestDevice({
           filters: [{ services: [SERVICE_UUID] }],
           optionalServices: [SERVICE_UUID]
         });
 
+        console.log("[Improv] Device selected:", device.name);
         setStatus("Connexion a " + device.name + "...");
-        const server = await device.gatt.connect();
-        const service = await server.getPrimaryService(SERVICE_UUID);
+        bleServer = await device.gatt.connect();
+        console.log("[Improv] GATT connected");
+        const service = await bleServer.getPrimaryService(SERVICE_UUID);
+        console.log("[Improv] Service found");
 
-        const charState  = await service.getCharacteristic(CHAR_STATE);
-        const charError  = await service.getCharacteristic(CHAR_ERROR);
-        const charCmd    = await service.getCharacteristic(CHAR_RPC_COMMAND);
-        const charResult = await service.getCharacteristic(CHAR_RPC_RESULT);
+        bleCharState  = await service.getCharacteristic(CHAR_STATE);
+        bleCharError  = await service.getCharacteristic(CHAR_ERROR);
+        bleCharCmd    = await service.getCharacteristic(CHAR_RPC_COMMAND);
+        bleCharResult = await service.getCharacteristic(CHAR_RPC_RESULT);
+        console.log("[Improv] All characteristics ready");
 
-        // Listen for state and result changes
-        await charState.startNotifications();
-        await charResult.startNotifications();
+        await bleCharState.startNotifications();
+        await bleCharResult.startNotifications();
 
-        const stateVal = await charState.readValue();
+        const stateVal = await bleCharState.readValue();
         const currentState = stateVal.getUint8(0);
+        console.log("[Improv] Current state:", "0x" + currentState.toString(16));
 
         if (currentState < 0x02) {
           setStatus("L'appareil necessite une autorisation.", "#ffb74d");
-          btn.disabled = false;
+          connectBtn.disabled = false;
           return;
         }
 
-        // Ask user for WiFi credentials
-        const ssid = prompt("Nom du reseau WiFi (SSID) :");
-        if (!ssid) {
-          setStatus("");
-          btn.disabled = false;
-          server.disconnect();
-          return;
+        // Read WiFi scan results from ESP32
+        try {
+          const charScan = await service.getCharacteristic(CHAR_WIFI_SCAN);
+          const scanVal = await charScan.readValue();
+          const scanStr = new TextDecoder().decode(scanVal.buffer);
+          console.log("[Improv] WiFi scan data:", scanStr);
+
+          if (scanStr.length > 0) {
+            const networks = scanStr.split("\n").map(line => {
+              const [ssid, rssi, enc] = line.split("\t");
+              return { ssid, rssi: parseInt(rssi), encrypted: enc === "1" };
+            }).filter(n => n.ssid);
+
+            let html = '<div class="wifi-list-info">' + networks.length + ' reseau(x) detecte(s)</div>';
+            for (const net of networks) {
+              const bars = net.rssi > -50 ? "\u25cf\u25cf\u25cf\u25cf"
+                         : net.rssi > -60 ? "\u25cf\u25cf\u25cf\u25cb"
+                         : net.rssi > -70 ? "\u25cf\u25cf\u25cb\u25cb"
+                         : "\u25cf\u25cb\u25cb\u25cb";
+              const lock = net.encrypted ? '<span class="wifi-item-lock">&#128274;</span>' : '';
+              html += '<div class="wifi-item" data-ssid="' + net.ssid.replace(/"/g, '&quot;') + '">'
+                    + '<span class="wifi-item-name">' + net.ssid + lock + '</span>'
+                    + '<span class="wifi-item-signal">' + bars + ' ' + net.rssi + 'dBm</span>'
+                    + '</div>';
+            }
+            wifiList.innerHTML = html;
+
+            // Click to select a network
+            wifiList.querySelectorAll(".wifi-item").forEach(el => {
+              el.addEventListener("click", () => {
+                wifiList.querySelectorAll(".wifi-item").forEach(e => e.classList.remove("selected"));
+                el.classList.add("selected");
+                ssidInput.value = el.dataset.ssid;
+                pwInput.focus();
+              });
+            });
+          }
+        } catch(e) {
+          console.log("[Improv] Could not read WiFi scan:", e);
         }
-        const password = prompt("Mot de passe WiFi :");
-        if (password === null) {
-          setStatus("");
-          btn.disabled = false;
-          server.disconnect();
-          return;
+
+        // Show WiFi form, hide steps and connect button
+        stepsEl.style.display = "none";
+        connectBtn.style.display = "none";
+        deviceLabel.textContent = device.name;
+        wifiForm.classList.add("active");
+        setStatus("Connecte en Bluetooth. Choisissez votre reseau WiFi.", "#4fc3f7");
+
+      } catch(err) {
+        console.error("[Improv] Error:", err);
+        connectBtn.disabled = false;
+        if (err.name === "NotFoundError") {
+          setStatus("Aucun appareil selectionne.", "#ffb74d");
+        } else {
+          setStatus(err.message, "#ef9a9a");
         }
+      }
+    };
+
+    // Step 2: Send WiFi credentials
+    sendBtn.addEventListener("click", async () => {
+      const ssid = ssidInput.value.trim();
+      const password = pwInput.value;
+
+      if (!ssid) {
+        setStatus("Entrez le nom du reseau WiFi.", "#ffb74d");
+        ssidInput.focus();
+        return;
+      }
+
+      if (!bleCharCmd || !bleServer?.connected) {
+        setStatus("Connexion Bluetooth perdue. Reconnectez-vous.", "#ef9a9a");
+        resetForm();
+        return;
+      }
+
+      try {
+        sendBtn.disabled = true;
+        ssidInput.disabled = true;
+        pwInput.disabled = true;
 
         // Build RPC command: [totalLen, 0x01, ssidLen, ssid..., pwLen, pw...]
         const ssidBytes = new TextEncoder().encode(ssid);
@@ -304,65 +559,97 @@
         payload[i++] = pwBytes.length;
         payload.set(pwBytes, i);
 
+        console.log("[Improv] Sending credentials - SSID:", ssid, "payload:", Array.from(payload));
         setStatus("Envoi des identifiants...", "#4fc3f7");
 
         // Wait for result
         const resultPromise = new Promise((resolve, reject) => {
-          const timeout = setTimeout(() => reject(new Error("Timeout")), 30000);
+          const timeout = setTimeout(() => {
+            console.log("[Improv] Timeout after 30s");
+            reject(new Error("Timeout - pas de reponse du capteur apres 30s"));
+          }, 30000);
 
-          charState.addEventListener("characteristicvaluechanged", (e) => {
+          bleCharState.addEventListener("characteristicvaluechanged", (e) => {
             const state = e.target.value.getUint8(0);
+            console.log("[Improv] State changed:", "0x" + state.toString(16));
             if (state === 0x03) {
-              setStatus("Connexion en cours...", "#4fc3f7");
+              setStatus("Connexion au WiFi en cours...", "#4fc3f7");
             } else if (state === 0x04) {
               clearTimeout(timeout);
               resolve();
             }
           });
 
-          charError.startNotifications().then(() => {
-            charError.addEventListener("characteristicvaluechanged", (e) => {
+          bleCharError.startNotifications().then(() => {
+            bleCharError.addEventListener("characteristicvaluechanged", (e) => {
               const error = e.target.value.getUint8(0);
+              console.log("[Improv] Error changed:", "0x" + error.toString(16));
               if (error === 0x03) {
                 clearTimeout(timeout);
-                reject(new Error("Impossible de se connecter au WiFi. Verifiez le mot de passe."));
+                reject(new Error("Impossible de se connecter au WiFi. Verifiez le SSID et le mot de passe."));
               } else if (error !== 0x00) {
                 clearTimeout(timeout);
-                reject(new Error("Erreur (code " + error + ")"));
+                reject(new Error("Erreur (code 0x" + error.toString(16) + ")"));
               }
             });
           });
         });
 
-        await charCmd.writeValue(payload);
+        await bleCharCmd.writeValue(payload);
+        console.log("[Improv] Command sent, waiting for response...");
         await resultPromise;
 
+        console.log("[Improv] Provisioned!");
         setStatus("Connecte avec succes !", "#a5d6a7");
 
         // Try to read redirect URL from result
         try {
-          const resultVal = await charResult.readValue();
+          const resultVal = await bleCharResult.readValue();
+          console.log("[Improv] RPC result bytes:", Array.from(new Uint8Array(resultVal.buffer)));
           if (resultVal.byteLength > 3) {
             const len = resultVal.getUint8(2);
             const urlBytes = new Uint8Array(resultVal.buffer, 3, len);
             const url = new TextDecoder().decode(urlBytes);
+            console.log("[Improv] Redirect URL:", url);
             setStatus("Connecte ! Redirection vers " + url + "...", "#a5d6a7");
             setTimeout(() => { window.location.href = url; }, 2000);
           }
-        } catch(e) { /* redirect optional */ }
+        } catch(e) {
+          console.log("[Improv] Could not read redirect URL:", e);
+        }
 
-        server.disconnect();
+        bleServer.disconnect();
 
       } catch(err) {
-        if (err.name === "NotFoundError") {
-          setStatus("Aucun appareil selectionne.", "#ffb74d");
-        } else {
-          setStatus(err.message, "#ef9a9a");
-        }
-      } finally {
-        btn.disabled = false;
+        console.error("[Improv] Error:", err);
+        setStatus(err.message, "#ef9a9a");
+        // Re-enable form so user can retry
+        sendBtn.disabled = false;
+        ssidInput.disabled = false;
+        pwInput.disabled = false;
       }
-    };
+    });
+
+    // Allow Enter key to submit
+    pwInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") sendBtn.click();
+    });
+    ssidInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") pwInput.focus();
+    });
+
+    function resetForm() {
+      stepsEl.style.display = "";
+      connectBtn.style.display = "";
+      connectBtn.disabled = false;
+      wifiForm.classList.remove("active");
+      wifiList.innerHTML = "";
+      ssidInput.disabled = false;
+      pwInput.disabled = false;
+      sendBtn.disabled = false;
+      ssidInput.value = "";
+      pwInput.value = "";
+    }
   </script>
 </body>
 </html>

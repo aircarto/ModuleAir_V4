@@ -12,6 +12,9 @@
 #define CHAR_RPC_RESULT     "00467768-6228-2272-4663-277478268004"
 #define CHAR_CAPABILITIES   "00467768-6228-2272-4663-277478268005"
 
+// Custom characteristic: WiFi scan results
+#define CHAR_WIFI_SCAN      "00467768-6228-2272-4663-277478268010"
+
 // Improv states
 #define STATE_AUTHORIZED     0x02
 #define STATE_PROVISIONING   0x03
@@ -34,6 +37,7 @@ static NimBLECharacteristic* charError = nullptr;
 static NimBLECharacteristic* charRpcCmd = nullptr;
 static NimBLECharacteristic* charRpcResult = nullptr;
 static NimBLECharacteristic* charCapabilities = nullptr;
+static NimBLECharacteristic* charWifiScan = nullptr;
 
 static BleImprovCredentialsCallback credentialsCb = nullptr;
 static bool bleRunning = false;
@@ -170,6 +174,26 @@ void bleImprovInit(const String& deviceName) {
   // Capabilities: bit 0 = identify supported
   uint8_t caps = 0x01;
   charCapabilities->setValue(&caps, 1);
+
+  // WiFi scan results: "ssid\trssi\tenc\n..." (readable by web page)
+  charWifiScan = pService->createCharacteristic(
+    CHAR_WIFI_SCAN,
+    NIMBLE_PROPERTY::READ
+  );
+
+  // Run WiFi scan and populate results
+  Logger.println("[BLE Improv] Scanning WiFi networks...");
+  int n = WiFi.scanNetworks();
+  if (n < 0) n = 0;
+  Logger.printf("[BLE Improv] Found %d networks\n", n);
+
+  String scanData = "";
+  for (int i = 0; i < n && i < 20; i++) {
+    if (i > 0) scanData += "\n";
+    scanData += WiFi.SSID(i) + "\t" + String(WiFi.RSSI(i)) + "\t" + String(WiFi.encryptionType(i) != WIFI_AUTH_OPEN ? 1 : 0);
+  }
+  charWifiScan->setValue(scanData.c_str());
+  WiFi.scanDelete();
 
   pService->start();
 

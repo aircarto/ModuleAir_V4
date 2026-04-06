@@ -324,11 +324,13 @@ void displayUpdate() {
 }
 
 void displayShowLogo() {
+  Logger.println("[Display] Logo ModuleAir");
   display.clearDisplay();
   drawImage(0, 0, MATRIX_HEIGHT, MATRIX_WIDTH, logo_moduleair);
 }
 
 void displayShowDebugSplash() {
+  Logger.println("[Display] Debug splash (5s)");
   display.clearDisplay();
   display.setTextColor(rgb565(0, 120, 255));
   display.setTextSize(1);
@@ -349,6 +351,7 @@ void displayShowDebugSplash() {
 static int dotCount = 0;
 
 void displayShowWifiConnecting(const char* ssid) {
+  Logger.printf("[Display] WiFi connecting: %s\n", ssid);
   display.clearDisplay();
   dotCount = 0;
   display.setTextSize(1);
@@ -370,6 +373,7 @@ void displayShowWifiDots() {
 }
 
 void displayShowWifiConnected(const char* ssid, int rssi) {
+  Logger.printf("[Display] WiFi connected: %s (%d dBm)\n", ssid, rssi);
   display.clearDisplay();
   display.setTextSize(1);
 
@@ -386,6 +390,7 @@ void displayShowWifiConnected(const char* ssid, int rssi) {
 }
 
 void displayShowAPMode(const char* apName, const char* apIP) {
+  Logger.printf("[Display] AP mode: %s (%s)\n", apName, apIP);
   display.clearDisplay();
   display.setTextSize(1);
 
@@ -406,6 +411,7 @@ void displayShowAPMode(const char* apName, const char* apIP) {
 }
 
 void displayShowWifiLost() {
+  Logger.println("[Display] WiFi lost");
   display.clearDisplay();
   display.setTextSize(1);
   display.setTextColor(COLOR_RED);
@@ -426,6 +432,7 @@ void displayShowWifiReconnected() {
 // ── OTA screens ──
 
 void displayShowOtaUpdate() {
+  Logger.println("[Display] OTA update starting");
   display.clearDisplay();
   display.setTextSize(1);
   display.setTextColor(COLOR_ORANGE);
@@ -456,6 +463,7 @@ void displayShowOtaProgress(int percent) {
 }
 
 void displayShowOtaDone() {
+  Logger.println("[Display] OTA done - rebooting");
   display.clearDisplay();
   display.setTextSize(1);
   display.setTextColor(COLOR_GREEN);
@@ -467,6 +475,7 @@ void displayShowOtaDone() {
 }
 
 void displayShowOtaFailed() {
+  Logger.println("[Display] OTA failed");
   display.clearDisplay();
   display.setTextSize(1);
   display.setTextColor(COLOR_RED);
