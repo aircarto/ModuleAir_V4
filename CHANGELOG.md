@@ -4,6 +4,21 @@ Toutes les modifications notables du firmware ModuleAir V4 sont documentées ici
 
 Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versioning [Semantic Versioning](https://semver.org/).
 
+## [0.1.7] - 2026-04-06
+
+### Ajouté
+
+- Capteur formaldehyde SFA40 (DFRobot SEN0661) : driver I2C natif, CRC-8 Sensirion, mesure HCHO en ppb
+- Envoi formaldehyde au serveur (ISO_102), bit 5 error_flags pour SFA40
+- Setting sfa40_enabled + ecran hcho (toggle dashboard)
+- Page web BLE setup (moduleair.fr/connect) : formulaire WiFi inline, liste des reseaux via notifications BLE, versioning page (v1.3)
+- Logs console Chrome detailles pour debug BLE
+
+### Corrige
+
+- Scan WiFi BLE : envoi par notifications individuelles (compatible tout MTU) au lieu d'un read unique tronque
+- Provisioning BLE : nettoyage des event listeners, verification etat post-connexion, pas de resolve premature
+
 ## [0.1.6] - 2026-04-06
 
 ### Ajouté
