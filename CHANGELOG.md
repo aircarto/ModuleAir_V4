@@ -4,6 +4,13 @@ Toutes les modifications notables du firmware ModuleAir V4 sont documentées ici
 
 Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versioning [Semantic Versioning](https://semver.org/).
 
+## [0.1.5] - 2026-04-06
+
+### Ajouté
+
+- Controle luminosite ecran matrix via slider sur le dashboard (10-255, persiste en NVS)
+- Reduction du scintillement pendant OTA : refresh display pause, rafraichissement manuel uniquement sur changement de progression
+
 ## [0.1.4] - 2026-04-06
 
 ### Ajouté
