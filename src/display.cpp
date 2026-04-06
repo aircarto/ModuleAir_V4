@@ -7,6 +7,7 @@
 #include "settings.h"
 #include "logos.h"
 #include "logger.h"
+#include "fonts/Font4x7Fixed.h"
 
 // ── Hardware ──
 
@@ -174,9 +175,40 @@ static const char* msgCOV(int val) {
 //   Row 9:  Value (white, large)  +  color square (14x14)
 //   Row 25: Status message (colored)
 
-static void drawMeasurementScreen(const char* label, const char* unit,
+// Unit IDs for special character rendering
+enum UnitType { UNIT_UGM3, UNIT_PPM, UNIT_PPB, UNIT_DEGC, UNIT_PERCENT };
+
+static void drawUnit(UnitType unit) {
+  display.setFont(&Font4x7Fixed);
+  display.setTextColor(COLOR_GRAY);
+  switch (unit) {
+    case UNIT_UGM3:
+      display.write(181);  // µ
+      display.print("g/m");
+      display.write(179);  // ³
+      break;
+    case UNIT_PPM:
+      display.setFont(NULL);
+      display.print("ppm");
+      break;
+    case UNIT_PPB:
+      display.setFont(NULL);
+      display.print("ppb");
+      break;
+    case UNIT_DEGC:
+      display.write(176);  // °
+      display.print("C");
+      break;
+    case UNIT_PERCENT:
+      display.print("%");
+      break;
+  }
+  display.setFont(NULL);
+}
+
+static void drawMeasurementScreen(const char* label, UnitType unit,
                                    const String& value, uint16_t levelColor,
-                                   const char* statusMsg) {
+                                   const char* statusMsg, bool co2Label = false) {
   display.clearDisplay();
 
   // Label (top-left, cyan)
@@ -184,12 +216,16 @@ static void drawMeasurementScreen(const char* label, const char* unit,
   display.setTextSize(1);
   display.setTextColor(COLOR_CYAN);
   display.setCursor(1, 0);
-  display.print(label);
+  if (co2Label) {
+    display.print("CO");
+    display.write(250);  // subscript 2
+  } else {
+    display.print(label);
+  }
 
-  // Unit (after label, gray, small)
-  display.setTextColor(COLOR_GRAY);
+  // Unit (after label, small font)
   display.setCursor(display.getCursorX() + 2, 0);
-  display.print(unit);
+  drawUnit(unit);
 
   // Color indicator square (top-right)
   display.fillRect(50, 9, 14, 14, levelColor);
@@ -214,43 +250,43 @@ static void displayShowLogoAirCarto();
 
 static void drawScreenPM1() {
   uint16_t c = colorPM(sensorCache.pm1, 10, 20, 50);
-  drawMeasurementScreen("PM1", "ug/m3", String(sensorCache.pm1, 0), c,
+  drawMeasurementScreen("PM1", UNIT_UGM3, String(sensorCache.pm1, 0), c,
                          msgPM(sensorCache.pm1, 10, 20, 50));
 }
 
 static void drawScreenPM25() {
   uint16_t c = colorPM(sensorCache.pm25, 10, 20, 50);
-  drawMeasurementScreen("PM2.5", "ug/m3", String(sensorCache.pm25, 0), c,
+  drawMeasurementScreen("PM2.5", UNIT_UGM3, String(sensorCache.pm25, 0), c,
                          msgPM(sensorCache.pm25, 10, 20, 50));
 }
 
 static void drawScreenPM10() {
   uint16_t c = colorPM(sensorCache.pm10, 15, 30, 75);
-  drawMeasurementScreen("PM10", "ug/m3", String(sensorCache.pm10, 0), c,
+  drawMeasurementScreen("PM10", UNIT_UGM3, String(sensorCache.pm10, 0), c,
                          msgPM(sensorCache.pm10, 15, 30, 75));
 }
 
 static void drawScreenCO2() {
   uint16_t c = colorCO2(sensorCache.co2);
-  drawMeasurementScreen("CO2", "ppm", String(sensorCache.co2), c,
-                         msgCO2(sensorCache.co2));
+  drawMeasurementScreen("CO", UNIT_PPM, String(sensorCache.co2), c,
+                         msgCO2(sensorCache.co2), true);
 }
 
 static void drawScreenTemp() {
   uint16_t c = colorTemp(sensorCache.temperature);
-  drawMeasurementScreen("Temp", "C", String(sensorCache.temperature, 1), c,
+  drawMeasurementScreen("Temp", UNIT_DEGC, String(sensorCache.temperature, 1), c,
                          msgTemp(sensorCache.temperature));
 }
 
 static void drawScreenHumi() {
   uint16_t c = colorHumi(sensorCache.humidity);
-  drawMeasurementScreen("Humi", "%", String(sensorCache.humidity, 0), c,
+  drawMeasurementScreen("Humi", UNIT_PERCENT, String(sensorCache.humidity, 0), c,
                          msgHumi(sensorCache.humidity));
 }
 
 static void drawScreenCOV() {
   uint16_t c = colorCOV(sensorCache.tvoc);
-  drawMeasurementScreen("COV", "ppb", String(sensorCache.tvoc), c,
+  drawMeasurementScreen("COV", UNIT_PPB, String(sensorCache.tvoc), c,
                          msgCOV(sensorCache.tvoc));
 }
 
