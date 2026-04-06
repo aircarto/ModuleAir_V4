@@ -4,6 +4,15 @@ Toutes les modifications notables du firmware ModuleAir V4 sont documentées ici
 
 Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versioning [Semantic Versioning](https://semver.org/).
 
+## [0.2.3] - 2026-04-06
+
+### Modifié
+
+- Animation de demarrage : cercle au centre de l'ecran (au lieu du perimetre), plus courte
+- Logos intercales entre les ecrans de donnees (plus de logos consecutifs)
+- Suppression des logs doublons pour les ecrans logos
+- Ajout du temps d'affichage dans les logs ecrans : `[Display](5s) Screen 1/7: PM1`
+
 ## [0.2.2] - 2026-04-06
 
 ### Ajouté

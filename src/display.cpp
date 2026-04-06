@@ -353,20 +353,52 @@ void displayUpdate() {
   const ScreenSettings& scfg = settingsGetScreens();
   Screen avail[SCR_COUNT];
   int count = 0;
+  // Build data screens
+  Screen dataScreens[SCR_COUNT];
+  int dataCount = 0;
   if (sensorCache.pm_ok) {
-    if (scfg.pm1)  avail[count++] = SCR_PM1;
-    if (scfg.pm25) avail[count++] = SCR_PM25;
-    if (scfg.pm10) avail[count++] = SCR_PM10;
+    if (scfg.pm1)  dataScreens[dataCount++] = SCR_PM1;
+    if (scfg.pm25) dataScreens[dataCount++] = SCR_PM25;
+    if (scfg.pm10) dataScreens[dataCount++] = SCR_PM10;
   }
-  if (sensorCache.co2_ok && scfg.co2)  avail[count++] = SCR_CO2;
+  if (sensorCache.co2_ok && scfg.co2)  dataScreens[dataCount++] = SCR_CO2;
   if (sensorCache.bme_ok) {
-    if (scfg.temp) avail[count++] = SCR_TEMP;
-    if (scfg.humi) avail[count++] = SCR_HUMI;
+    if (scfg.temp) dataScreens[dataCount++] = SCR_TEMP;
+    if (scfg.humi) dataScreens[dataCount++] = SCR_HUMI;
   }
-  if (sensorCache.ccs_ok && scfg.tvoc) avail[count++] = SCR_COV;
-  if (sensorCache.sfa40_ok && scfg.hcho) avail[count++] = SCR_HCHO;
-  if (scfg.logo_moduleair) avail[count++] = SCR_LOGO_MA;
-  if (scfg.logo_aircarto)  avail[count++] = SCR_LOGO_AC;
+  if (sensorCache.ccs_ok && scfg.tvoc) dataScreens[dataCount++] = SCR_COV;
+  if (sensorCache.sfa40_ok && scfg.hcho) dataScreens[dataCount++] = SCR_HCHO;
+
+  // Collect active logos
+  Screen logos[2];
+  int logoCount = 0;
+  if (scfg.logo_moduleair) logos[logoCount++] = SCR_LOGO_MA;
+  if (scfg.logo_aircarto)  logos[logoCount++] = SCR_LOGO_AC;
+
+  // Interleave: spread logos evenly among data screens
+  if (logoCount == 0) {
+    // No logos, just data
+    for (int i = 0; i < dataCount; i++) avail[count++] = dataScreens[i];
+  } else if (dataCount == 0) {
+    // No data, just logos
+    for (int i = 0; i < logoCount; i++) avail[count++] = logos[i];
+  } else {
+    // Insert each logo at evenly spaced positions
+    // E.g. 5 data + 2 logos: logo after screen 2 and after screen 4
+    int totalScreens = dataCount + logoCount;
+    int logoIdx = 0;
+    int dataIdx = 0;
+    float spacing = (float)totalScreens / logoCount;
+    float nextLogoAt = spacing;  // first logo after 'spacing' screens
+    for (int i = 0; i < totalScreens; i++) {
+      if (logoIdx < logoCount && (float)(i + 1) >= nextLogoAt - 0.01f) {
+        avail[count++] = logos[logoIdx++];
+        nextLogoAt += spacing;
+      } else if (dataIdx < dataCount) {
+        avail[count++] = dataScreens[dataIdx++];
+      }
+    }
+  }
 
   if (count == 0) return;
   currentScreen = currentScreen % count;
@@ -374,7 +406,7 @@ void displayUpdate() {
   static const char* screenNames[] = { "PM1", "PM2.5", "PM10", "CO2", "Temp", "Humi", "COV", "HCHO", "Logo ModuleAir", "Logo AirCarto" };
 
   Screen scr = avail[currentScreen];
-  Logger.printf("[Display] Screen %d/%d: %s\n", currentScreen + 1, count, screenNames[scr]);
+  Logger.printf("[Display](%ds) Screen %d/%d: %s\n", SCREEN_INTERVAL / 1000, currentScreen + 1, count, screenNames[scr]);
 
   switch (scr) {
     case SCR_PM1:   drawScreenPM1();  break;
@@ -394,19 +426,17 @@ void displayUpdate() {
 }
 
 void displayShowLogo() {
-  Logger.println("[Display] Logo ModuleAir");
   display.clearDisplay();
   drawImage(0, 0, MATRIX_HEIGHT, MATRIX_WIDTH, logo_moduleair);
 }
 
 void displayShowInterieur() {
-  Logger.println("[Display] Interieur (no connection)");
+  Logger.println("[Display] Mesure Air Interieur");
   display.clearDisplay();
   drawImage(0, 0, MATRIX_HEIGHT, MATRIX_WIDTH, interieur_no_connection);
 }
 
 static void displayShowLogoAirCarto() {
-  Logger.println("[Display] Logo AirCarto");
   display.clearDisplay();
   drawImage(0, 0, MATRIX_HEIGHT, MATRIX_WIDTH, logo_aircarto);
 }
@@ -518,44 +548,35 @@ void displayShowBootAnim() {
   Logger.println("[Display] Boot animation");
   display.clearDisplay();
 
-  // Perimeter path: top→right→bottom→left = 188 positions per lap
-  const int perim = 2 * (MATRIX_WIDTH + MATRIX_HEIGHT) - 4;  // 188
+  // Circle centered on screen, radius 8
+  const float cx = MATRIX_WIDTH / 2.0f - 0.5f;   // 31.5
+  const float cy = MATRIX_HEIGHT / 2.0f - 0.5f;   // 15.5
+  const float radius = 8.0f;
+  const int stepsPerLap = 60;
   const int laps = 3;
-  const int total = perim * laps;
+  const int total = stepsPerLap * laps;
 
-  // Color cycle: cyan → blue → green → yellow → orange → red
+  // Color cycle
   const uint16_t colors[] = { COLOR_CYAN, COLOR_BLUE, COLOR_GREEN, COLOR_YELLOW, COLOR_ORANGE, COLOR_RED };
   const int nColors = 6;
 
   for (int i = 0; i < total; i++) {
-    int pos = i % perim;
+    float angle = (float)i / stepsPerLap * 2.0f * M_PI;
+    int x = (int)roundf(cx + radius * cosf(angle));
+    int y = (int)roundf(cy + radius * sinf(angle));
 
-    // Position on perimeter
-    int x, y;
-    if (pos < MATRIX_WIDTH) {
-      x = pos; y = 0;                                    // top edge →
-    } else if (pos < MATRIX_WIDTH + MATRIX_HEIGHT - 1) {
-      x = MATRIX_WIDTH - 1; y = pos - MATRIX_WIDTH + 1;  // right edge ↓
-    } else if (pos < 2 * MATRIX_WIDTH + MATRIX_HEIGHT - 2) {
-      x = MATRIX_WIDTH - 1 - (pos - MATRIX_WIDTH - MATRIX_HEIGHT + 2); y = MATRIX_HEIGHT - 1;  // bottom edge ←
-    } else {
-      x = 0; y = MATRIX_HEIGHT - 1 - (pos - 2 * MATRIX_WIDTH - MATRIX_HEIGHT + 3);  // left edge ↑
-    }
-
-    // Color: smooth cycle over the 3 laps
+    // Color: cycle over the 3 laps
     float colorPos = (float)i / total * nColors;
     uint16_t c = colors[(int)colorPos % nColors];
 
-    // Easing: cosine ease-in-out on delay (slow→fast→slow)
+    // Easing: slow → fast → slow
     float t = (float)i / (total - 1);
-    float ease = (1.0f - cosf(t * 2.0f * M_PI)) * 0.5f;  // 0→1→0
-    int delayMs = 2 + (int)(ease * 18);                    // 2ms (fast) to 20ms (slow)
+    float ease = (1.0f - cosf(t * 2.0f * M_PI)) * 0.5f;
+    int delayMs = 1 + (int)(ease * 12);
 
     display.drawPixel(x, y, c);
     manualRefresh(15);
     delay(delayMs);
-
-    // Clear pixel for next frame
     display.drawPixel(x, y, 0);
   }
 
