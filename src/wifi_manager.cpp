@@ -290,6 +290,17 @@ static void handleRootConnected() {
   chunk += "</div>";
   server.sendContent(chunk);
 
+  // Formaldéhyde (SFA40)
+  chunk = "<div class='card'><h2>Formaldehyde (SFA40)</h2>";
+  if (d.sfa40_ok) {
+    String hchoClass = d.hcho < 30 ? "good" : d.hcho < 100 ? "warn" : "bad";
+    chunk += "<div class='data-row'><span class='data-label'>HCHO</span><span class='data-value " + hchoClass + "'>" + String(d.hcho, 1) + " <span class='data-unit'>ppb</span></span></div>";
+  } else {
+    chunk += "<div class='scan-info'>En attente de donnees...</div>";
+  }
+  chunk += "</div>";
+  server.sendContent(chunk);
+
   // Température / Humidité / Pression
   chunk = "<div class='card'><h2>Environnement (BME280)</h2>";
   if (d.bme_ok) {
@@ -315,6 +326,7 @@ static void handleRootConnected() {
   chunk += "<span class='sensor-badge " + String(d.co2_ok ? "ok" : "err") + "'>MH-Z19</span>";
   chunk += "<span class='sensor-badge " + String(d.bme_ok ? "ok" : "err") + "'>BME280</span>";
   chunk += "<span class='sensor-badge " + String(d.ccs_ok ? "ok" : "err") + "'>CCS811</span>";
+  chunk += "<span class='sensor-badge " + String(d.sfa40_ok ? "ok" : "err") + "'>SFA40</span>";
   chunk += "</span></div>";
   if (d.lastReadTime > 0) {
     chunk += "<div class='data-row'><span class='data-label'>Derniere mesure</span><span class='data-value'>il y a " + String(ago) + " <span class='data-unit'>s</span></span></div>";
@@ -340,10 +352,10 @@ static void handleRootConnected() {
     const SensorSettings& sc = settingsGetSensors();
     chunk = "<div class='card'><h2>Capteurs actifs</h2>"
             "<p style='color:#888;font-size:0.8em;margin:0 0 8px'>Redemarrage requis</p>";
-    const char* sensorNames[] = { "NextPM (PM)", "MH-Z19 (CO2)", "BME280 (T/H/P)", "CCS811 (COV)" };
-    const char* sensorKeys[] = { "npm", "mhz19", "bme280", "ccs811" };
-    bool sensorVals[] = { sc.npm_enabled, sc.mhz19_enabled, sc.bme280_enabled, sc.ccs811_enabled };
-    for (int i = 0; i < 4; i++) {
+    const char* sensorNames[] = { "NextPM (PM)", "MH-Z19 (CO2)", "BME280 (T/H/P)", "CCS811 (COV)", "SFA40 (HCHO)" };
+    const char* sensorKeys[] = { "npm", "mhz19", "bme280", "ccs811", "sfa40" };
+    bool sensorVals[] = { sc.npm_enabled, sc.mhz19_enabled, sc.bme280_enabled, sc.ccs811_enabled, sc.sfa40_enabled };
+    for (int i = 0; i < 5; i++) {
       chunk += "<div class='toggle-row'><span>" + String(sensorNames[i]) + "</span>";
       chunk += "<label class='switch'><input type='checkbox'";
       if (sensorVals[i]) chunk += " checked";
@@ -361,10 +373,10 @@ static void handleRootConnected() {
 
     // Polluants
     chunk += "<p style='color:#4fc3f7;font-size:0.85em;margin:0 0 6px;font-weight:bold'>Polluants</p>";
-    const char* pollNames[] = { "PM1", "PM2.5", "PM10", "CO2", "Temperature", "Humidite", "COV (TVOC)" };
-    const char* pollKeys[] = { "pm1", "pm25", "pm10", "co2", "temp", "humi", "tvoc" };
-    bool pollVals[] = { ss.pm1, ss.pm25, ss.pm10, ss.co2, ss.temp, ss.humi, ss.tvoc };
-    for (int i = 0; i < 7; i++) {
+    const char* pollNames[] = { "PM1", "PM2.5", "PM10", "CO2", "Temperature", "Humidite", "COV (TVOC)", "Formaldehyde" };
+    const char* pollKeys[] = { "pm1", "pm25", "pm10", "co2", "temp", "humi", "tvoc", "hcho" };
+    bool pollVals[] = { ss.pm1, ss.pm25, ss.pm10, ss.co2, ss.temp, ss.humi, ss.tvoc, ss.hcho };
+    for (int i = 0; i < 8; i++) {
       chunk += "<div class='toggle-row'><span>" + String(pollNames[i]) + "</span>";
       chunk += "<label class='switch'><input type='checkbox'";
       if (pollVals[i]) chunk += " checked";
