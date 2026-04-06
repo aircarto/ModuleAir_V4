@@ -4,6 +4,12 @@ Toutes les modifications notables du firmware ModuleAir V4 sont documentées ici
 
 Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versioning [Semantic Versioning](https://semver.org/).
 
+## [0.1.4] - 2026-04-06
+
+### Ajouté
+
+- Logs `[Display]` pour tous les ecrans : logo, debug splash, WiFi connecting/connected/lost, AP mode, OTA update/done/failed, rotation des donnees
+
 ## [0.1.3] - 2026-04-06
 
 ### Ajouté
