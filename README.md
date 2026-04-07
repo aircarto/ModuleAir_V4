@@ -61,7 +61,7 @@ https://data.moduleair.fr/wifi_newDriver2026.php?device_type=ModuleAir
 | Pression | ISO_53 |
 | TVOC | ISO_100 |
 | eCO2 | ISO_101 |
-| HCHO | ISO_102 |
+| HCHO | ISO_VB |
 
 #### Structure complète du JSON
 
@@ -92,8 +92,8 @@ https://data.moduleair.fr/wifi_newDriver2026.php?device_type=ModuleAir
   "ISO_100_unit": "35 ppb",
   "ISO_101": 410,          // eCO2 (si ccs_ok)
   "ISO_101_unit": "410 ppm",
-  "ISO_102": 8.5,          // HCHO (si sfa40_ok)
-  "ISO_102_unit": "8.5 ppb",
+  "ISO_VB": 8.5,           // HCHO (si sfa40_ok)
+  "ISO_VB_unit": "8.5 ppb",
   "error_flags": 0,
   "npm_status": 0,
   "device_status": 2

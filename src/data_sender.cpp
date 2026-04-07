@@ -82,8 +82,8 @@ SendResult dataSenderSend() {
 
   // Formaldéhyde (SFA40)
   if (d.sfa40_ok) {
-    json += ",\"ISO_102\":" + String(d.hcho, 1);
-    json += ",\"ISO_102_unit\":\"" + String(d.hcho, 1) + " ppb\"";
+    json += ",\"ISO_VB\":" + String(d.hcho, 1);
+    json += ",\"ISO_VB_unit\":\"" + String(d.hcho, 1) + " ppb\"";
   }
 
   // error_flags (bitmask)

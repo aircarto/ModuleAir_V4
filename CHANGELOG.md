@@ -4,6 +4,12 @@ Toutes les modifications notables du firmware ModuleAir V4 sont documentées ici
 
 Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versioning [Semantic Versioning](https://semver.org/).
 
+## [0.2.8] - 2026-04-07
+
+### Corrige
+
+- Code ISO HCHO : `ISO_102` -> `ISO_VB` (code LCSQA correct) dans l'envoi serveur et la doc
+
 ## [0.2.7] - 2026-04-06
 
 ### Modifié
