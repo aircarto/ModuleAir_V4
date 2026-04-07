@@ -1,6 +1,9 @@
 #include "logger.h"
 
-#define LOG_MAX_LINES 50
+// Buffer circulaire en RAM (DRAM statique).
+// Cout : LOG_MAX_LINES * LOG_MAX_LINE_LEN octets.
+// 200 * 120 = 24000 octets (~24 KB), confortable sur ESP32.
+#define LOG_MAX_LINES 200
 #define LOG_MAX_LINE_LEN 120
 
 static char logBuffer[LOG_MAX_LINES][LOG_MAX_LINE_LEN];
@@ -17,19 +20,14 @@ void loggerInit() {
   logLinePos = 0;
 }
 
-String loggerGetAll() {
-  String result;
-  result.reserve(LOG_MAX_LINES * 80);
-
+void loggerForEachLine(void (*cb)(const char* line)) {
+  if (!cb) return;
   int start = (logCount < LOG_MAX_LINES) ? 0 : logHead;
-  int total = min(logCount, LOG_MAX_LINES);
-
+  int total = (logCount < LOG_MAX_LINES) ? logCount : LOG_MAX_LINES;
   for (int i = 0; i < total; i++) {
     int idx = (start + i) % LOG_MAX_LINES;
-    result += logBuffer[idx];
-    result += '\n';
+    cb(logBuffer[idx]);
   }
-  return result;
 }
 
 size_t LoggerPrint::write(uint8_t c) {

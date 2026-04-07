@@ -4,6 +4,13 @@ Toutes les modifications notables du firmware ModuleAir V4 sont documentées ici
 
 Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versioning [Semantic Versioning](https://semver.org/).
 
+## [0.2.9] - 2026-04-07
+
+### Modifié
+
+- Logger : buffer circulaire passe de 50 a 200 lignes (~24 KB RAM)
+- Endpoint `/logs` : reponse en HTTP chunked (streaming) au lieu d'une grosse String en heap, pour eviter la fragmentation memoire
+
 ## [0.2.8] - 2026-04-07
 
 ### Corrige

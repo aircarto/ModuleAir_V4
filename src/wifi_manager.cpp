@@ -698,7 +698,15 @@ static void handleDebugSplash() {
 // =============================================
 
 static void handleLogs() {
-  server.send(200, "text/plain", loggerGetAll());
+  // Streaming chunked : evite de construire une grosse String en heap
+  // (qui doublerait la taille du buffer logger en RAM le temps de l'envoi).
+  server.setContentLength(CONTENT_LENGTH_UNKNOWN);
+  server.send(200, "text/plain", "");
+  loggerForEachLine([](const char* line) {
+    server.sendContent(line);
+    server.sendContent("\n");
+  });
+  server.sendContent("");  // termine le transfert chunked
 }
 
 // =============================================
