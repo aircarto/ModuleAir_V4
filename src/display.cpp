@@ -237,8 +237,10 @@ static void drawMeasurementScreen(const char* label, UnitType unit,
     display.print(label);
   }
 
-  // Unit (after label, small font) — y=7 is the baseline for Font4x7Fixed (yOffset=-7).
-  display.setCursor(display.getCursorX() + 2, 7);
+  // Unit: drawUnit() will switchFont(NULL → Font4x7Fixed) which auto-shifts
+  // cursor.y by +6 (Adafruit_GFX::setFont). y=1 here → baseline ends up at 7,
+  // putting tall glyphs (h=7, yo=-7) at rows 0-6, top-aligned with the label.
+  display.setCursor(display.getCursorX() + 2, 1);
   drawUnit(unit);
 
   // Color indicator square (top-right)
