@@ -559,48 +559,90 @@ static void manualRefresh(int cycles = 50) {
   }
 }
 
+// Anti-aliased rotating spinner using bilinear sub-pixel splatting:
+// each trail point lives at a float (fx, fy) and distributes its brightness
+// across the 4 surrounding integer pixels weighted by (1-dx)(1-dy) etc.
+// Accumulating into a brightness buffer means overlapping trail points
+// blend properly, and the circular path looks smooth instead of polygonal
+// (the usual artifact of plain round() at low resolution).
 void displayShowBootAnim() {
   Logger.println("[Display] Boot animation");
   display.clearDisplay();
 
   const float cx = MATRIX_WIDTH / 2.0f - 0.5f;
   const float cy = MATRIX_HEIGHT / 2.0f - 0.5f;
-  const float radius = 10.0f;          // bigger → more pixel positions, rounder
-  const int tailLen = 18;              // longer trail (≈1/3 of the circle)
-  const int stepsPerLap = 60;          // 6° per step
+  const float radius = 11.0f;
+  const int tailLen = 24;              // about 1/3 of the circumference
+  const int stepsPerLap = 72;          // 5° per step
   const int spinLaps = 2;
   const int spinFrames = stepsPerLap * spinLaps;
-  const int fadeFrames = stepsPerLap;  // one extra lap to fade out gently
+  const int fadeFrames = stepsPerLap;  // one extra lap fades the whole spinner out
   const int totalFrames = spinFrames + fadeFrames;
   const float angleStep = (2.0f * (float)M_PI) / stepsPerLap;
-  const int frameDelayMs = 32;         // ≈31 fps; per-lap ≈1.9 s, total ≈5.8 s
+  const int frameDelayMs = 28;         // ≈36 fps; total ≈6 s
 
-  // Tail brightness curve: head=255, fades quadratically toward the end
-  // (gentle ease-out so the trail dissolves smoothly instead of cutting off).
+  // Cubic fade for a clearly defined head + long soft tail.
   uint8_t tailBright[tailLen];
   for (int i = 0; i < tailLen; i++) {
     float t = 1.0f - (float)i / tailLen;
-    tailBright[i] = (uint8_t)(t * t * 255);
+    tailBright[i] = (uint8_t)(t * t * t * 255);
   }
 
-  for (int f = 0; f < totalFrames; f++) {
-    display.clearDisplay();
-    float headAngle = (float)f * angleStep - (float)M_PI / 2.0f;  // start at 12 o'clock
+  // Brightness accumulator centered on the matrix middle. uint16_t gives
+  // headroom when several trail points splat onto the same pixel.
+  static const int BS = 32;
+  static uint16_t spinBuf[BS * BS];
+  const int bx0 = (int)floorf(cx - BS / 2.0f);
+  const int by0 = (int)floorf(cy - BS / 2.0f);
 
-    // Global fade-out during the final lap so the spinner dissolves
-    // smoothly instead of popping off when the animation ends.
+  for (int f = 0; f < totalFrames; f++) {
+    memset(spinBuf, 0, sizeof(spinBuf));
+
     float fadeOut = 1.0f;
     if (f >= spinFrames) {
       float t = (float)(f - spinFrames) / fadeFrames;
-      fadeOut = (1.0f - t) * (1.0f - t);  // quadratic
+      fadeOut = (1.0f - t) * (1.0f - t);
     }
+
+    float headAngle = (float)f * angleStep - (float)M_PI / 2.0f;
 
     for (int i = 0; i < tailLen; i++) {
       float a = headAngle - (float)i * angleStep;
-      int x = (int)roundf(cx + radius * cosf(a));
-      int y = (int)roundf(cy + radius * sinf(a));
-      uint8_t b = (uint8_t)(tailBright[i] * fadeOut);
-      display.drawPixel(x, y, display.color565(b, b, b));
+      float fx = cx + radius * cosf(a);
+      float fy = cy + radius * sinf(a);
+      float B = (float)tailBright[i] * fadeOut;
+      if (B < 1.0f) continue;
+
+      int x0 = (int)floorf(fx);
+      int y0 = (int)floorf(fy);
+      float dx = fx - x0;
+      float dy = fy - y0;
+
+      float w[4] = {
+        (1.0f - dx) * (1.0f - dy),
+        dx * (1.0f - dy),
+        (1.0f - dx) * dy,
+        dx * dy
+      };
+      const int ox[4] = { 0, 1, 0, 1 };
+      const int oy[4] = { 0, 0, 1, 1 };
+
+      for (int k = 0; k < 4; k++) {
+        int px = x0 + ox[k] - bx0;
+        int py = y0 + oy[k] - by0;
+        if (px >= 0 && px < BS && py >= 0 && py < BS) {
+          uint32_t acc = (uint32_t)spinBuf[py * BS + px] + (uint32_t)(B * w[k]);
+          spinBuf[py * BS + px] = (uint16_t)(acc > 255 ? 255 : acc);
+        }
+      }
+    }
+
+    display.clearDisplay();
+    for (int by = 0; by < BS; by++) {
+      for (int bx = 0; bx < BS; bx++) {
+        uint8_t b = (uint8_t)spinBuf[by * BS + bx];
+        if (b) display.drawPixel(bx + bx0, by + by0, display.color565(b, b, b));
+      }
     }
     delay(frameDelayMs);
   }
