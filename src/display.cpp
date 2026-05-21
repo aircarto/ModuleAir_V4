@@ -8,6 +8,7 @@
 #include "logos.h"
 #include "logger.h"
 #include "fonts/Font4x7Fixed.h"
+#include "wifi_icon.h"
 
 // ── Hardware ──
 
@@ -70,24 +71,34 @@ static void drawImage(int x, int y, int h, int w, const uint16_t image[]) {
       display.drawPixel(xx + x, yy + y, image[counter++]);
 }
 
+// Like drawImage but treats 0x0000 pixels as transparent (skip the draw).
+// Lets the WiFi icon overlay text or coexist with other drawing without
+// erasing the underlying pixels.
+static void drawImageTransparent(int x, int y, int h, int w, const uint16_t image[]) {
+  int counter = 0;
+  for (int yy = 0; yy < h; yy++)
+    for (int xx = 0; xx < w; xx++) {
+      uint16_t px = image[counter++];
+      if (px) display.drawPixel(xx + x, yy + y, px);
+    }
+}
+
+static int wifiFrameIdx = 0;
+static const int WIFI_ICON_X = 47;
+static const int WIFI_ICON_Y = 15;
+
+static void drawWifiIcon(int frame) {
+  display.fillRect(WIFI_ICON_X, WIFI_ICON_Y, WIFI_ICON_W, WIFI_ICON_H, 0);
+  drawImageTransparent(WIFI_ICON_X, WIFI_ICON_Y, WIFI_ICON_H, WIFI_ICON_W,
+                       wifiFrames[frame % WIFI_ICON_FRAMES]);
+}
+
 static void drawCentreString(const String& buf, int y, int offset = 0) {
   int16_t x1, y1;
   uint16_t w, h;
   display.getTextBounds(buf, 0, y, &x1, &y1, &w, &h);
   display.setCursor(((MATRIX_WIDTH - offset) - w) / 2, y);
   display.print(buf);
-}
-
-static void drawSignalBars(int x, int y, int rssi) {
-  int bars = rssi > -50 ? 4 : rssi > -60 ? 3 : rssi > -70 ? 2 : 1;
-  uint16_t colors[] = { COLOR_RED, COLOR_ORANGE, COLOR_GREEN, COLOR_GREEN };
-  for (int i = 0; i < 4; i++) {
-    int h = 2 + i * 2;
-    int bx = x + i * 4;
-    int by = y + (8 - h);
-    uint16_t c = (i < bars) ? colors[i] : rgb565(30, 30, 30);
-    display.fillRect(bx, by, 3, h, c);
-  }
 }
 
 static String truncSSID(const char* ssid, int maxChars = 10) {
@@ -454,29 +465,26 @@ void displayShowDebugSplash() {
 }
 
 // ── WiFi status screens ──
-
-static int dotCount = 0;
+// V2.1-style layout: 3 lines of text on the left (y=0/11/22) +
+// animated 16x16 WiFi icon on the right at (47, 15).
 
 void displayShowWifiConnecting(const char* ssid) {
   Logger.printf("[Display] WiFi connecting: %s\n", ssid);
   display.clearDisplay();
-  dotCount = 0;
   display.setTextSize(1);
-  display.setTextColor(COLOR_BLUE);
-  display.setCursor(4, 2);
+  display.setTextColor(COLOR_CYAN);
+  display.setCursor(1, 0);
   display.print("Connexion");
   display.setTextColor(COLOR_WHITE);
-  display.setCursor(4, 14);
-  display.print(truncSSID(ssid));
+  display.setCursor(1, 11);
+  display.print(truncSSID(ssid, 7));
+  wifiFrameIdx = 0;
+  drawWifiIcon(0);
 }
 
 void displayShowWifiDots() {
-  dotCount = (dotCount + 1) % 4;
-  display.fillRect(4, 24, 30, 8, 0);
-  display.setTextSize(1);
-  display.setTextColor(COLOR_GRAY);
-  display.setCursor(4, 24);
-  for (int i = 0; i < dotCount; i++) display.print(".");
+  wifiFrameIdx = (wifiFrameIdx + 1) % WIFI_ICON_FRAMES;
+  drawWifiIcon(wifiFrameIdx);
 }
 
 void displayShowWifiConnected(const char* ssid, int rssi) {
@@ -485,15 +493,21 @@ void displayShowWifiConnected(const char* ssid, int rssi) {
   display.setTextSize(1);
 
   display.setTextColor(COLOR_GREEN);
-  display.setCursor(4, 4);
+  display.setCursor(1, 0);
   display.print("Connect");
-  display.write(130);
+  display.write(130);  // é
 
-  drawSignalBars(48, 3, rssi);
-
+  int quality = constrain(2 * (rssi + 100), 0, 100);
   display.setTextColor(COLOR_WHITE);
-  display.setCursor(4, 18);
-  display.print(truncSSID(ssid));
+  display.setCursor(1, 11);
+  display.print(quality);
+  display.print("%");
+
+  display.setTextColor(COLOR_GRAY);
+  display.setCursor(1, 22);
+  display.print(truncSSID(ssid, 7));
+
+  drawWifiIcon(WIFI_ICON_FRAMES - 1);
 }
 
 void displayShowAPMode(const char* apName, const char* apIP) {
@@ -502,12 +516,18 @@ void displayShowAPMode(const char* apName, const char* apIP) {
   display.setTextSize(1);
 
   display.setTextColor(COLOR_ORANGE);
-  display.setCursor(4, 4);
+  display.setCursor(1, 0);
   display.print("Config");
 
   display.setTextColor(COLOR_WHITE);
-  display.setCursor(4, 18);
-  display.print("WiFi...");
+  display.setCursor(1, 11);
+  display.print("WiFi");
+
+  display.setTextColor(COLOR_GRAY);
+  display.setCursor(1, 22);
+  display.print("3 min.");
+
+  drawWifiIcon(WIFI_ICON_FRAMES - 1);
 }
 
 void displayShowWifiLost() {
