@@ -96,12 +96,15 @@ static void drawWifiIcon(int frame) {
 // ── Tiny network-status badge for measurement screens ──
 // 8x7 monochrome icons, one byte per row, MSB = leftmost pixel.
 
-// WiFi arcs pointing up (blue when everything is OK):
-//   .######.   ##....##   ..####..   .##..##.   ...##...   ...##...   ........
-static const uint8_t iconNetOK[7]         = { 0x7E, 0xC3, 0x3C, 0x66, 0x18, 0x18, 0x00 };
-// Two horizontal dashes (red — no WiFi or no internet):
-//   ........   ........   .######.   ........   ..####..   ........   ........
-static const uint8_t iconNetNoInternet[7] = { 0x00, 0x00, 0x7E, 0x00, 0x3C, 0x00, 0x00 };
+// WiFi: three nested arcs pointing up, each separated by an empty row so the
+// arcs read as distinct curves instead of one chunky blob. Sides flare outward
+// (#......# / .#....#.) to suggest the curve descending on each side.
+//   .######.   #......#   ........   ..####..   .#....#.   ...##...   ........
+//   outer top  outer ends   gap       med top    med ends   center dot
+static const uint8_t iconNetOK[7]         = { 0x7E, 0x81, 0x00, 0x3C, 0x42, 0x18, 0x00 };
+// Same WiFi silhouette but with the center dot missing → reads as "broken /
+// not connected". Drawn in red.
+static const uint8_t iconNetNoInternet[7] = { 0x7E, 0x81, 0x00, 0x3C, 0x42, 0x00, 0x00 };
 // Up + down arrows side by side (red — server unreachable / API failed):
 //   ........   .#...#..   ###..#..   .#...#..   .#..###.   .#...#..   ........
 static const uint8_t iconNetApiError[7]   = { 0x00, 0x44, 0xE4, 0x44, 0x4E, 0x44, 0x00 };
