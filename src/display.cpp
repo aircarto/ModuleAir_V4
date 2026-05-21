@@ -96,22 +96,22 @@ static void drawWifiIcon(int frame) {
 // ── Tiny network-status badge for measurement screens ──
 // 8-wide monochrome icons, one byte per row, MSB = leftmost pixel.
 
-// Sideways WiFi: a 3x3 "device" square at the left, then two ")"-shaped arcs
-// radiating to the right. Same orientation as the connection screen icon
-// (V2.1), so the iconography stays consistent across the device.
-//   y0: ........
-//   y1: .....#..   outer arc, tucking back near the device
-//   y2: ...#..#.   inner arc top + outer arc curving outward
-//   y3: ###.#..#   SQUARE + inner arc rightmost + outer arc rightmost
-//   y4: ###.#..#   (square is 3 cols × 3 rows for a chunky base)
-//   y5: ###.#..#
-//   y6: ...#..#.   inner arc bottom + outer arc curving back
-//   y7: .....#..   outer arc bottom
-//   y8: ........
-static const uint8_t iconNetOK[9]         = { 0x00, 0x04, 0x12, 0xE9, 0xE9, 0xE9, 0x12, 0x04, 0x00 };
-// Same square but only the inner arc remains, in red → "WiFi qu'avec deux traits"
-// (the square base + one closest arc, the outer one missing = no real signal).
-static const uint8_t iconNetNoInternet[9] = { 0x00, 0x00, 0x10, 0xE8, 0xE8, 0xE8, 0x10, 0x00, 0x00 };
+// Upward WiFi: two concentric arcs pointing up + a 2x2 square at the device
+// origin. Each arc is 3 rows so the curve is clearly visible (apex →
+// shoulders → full-width sides) instead of looking like a flat dash.
+//   y0: ..####..   outer apex
+//   y1: .##..##.   outer shoulders
+//   y2: ##....##   outer sides (fully descended)
+//   y3: ........   gap
+//   y4: ...##...   middle apex
+//   y5: ..#..#..   middle shoulders
+//   y6: .#....#.   middle sides
+//   y7: ...##...   square row 1 (the 2×2 "carré" at the base)
+//   y8: ...##...   square row 2
+static const uint8_t iconNetOK[9]         = { 0x3C, 0x66, 0xC3, 0x00, 0x18, 0x24, 0x42, 0x18, 0x18 };
+// Same WiFi silhouette but without the central square → "broken" signal,
+// drawn in red.
+static const uint8_t iconNetNoInternet[9] = { 0x3C, 0x66, 0xC3, 0x00, 0x18, 0x24, 0x42, 0x00, 0x00 };
 // Up + down arrows side by side (red — server unreachable / API failed):
 //   ........   .#...#..   ###..#..   .#...#..   .#..###.   .#...#..   ........
 static const uint8_t iconNetApiError[7]   = { 0x00, 0x44, 0xE4, 0x44, 0x4E, 0x44, 0x00 };
