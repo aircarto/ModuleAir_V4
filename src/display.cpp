@@ -565,12 +565,15 @@ void displayShowBootAnim() {
 
   const float cx = MATRIX_WIDTH / 2.0f - 0.5f;
   const float cy = MATRIX_HEIGHT / 2.0f - 0.5f;
-  const float radius = 7.0f;
-  const int tailLen = 9;
-  const int stepsPerLap = 48;
-  const int laps = 3;
-  const int totalFrames = stepsPerLap * laps;
+  const float radius = 10.0f;          // bigger → more pixel positions, rounder
+  const int tailLen = 18;              // longer trail (≈1/3 of the circle)
+  const int stepsPerLap = 60;          // 6° per step
+  const int spinLaps = 2;
+  const int spinFrames = stepsPerLap * spinLaps;
+  const int fadeFrames = stepsPerLap;  // one extra lap to fade out gently
+  const int totalFrames = spinFrames + fadeFrames;
   const float angleStep = (2.0f * (float)M_PI) / stepsPerLap;
+  const int frameDelayMs = 32;         // ≈31 fps; per-lap ≈1.9 s, total ≈5.8 s
 
   // Tail brightness curve: head=255, fades quadratically toward the end
   // (gentle ease-out so the trail dissolves smoothly instead of cutting off).
@@ -584,14 +587,22 @@ void displayShowBootAnim() {
     display.clearDisplay();
     float headAngle = (float)f * angleStep - (float)M_PI / 2.0f;  // start at 12 o'clock
 
+    // Global fade-out during the final lap so the spinner dissolves
+    // smoothly instead of popping off when the animation ends.
+    float fadeOut = 1.0f;
+    if (f >= spinFrames) {
+      float t = (float)(f - spinFrames) / fadeFrames;
+      fadeOut = (1.0f - t) * (1.0f - t);  // quadratic
+    }
+
     for (int i = 0; i < tailLen; i++) {
       float a = headAngle - (float)i * angleStep;
       int x = (int)roundf(cx + radius * cosf(a));
       int y = (int)roundf(cy + radius * sinf(a));
-      uint8_t b = tailBright[i];
+      uint8_t b = (uint8_t)(tailBright[i] * fadeOut);
       display.drawPixel(x, y, display.color565(b, b, b));
     }
-    delay(22);  // ≈45 fps; ISR keeps refreshing in the background
+    delay(frameDelayMs);
   }
 
   display.clearDisplay();
