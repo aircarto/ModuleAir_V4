@@ -561,44 +561,40 @@ static void manualRefresh(int cycles = 50) {
 
 void displayShowBootAnim() {
   Logger.println("[Display] Boot animation");
-  refreshPaused = true;
   display.clearDisplay();
 
-  // Circle centered on screen, radius 12
-  const float cx = MATRIX_WIDTH / 2.0f - 0.5f;   // 31.5
-  const float cy = MATRIX_HEIGHT / 2.0f - 0.5f;   // 15.5
-  const float radius = 12.0f;
+  const float cx = MATRIX_WIDTH / 2.0f - 0.5f;
+  const float cy = MATRIX_HEIGHT / 2.0f - 0.5f;
+  const float radius = 7.0f;
+  const int tailLen = 9;
   const int stepsPerLap = 48;
-  const int laps = 2;
-  const int total = stepsPerLap * laps;
+  const int laps = 3;
+  const int totalFrames = stepsPerLap * laps;
+  const float angleStep = (2.0f * (float)M_PI) / stepsPerLap;
 
-  // Color cycle
-  const uint16_t colors[] = { COLOR_CYAN, COLOR_BLUE, COLOR_GREEN, COLOR_YELLOW, COLOR_ORANGE, COLOR_RED };
-  const int nColors = 6;
+  // Tail brightness curve: head=255, fades quadratically toward the end
+  // (gentle ease-out so the trail dissolves smoothly instead of cutting off).
+  uint8_t tailBright[tailLen];
+  for (int i = 0; i < tailLen; i++) {
+    float t = 1.0f - (float)i / tailLen;
+    tailBright[i] = (uint8_t)(t * t * 255);
+  }
 
-  for (int i = 0; i < total; i++) {
-    float angle = (float)i / stepsPerLap * 2.0f * M_PI;
-    int x = (int)roundf(cx + radius * cosf(angle));
-    int y = (int)roundf(cy + radius * sinf(angle));
+  for (int f = 0; f < totalFrames; f++) {
+    display.clearDisplay();
+    float headAngle = (float)f * angleStep - (float)M_PI / 2.0f;  // start at 12 o'clock
 
-    // Color: cycle over the laps
-    float colorPos = (float)i / total * nColors;
-    uint16_t c = colors[(int)colorPos % nColors];
-
-    // Easing: very slow at edges → very fast in middle
-    float t = (float)i / (total - 1);
-    float ease = (1.0f - cosf(t * 2.0f * M_PI)) * 0.5f;
-    ease = ease * ease;  // square for sharper contrast
-    int delayMs = 1 + (int)(ease * 30);
-
-    display.drawPixel(x, y, c);
-    manualRefresh(30);
-    delay(delayMs);
-    display.drawPixel(x, y, 0);
+    for (int i = 0; i < tailLen; i++) {
+      float a = headAngle - (float)i * angleStep;
+      int x = (int)roundf(cx + radius * cosf(a));
+      int y = (int)roundf(cy + radius * sinf(a));
+      uint8_t b = tailBright[i];
+      display.drawPixel(x, y, display.color565(b, b, b));
+    }
+    delay(22);  // ≈45 fps; ISR keeps refreshing in the background
   }
 
   display.clearDisplay();
-  refreshPaused = false;
 }
 
 void displayShowBleConnected() {
