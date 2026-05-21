@@ -237,8 +237,8 @@ static void drawMeasurementScreen(const char* label, UnitType unit,
     display.print(label);
   }
 
-  // Unit (after label, small font)
-  display.setCursor(display.getCursorX() + 2, 0);
+  // Unit (after label, small font) — y=7 is the baseline for Font4x7Fixed (yOffset=-7).
+  display.setCursor(display.getCursorX() + 2, 7);
   drawUnit(unit);
 
   // Color indicator square (top-right)
