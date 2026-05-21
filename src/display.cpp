@@ -468,6 +468,11 @@ void displayShowDebugSplash() {
 // V2.1-style layout: 3 lines of text on the left (y=0/11/22) +
 // animated 16x16 WiFi icon on the right at (47, 15).
 
+// Minimum on-screen time for the "Connexion" screen — keeps it readable
+// even when the AP accepts our STA almost immediately.
+static const unsigned long WIFI_CONNECTING_MIN_MS = 1800;
+static unsigned long wifiConnectingStartMs = 0;
+
 void displayShowWifiConnecting(const char* ssid) {
   Logger.printf("[Display] WiFi connecting: %s\n", ssid);
   display.clearDisplay();
@@ -480,6 +485,7 @@ void displayShowWifiConnecting(const char* ssid) {
   display.print(truncSSID(ssid, 7));
   wifiFrameIdx = 0;
   drawWifiIcon(0);
+  wifiConnectingStartMs = millis();
 }
 
 void displayShowWifiDots() {
@@ -488,6 +494,18 @@ void displayShowWifiDots() {
 }
 
 void displayShowWifiConnected(const char* ssid, int rssi) {
+  // If "Connexion" was just shown, hold it (with the icon still spinning)
+  // until WIFI_CONNECTING_MIN_MS has elapsed since it appeared.
+  if (wifiConnectingStartMs) {
+    unsigned long elapsed = millis() - wifiConnectingStartMs;
+    while (elapsed < WIFI_CONNECTING_MIN_MS) {
+      displayShowWifiDots();
+      delay(150);
+      elapsed = millis() - wifiConnectingStartMs;
+    }
+    wifiConnectingStartMs = 0;
+  }
+
   Logger.printf("[Display] WiFi connected: %s (%d dBm)\n", ssid, rssi);
   display.clearDisplay();
   display.setTextSize(1);
