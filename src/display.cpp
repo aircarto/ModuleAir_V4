@@ -571,15 +571,15 @@ void displayShowBootAnim() {
 
   const float cx = MATRIX_WIDTH / 2.0f - 0.5f;
   const float cy = MATRIX_HEIGHT / 2.0f - 0.5f;
-  const float radius = 11.0f;
-  const int tailLen = 24;              // about 1/3 of the circumference
-  const int stepsPerLap = 72;          // 5° per step
-  const int spinLaps = 2;
+  const float radius = 13.0f;          // bigger circle (diameter 26 on a 32-tall matrix)
+  const int tailLen = 24;              // tail still covers 120° of arc
+  const int stepsPerLap = 72;          // 5° per step (unchanged → same rotation speed)
+  const int spinLaps = 1;              // one full spin lap (was 2) → shorter animation
   const int spinFrames = stepsPerLap * spinLaps;
   const int fadeFrames = stepsPerLap;  // one extra lap fades the whole spinner out
   const int totalFrames = spinFrames + fadeFrames;
   const float angleStep = (2.0f * (float)M_PI) / stepsPerLap;
-  const int frameDelayMs = 28;         // ≈36 fps; total ≈6 s
+  const int frameDelayMs = 28;         // ≈36 fps; total ≈4 s
 
   // Cubic fade for a clearly defined head + long soft tail.
   uint8_t tailBright[tailLen];
