@@ -94,17 +94,24 @@ static void drawWifiIcon(int frame) {
 }
 
 // ── Tiny network-status badge for measurement screens ──
-// 8x7 monochrome icons, one byte per row, MSB = leftmost pixel.
+// 8-wide monochrome icons, one byte per row, MSB = leftmost pixel.
 
-// WiFi: three nested arcs pointing up, each separated by an empty row so the
-// arcs read as distinct curves instead of one chunky blob. Sides flare outward
-// (#......# / .#....#.) to suggest the curve descending on each side.
-//   .######.   #......#   ........   ..####..   .#....#.   ...##...   ........
-//   outer top  outer ends   gap       med top    med ends   center dot
-static const uint8_t iconNetOK[7]         = { 0x7E, 0x81, 0x00, 0x3C, 0x42, 0x18, 0x00 };
-// Same WiFi silhouette but with the center dot missing → reads as "broken /
-// not connected". Drawn in red.
-static const uint8_t iconNetNoInternet[7] = { 0x7E, 0x81, 0x00, 0x3C, 0x42, 0x00, 0x00 };
+// WiFi: each arc drawn over THREE rows so it visibly curves (narrow apex →
+// shoulders → full-width sides) instead of looking like a flat dash. Two
+// concentric arcs + a small dot at the device origin.
+//   y0: ..####..   apex of outer arc (narrow)
+//   y1: .##..##.   outer arc shoulders (curve starting outward)
+//   y2: ##....##   outer arc sides (fully descended)
+//   y3: ........   gap
+//   y4: ...##...   apex of middle arc
+//   y5: ..#..#..   middle arc shoulders
+//   y6: .#....#.   middle arc sides
+//   y7: ........   gap
+//   y8: ...##...   center dot (device origin)
+static const uint8_t iconNetOK[9]         = { 0x3C, 0x66, 0xC3, 0x00, 0x18, 0x24, 0x42, 0x00, 0x18 };
+// Same WiFi shape minus the center dot → reads as "WiFi without a connection"
+// while staying recognizable. Color (red) does the rest of the disambiguation.
+static const uint8_t iconNetNoInternet[9] = { 0x3C, 0x66, 0xC3, 0x00, 0x18, 0x24, 0x42, 0x00, 0x00 };
 // Up + down arrows side by side (red — server unreachable / API failed):
 //   ........   .#...#..   ###..#..   .#...#..   .#..###.   .#...#..   ........
 static const uint8_t iconNetApiError[7]   = { 0x00, 0x44, 0xE4, 0x44, 0x4E, 0x44, 0x00 };
@@ -127,8 +134,8 @@ static void drawMonoIcon(int x, int y, int w, int h, const uint8_t* bitmap, uint
 static void drawNetStatusBadge() {
   const int x = 55, y = 0;
   switch (netStatus) {
-    case NET_OK:           drawMonoIcon(x, y, 8, 7, iconNetOK,         COLOR_BLUE); break;
-    case NET_NO_INTERNET:  drawMonoIcon(x, y, 8, 7, iconNetNoInternet, COLOR_RED);  break;
+    case NET_OK:           drawMonoIcon(x, y, 8, 9, iconNetOK,         COLOR_BLUE); break;
+    case NET_NO_INTERNET:  drawMonoIcon(x, y, 8, 9, iconNetNoInternet, COLOR_RED);  break;
     case NET_API_ERROR:    drawMonoIcon(x, y, 8, 7, iconNetApiError,   COLOR_RED);  break;
   }
 }
