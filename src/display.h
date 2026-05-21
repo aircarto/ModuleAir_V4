@@ -37,4 +37,12 @@ void displayShowOtaProgress(int percent);
 void displayShowOtaDone();
 void displayShowOtaFailed();
 
+// Connectivity badge shown at the top-right of measurement screens
+enum NetStatus {
+  NET_OK,           // WiFi + internet + last API send all OK → blue WiFi icon
+  NET_NO_INTERNET,  // no WiFi or DNS fails → red WiFi-with-dashes icon
+  NET_API_ERROR     // WiFi+internet OK but server unreachable → red up/down arrows
+};
+void displaySetNetStatus(NetStatus s);
+
 #endif

@@ -93,6 +93,43 @@ static void drawWifiIcon(int frame) {
                        wifiFrames[frame % WIFI_ICON_FRAMES]);
 }
 
+// ── Tiny network-status badge for measurement screens ──
+// 8x7 monochrome icons, one byte per row, MSB = leftmost pixel.
+
+// WiFi arcs pointing up (blue when everything is OK):
+//   .######.   ##....##   ..####..   .##..##.   ...##...   ...##...   ........
+static const uint8_t iconNetOK[7]         = { 0x7E, 0xC3, 0x3C, 0x66, 0x18, 0x18, 0x00 };
+// Two horizontal dashes (red — no WiFi or no internet):
+//   ........   ........   .######.   ........   ..####..   ........   ........
+static const uint8_t iconNetNoInternet[7] = { 0x00, 0x00, 0x7E, 0x00, 0x3C, 0x00, 0x00 };
+// Up + down arrows side by side (red — server unreachable / API failed):
+//   ........   .#...#..   ###..#..   .#...#..   .#..###.   .#...#..   ........
+static const uint8_t iconNetApiError[7]   = { 0x00, 0x44, 0xE4, 0x44, 0x4E, 0x44, 0x00 };
+
+static NetStatus netStatus = NET_OK;
+
+void displaySetNetStatus(NetStatus s) {
+  netStatus = s;
+}
+
+static void drawMonoIcon(int x, int y, int w, int h, const uint8_t* bitmap, uint16_t color) {
+  for (int row = 0; row < h; row++) {
+    uint8_t b = bitmap[row];
+    for (int col = 0; col < w; col++) {
+      if (b & (0x80 >> col)) display.drawPixel(x + col, y + row, color);
+    }
+  }
+}
+
+static void drawNetStatusBadge() {
+  const int x = 55, y = 0;
+  switch (netStatus) {
+    case NET_OK:           drawMonoIcon(x, y, 8, 7, iconNetOK,         COLOR_BLUE); break;
+    case NET_NO_INTERNET:  drawMonoIcon(x, y, 8, 7, iconNetNoInternet, COLOR_RED);  break;
+    case NET_API_ERROR:    drawMonoIcon(x, y, 8, 7, iconNetApiError,   COLOR_RED);  break;
+  }
+}
+
 static void drawCentreString(const String& buf, int y, int offset = 0) {
   int16_t x1, y1;
   uint16_t w, h;
@@ -268,6 +305,9 @@ static void drawMeasurementScreen(const char* label, UnitType unit,
   display.setTextSize(1);
   display.setTextColor(levelColor);
   drawCentreString(String(statusMsg), 25);
+
+  // Connectivity badge top-right (above the color square)
+  drawNetStatusBadge();
 }
 
 // ── Draw individual data screens ──

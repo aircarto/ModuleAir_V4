@@ -61,6 +61,7 @@ void loop() {
   if (wasConnected && !connected) {
     Logger.println("[WiFi] Deconnexion detectee");
     displayShowWifiLost();
+    displaySetNetStatus(NET_NO_INTERNET);
   } else if (!wasConnected && connected) {
     Logger.println("[WiFi] Reconnexion detectee");
     displayShowWifiConnected(WiFi.SSID().c_str(), WiFi.RSSI());
@@ -74,7 +75,12 @@ void loop() {
     displaySetSensorData(sensorsGetData());
     displayShowInterieur();
     if (connected) {
-      dataSenderSend();
+      SendResult r = dataSenderSend();
+      displaySetNetStatus(r == SEND_NO_INTERNET ? NET_NO_INTERNET
+                        : r == SEND_SERVER_DOWN ? NET_API_ERROR
+                                                : NET_OK);
+    } else {
+      displaySetNetStatus(NET_NO_INTERNET);
     }
   }
 
