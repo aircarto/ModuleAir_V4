@@ -96,22 +96,22 @@ static void drawWifiIcon(int frame) {
 // ── Tiny network-status badge for measurement screens ──
 // 8-wide monochrome icons, one byte per row, MSB = leftmost pixel.
 
-// WiFi: each arc drawn over THREE rows so it visibly curves (narrow apex →
-// shoulders → full-width sides) instead of looking like a flat dash. Two
-// concentric arcs + a small dot at the device origin.
-//   y0: ..####..   apex of outer arc (narrow)
-//   y1: .##..##.   outer arc shoulders (curve starting outward)
-//   y2: ##....##   outer arc sides (fully descended)
-//   y3: ........   gap
-//   y4: ...##...   apex of middle arc
-//   y5: ..#..#..   middle arc shoulders
-//   y6: .#....#.   middle arc sides
-//   y7: ........   gap
-//   y8: ...##...   center dot (device origin)
-static const uint8_t iconNetOK[9]         = { 0x3C, 0x66, 0xC3, 0x00, 0x18, 0x24, 0x42, 0x00, 0x18 };
-// Same WiFi shape minus the center dot → reads as "WiFi without a connection"
-// while staying recognizable. Color (red) does the rest of the disambiguation.
-static const uint8_t iconNetNoInternet[9] = { 0x3C, 0x66, 0xC3, 0x00, 0x18, 0x24, 0x42, 0x00, 0x00 };
+// Sideways WiFi: a 3x3 "device" square at the left, then two ")"-shaped arcs
+// radiating to the right. Same orientation as the connection screen icon
+// (V2.1), so the iconography stays consistent across the device.
+//   y0: ........
+//   y1: .....#..   outer arc, tucking back near the device
+//   y2: ...#..#.   inner arc top + outer arc curving outward
+//   y3: ###.#..#   SQUARE + inner arc rightmost + outer arc rightmost
+//   y4: ###.#..#   (square is 3 cols × 3 rows for a chunky base)
+//   y5: ###.#..#
+//   y6: ...#..#.   inner arc bottom + outer arc curving back
+//   y7: .....#..   outer arc bottom
+//   y8: ........
+static const uint8_t iconNetOK[9]         = { 0x00, 0x04, 0x12, 0xE9, 0xE9, 0xE9, 0x12, 0x04, 0x00 };
+// Same square but only the inner arc remains, in red → "WiFi qu'avec deux traits"
+// (the square base + one closest arc, the outer one missing = no real signal).
+static const uint8_t iconNetNoInternet[9] = { 0x00, 0x00, 0x10, 0xE8, 0xE8, 0xE8, 0x10, 0x00, 0x00 };
 // Up + down arrows side by side (red — server unreachable / API failed):
 //   ........   .#...#..   ###..#..   .#...#..   .#..###.   .#...#..   ........
 static const uint8_t iconNetApiError[7]   = { 0x00, 0x44, 0xE4, 0x44, 0x4E, 0x44, 0x00 };
