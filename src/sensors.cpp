@@ -59,6 +59,17 @@ static SensorData data = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xFF, false, false, fals
 #define MHZ_CO2_MIN 400
 #define MHZ_CO2_MAX 5000
 
+// Ping I2C : renvoie true si un device repond a cette adresse.
+// Utilise pour detecter les capteurs branches/debranches en cours d'utilisation
+// (au lieu de figer leur etat au boot).
+static bool i2cProbe(uint8_t addr) {
+  Wire.beginTransmission(addr);
+  return Wire.endTransmission() == 0;
+}
+
+// Stocke l'adresse I2C effective du BME280 (0x76 ou 0x77) une fois trouvee
+static uint8_t bmeAddr = 0;
+
 static uint32_t readU32(uint16_t regLow) {
   uint8_t result = nextpm.readHoldingRegisters(regLow, 2);
   if (result == nextpm.ku8MBSuccess) {
@@ -188,27 +199,56 @@ static void readMHZ19() {
 static void readBME280() {
   Logger.println("[BME280] Reading...");
 
-  if (!bmeFound) {
+  // 1) Ping I2C aux 2 adresses possibles
+  uint8_t presentAddr = 0;
+  if      (i2cProbe(0x76)) presentAddr = 0x76;
+  else if (i2cProbe(0x77)) presentAddr = 0x77;
+
+  if (presentAddr == 0) {
+    if (bmeFound) Logger.println("  Capteur perdu (etait present, debranche ?)");
+    else          Logger.println("  Capteur absent");
+    bmeFound = false;
+    bmeAddr = 0;
     data.bme_ok = false;
-    Logger.println("  Sensor not found");
     Logger.println();
     return;
   }
 
+  // 2) Apparu ou re-apparu : initialiser
+  if (!bmeFound || presentAddr != bmeAddr) {
+    Logger.printf("  Capteur (re)detecte a 0x%02X, initialisation...\n", presentAddr);
+    if (bme.begin(presentAddr)) {
+      bmeFound = true;
+      bmeAddr = presentAddr;
+      bme.setSampling(Adafruit_BME280::MODE_FORCED,
+                      Adafruit_BME280::SAMPLING_X1,
+                      Adafruit_BME280::SAMPLING_X1,
+                      Adafruit_BME280::SAMPLING_X1,
+                      Adafruit_BME280::FILTER_OFF);
+      Logger.println("  Init OK");
+    } else {
+      Logger.println("  Init echoue malgre I2C present");
+      data.bme_ok = false;
+      Logger.println();
+      return;
+    }
+  }
+
+  // 3) Lecture normale
   float temperature = bme.readTemperature();
-  float humidity = bme.readHumidity();
-  float pressure = bme.readPressure() / 100.0;
+  float humidity    = bme.readHumidity();
+  float pressure    = bme.readPressure() / 100.0;
 
   if (isnan(temperature) || isnan(pressure)) {
     data.bme_ok = false;
-    Logger.println("  Error reading BME280");
+    Logger.println("  Erreur de lecture (NaN)");
     Logger.println();
     return;
   }
 
   data.temperature = temperature;
-  data.humidity = humidity;
-  data.pressure = pressure;
+  data.humidity    = humidity;
+  data.pressure    = pressure;
   data.bme_ok = true;
 
   Logger.printf("  Temp:     %.1f C\n", temperature);
@@ -220,16 +260,37 @@ static void readBME280() {
 static void readCCS811() {
   Logger.println("[CCS811] Reading...");
 
-  if (!ccsFound) {
+  // 1) Ping I2C (CCS811 = adresse 0x5A par defaut, 0x5B en option)
+  bool present = i2cProbe(0x5A) || i2cProbe(0x5B);
+
+  if (!present) {
+    if (ccsFound) Logger.println("  Capteur perdu (etait present, debranche ?)");
+    else          Logger.println("  Capteur absent");
+    ccsFound = false;
     data.ccs_ok = false;
-    Logger.println("  Sensor not found");
     Logger.println();
     return;
   }
 
+  // 2) Apparu : initialiser
+  if (!ccsFound) {
+    Logger.println("  Capteur (re)detecte, initialisation...");
+    if (ccs.begin()) {
+      ccsFound = true;
+      ccs.setDriveMode(CCS811_DRIVE_MODE_10SEC);
+      Logger.println("  Init OK");
+    } else {
+      Logger.println("  Init echoue malgre I2C present");
+      data.ccs_ok = false;
+      Logger.println();
+      return;
+    }
+  }
+
+  // 3) Lecture normale
   if (!ccs.available()) {
     data.ccs_ok = false;
-    Logger.println("  Data not available yet");
+    Logger.println("  Donnees pas encore pretes (warm-up)");
     Logger.println();
     return;
   }
@@ -247,7 +308,7 @@ static void readCCS811() {
     Logger.printf("  eCO2:  %d ppm\n", data.eco2);
   } else {
     data.ccs_ok = false;
-    Logger.println("  Error reading CCS811");
+    Logger.println("  Erreur de lecture");
   }
 
   Logger.println();
@@ -277,9 +338,28 @@ static bool sfa40SendCmd(uint16_t cmd) {
 static void readSFA40() {
   Logger.println("[SFA40] Reading...");
 
-  if (!sfa40Found) {
+  // 1) Ping I2C
+  bool present = i2cProbe(SFA40_ADDR);
+
+  if (!present) {
+    if (sfa40Found) Logger.println("  Capteur perdu (etait present, debranche ?)");
+    else            Logger.println("  Capteur absent");
+    sfa40Found = false;
+    sfa40Started = false;
     data.sfa40_ok = false;
-    Logger.println("  Sensor not found");
+    Logger.println();
+    return;
+  }
+
+  // 2) Apparu : initialiser et lancer la mesure
+  if (!sfa40Found) {
+    Logger.println("  Capteur (re)detecte, initialisation...");
+    sfa40SendCmd(0x50D2);  // Stop (reset to known state)
+    delay(50);
+    sfa40SendCmd(0x00AC);  // Start Measurement
+    sfa40Started = true;
+    sfa40Found = true;
+    Logger.println("  Init OK, mesure demarree (donnees au prochain cycle)");
     Logger.println();
     return;
   }
@@ -374,8 +454,10 @@ void sensorsInit() {
   Wire.setClock(100000);
 
   if (cfg.bme280_enabled) {
+    // Tentative de detection au boot — sera reverifiee a chaque cycle de read
     if (bme.begin(0x76)) {
       bmeFound = true;
+      bmeAddr = 0x76;
       bme.setSampling(Adafruit_BME280::MODE_FORCED,
                       Adafruit_BME280::SAMPLING_X1,
                       Adafruit_BME280::SAMPLING_X1,
@@ -384,6 +466,7 @@ void sensorsInit() {
       Logger.println("BME280 init OK (0x76)");
     } else if (bme.begin(0x77)) {
       bmeFound = true;
+      bmeAddr = 0x77;
       bme.setSampling(Adafruit_BME280::MODE_FORCED,
                       Adafruit_BME280::SAMPLING_X1,
                       Adafruit_BME280::SAMPLING_X1,
@@ -391,7 +474,7 @@ void sensorsInit() {
                       Adafruit_BME280::FILTER_OFF);
       Logger.println("BME280 init OK (0x77)");
     } else {
-      Logger.println("BME280 not found!");
+      Logger.println("BME280 not found au boot — sera reverifie chaque cycle");
     }
   } else {
     Logger.println("BME280 disabled");
@@ -403,16 +486,14 @@ void sensorsInit() {
       ccs.setDriveMode(CCS811_DRIVE_MODE_10SEC);
       Logger.println("CCS811 init OK (0x5A)");
     } else {
-      Logger.println("CCS811 not found!");
+      Logger.println("CCS811 not found au boot — sera reverifie chaque cycle");
     }
   } else {
     Logger.println("CCS811 disabled");
   }
 
   if (cfg.sfa40_enabled) {
-    // Check if SFA40 is present on I2C
-    Wire.beginTransmission(SFA40_ADDR);
-    if (Wire.endTransmission() == 0) {
+    if (i2cProbe(SFA40_ADDR)) {
       sfa40Found = true;
       sfa40SendCmd(0x50D2);  // Stop (reset to known state)
       delay(50);
@@ -420,7 +501,7 @@ void sensorsInit() {
       sfa40Started = true;
       Logger.println("SFA40 init OK (0x5D)");
     } else {
-      Logger.println("SFA40 not found!");
+      Logger.println("SFA40 not found au boot — sera reverifie chaque cycle");
     }
   } else {
     Logger.println("SFA40 disabled");
