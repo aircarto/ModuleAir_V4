@@ -6,6 +6,7 @@
 #include "sensors.h"
 #include "settings.h"
 #include "logos.h"
+#include "logo_storage.h"
 #include "logger.h"
 #include "fonts/Font4x7Fixed.h"
 #include "wifi_icon.h"
@@ -60,7 +61,9 @@ static int currentScreen = 0;
 #define SCREEN_INTERVAL 5000
 
 // Screen IDs
-enum Screen { SCR_PM1, SCR_PM25, SCR_PM10, SCR_CO2, SCR_TEMP, SCR_HUMI, SCR_COV, SCR_HCHO, SCR_LOGO_MA, SCR_LOGO_AC, SCR_LOGO_AS, SCR_COUNT };
+enum Screen { SCR_PM1, SCR_PM25, SCR_PM10, SCR_CO2, SCR_TEMP, SCR_HUMI, SCR_COV, SCR_HCHO,
+              SCR_PM_ERR, SCR_CO2_ERR,
+              SCR_LOGO_MA, SCR_LOGO_AC, SCR_LOGO_AS, SCR_COUNT };
 
 // ── Helpers ──
 
@@ -317,6 +320,56 @@ static void drawMeasurementScreen(const char* label, UnitType unit,
   drawNetStatusBadge();
 }
 
+// ── Warning triangle (used by error screens) ──
+// 14x14 orange filled triangle with a centered "!". Drawn at (x,y).
+// Sits exactly where the measurement screens put their color square,
+// so error screens reuse the same visual rhythm.
+static void drawWarningIcon(int x, int y) {
+  // Triangle plein orange (pointe en haut, base en bas)
+  display.fillTriangle(
+    x + 7,  y,        // sommet (haut centre)
+    x,      y + 13,   // bas gauche
+    x + 13, y + 13,   // bas droit
+    COLOR_ORANGE);
+  // "!" blanc au centre — barre 2px de large
+  display.fillRect(x + 6, y + 4, 2, 5, COLOR_WHITE);
+  // Point du "!"
+  display.fillRect(x + 6, y + 10, 2, 2, COLOR_WHITE);
+}
+
+// ── Generic error screen ──
+// Same layout grammar as drawMeasurementScreen:
+//   - top-left "Capteur" (cyan)        ← in place of the metric label
+//   - centered sensor name (white, x2) ← in place of the value
+//   - 14x14 warning triangle           ← in place of the color square
+//   - bottom "Erreur" (red)            ← in place of the status message
+//   - top-right network badge          ← unchanged
+static void drawErrorScreen(const String& sensorName) {
+  display.clearDisplay();
+
+  display.setFont(NULL);
+  display.setTextSize(1);
+  display.setTextColor(COLOR_CYAN);
+  display.setCursor(1, 0);
+  display.print("Capteur");
+
+  // Triangle d'attention à la place du carré couleur (mêmes coordonnées)
+  drawWarningIcon(50, 9);
+
+  // Nom du capteur en grand, centré sur la zone gauche (laisse 14px pour le triangle)
+  display.setFont(NULL);
+  display.setTextSize(2);
+  display.setTextColor(COLOR_WHITE);
+  drawCentreString(sensorName, 9, 14);
+
+  // "Erreur" en rouge tout en bas, centré
+  display.setTextSize(1);
+  display.setTextColor(COLOR_RED);
+  drawCentreString(String("Erreur"), 25);
+
+  drawNetStatusBadge();
+}
+
 // ── Draw individual data screens ──
 
 // Forward declarations
@@ -371,6 +424,9 @@ static void drawScreenHCHO() {
                          msgHCHO(sensorCache.hcho));
 }
 
+static void drawScreenPMError()  { drawErrorScreen("PM");  }
+static void drawScreenCO2Error() { drawErrorScreen("CO2"); }
+
 // ── Public API ──
 
 void displayInit() {
@@ -415,13 +471,18 @@ void displayUpdate() {
   Screen avail[SCR_COUNT];
   int count = 0;
 
-  // Data screens
+  // Data screens. When a sensor is KO and at least one of its screens was
+  // enabled, surface a single error screen instead of silently dropping it.
   if (sensorCache.pm_ok) {
     if (scfg.pm1)  avail[count++] = SCR_PM1;
     if (scfg.pm25) avail[count++] = SCR_PM25;
     if (scfg.pm10) avail[count++] = SCR_PM10;
+  } else if (scfg.pm1 || scfg.pm25 || scfg.pm10) {
+    avail[count++] = SCR_PM_ERR;
   }
-  if (sensorCache.co2_ok && scfg.co2)  avail[count++] = SCR_CO2;
+  if (scfg.co2) {
+    avail[count++] = sensorCache.co2_ok ? SCR_CO2 : SCR_CO2_ERR;
+  }
   if (sensorCache.bme_ok) {
     if (scfg.temp) avail[count++] = SCR_TEMP;
     if (scfg.humi) avail[count++] = SCR_HUMI;
@@ -450,23 +511,27 @@ void displayUpdate() {
     if (logoCount > 0) logoRotationIdx = (logoRotationIdx + 1) % logoCount;
   }
 
-  static const char* screenNames[] = { "PM1", "PM2.5", "PM10", "CO2", "Temp", "Humi", "COV", "HCHO", "Logo ModuleAir", "Logo AirCarto", "Logo AtmoSud" };
+  static const char* screenNames[] = { "PM1", "PM2.5", "PM10", "CO2", "Temp", "Humi", "COV", "HCHO",
+                                       "PM ERR", "CO2 ERR",
+                                       "Logo ModuleAir", "Logo AirCarto", "Logo AtmoSud" };
 
   Screen scr = avail[currentScreen];
   Logger.printf("[Display](%ds) Screen %d/%d: %s\n", SCREEN_INTERVAL / 1000, currentScreen + 1, count, screenNames[scr]);
 
   switch (scr) {
-    case SCR_PM1:   drawScreenPM1();  break;
-    case SCR_PM25:  drawScreenPM25(); break;
-    case SCR_PM10:  drawScreenPM10(); break;
-    case SCR_CO2:   drawScreenCO2();  break;
-    case SCR_TEMP:  drawScreenTemp(); break;
-    case SCR_HUMI:  drawScreenHumi(); break;
-    case SCR_COV:   drawScreenCOV();  break;
-    case SCR_HCHO:  drawScreenHCHO(); break;
-    case SCR_LOGO_MA: displayShowLogo(); break;
-    case SCR_LOGO_AC: displayShowLogoAirCarto(); break;
-    case SCR_LOGO_AS: displayShowLogoAtmoSud(); break;
+    case SCR_PM1:     drawScreenPM1();      break;
+    case SCR_PM25:    drawScreenPM25();     break;
+    case SCR_PM10:    drawScreenPM10();     break;
+    case SCR_CO2:     drawScreenCO2();      break;
+    case SCR_TEMP:    drawScreenTemp();     break;
+    case SCR_HUMI:    drawScreenHumi();     break;
+    case SCR_COV:     drawScreenCOV();      break;
+    case SCR_HCHO:    drawScreenHCHO();     break;
+    case SCR_PM_ERR:  drawScreenPMError();  break;
+    case SCR_CO2_ERR: drawScreenCO2Error(); break;
+    case SCR_LOGO_MA: displayShowLogo();           break;
+    case SCR_LOGO_AC: displayShowLogoAirCarto();   break;
+    case SCR_LOGO_AS: displayShowLogoAtmoSud();    break;
     default: break;
   }
 
@@ -475,7 +540,7 @@ void displayUpdate() {
 
 void displayShowLogo() {
   display.clearDisplay();
-  drawImage(0, 0, MATRIX_HEIGHT, MATRIX_WIDTH, logo_moduleair);
+  drawImage(0, 0, MATRIX_HEIGHT, MATRIX_WIDTH, logoBufferGet(LOGO_SLOT_MA));
 }
 
 void displayShowInterieur() {
@@ -486,12 +551,12 @@ void displayShowInterieur() {
 
 static void displayShowLogoAirCarto() {
   display.clearDisplay();
-  drawImage(0, 0, MATRIX_HEIGHT, MATRIX_WIDTH, logo_aircarto);
+  drawImage(0, 0, MATRIX_HEIGHT, MATRIX_WIDTH, logoBufferGet(LOGO_SLOT_AC));
 }
 
 static void displayShowLogoAtmoSud() {
   display.clearDisplay();
-  drawImage(0, 0, MATRIX_HEIGHT, MATRIX_WIDTH, logo_atmo);
+  drawImage(0, 0, MATRIX_HEIGHT, MATRIX_WIDTH, logoBufferGet(LOGO_SLOT_AS));
 }
 
 void displayShowDebugSplash() {
