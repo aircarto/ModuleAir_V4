@@ -36,6 +36,29 @@ static SensorData data = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xFF, false, false, fals
 #define REG_TEMP_INT   0x6B
 #define REG_HUM_INT    0x6A
 
+// Bits du registre status NextPM — convention serveur AirCarto
+// (cf. aircarto-protocols/formats/json-payload.md § npm_status)
+#define NPM_STATUS_SLEEP        0x01
+#define NPM_STATUS_DEGRADED     0x02
+#define NPM_STATUS_NOT_READY    0x04
+#define NPM_STATUS_HEAT_ERROR   0x08
+#define NPM_STATUS_TRH_ERROR    0x10
+#define NPM_STATUS_FAN_ERROR    0x20
+#define NPM_STATUS_MEMORY_ERROR 0x40
+#define NPM_STATUS_LASER_ERROR  0x80
+
+// Bits qui invalident une mesure PM (laser HS, ventilo HS, heater, pas pret)
+#define NPM_STATUS_CRITICAL (NPM_STATUS_NOT_READY | NPM_STATUS_HEAT_ERROR | \
+                             NPM_STATUS_FAN_ERROR | NPM_STATUS_LASER_ERROR)
+
+// Plage de mesure NextPM (datasheet Tera Sensor : 0-1000 µg/m³)
+#define NPM_PM_MAX 1000.0f
+
+// Plage de mesure MH-Z19B / MH-Z16 (datasheet Winsen : 0-5000 ppm en air ambiant)
+// 400 ppm ≈ CO2 atmospherique de fond — en dessous c'est physiquement impossible
+#define MHZ_CO2_MIN 400
+#define MHZ_CO2_MAX 5000
+
 static uint32_t readU32(uint16_t regLow) {
   uint8_t result = nextpm.readHoldingRegisters(regLow, 2);
   if (result == nextpm.ku8MBSuccess) {
@@ -59,31 +82,65 @@ static uint16_t readU16(uint16_t reg) {
 static void readNextPM() {
   Logger.println("[NextPM] Reading...");
 
-  uint16_t status = readU16(REG_STATUS);
-  if (status != 0xFFFF) {
-    data.npmStatus = (uint8_t)(status & 0xFF);
-    Logger.printf("  Status: 0x%X\n", status);
+  // 1) Lire le registre status — distinguer echec Modbus (0xFF) d'un status nominal (0x00)
+  uint8_t statusResult = nextpm.readHoldingRegisters(REG_STATUS, 1);
+  if (statusResult != nextpm.ku8MBSuccess) {
+    data.npmStatus = 0xFF;  // sentinelle "indisponible" du protocole serveur
+    data.pm_ok = false;
+    Logger.printf("  Modbus error sur status: 0x%02X — capteur muet\n", statusResult);
+    Logger.println();
+    return;
+  }
+  data.npmStatus = (uint8_t)(nextpm.getResponseBuffer(0) & 0xFF);
+  Logger.printf("  Status: 0x%02X\n", data.npmStatus);
+
+  // 2) Si un bit critique est leve, la mesure n'est pas fiable
+  if (data.npmStatus & NPM_STATUS_CRITICAL) {
+    if (data.npmStatus & NPM_STATUS_LASER_ERROR) Logger.println("    -> LASER_ERROR (>240s sans particule)");
+    if (data.npmStatus & NPM_STATUS_FAN_ERROR)   Logger.println("    -> FAN_ERROR (ventilateur hors plage)");
+    if (data.npmStatus & NPM_STATUS_HEAT_ERROR)  Logger.println("    -> HEAT_ERROR (humidite >60%% >10min)");
+    if (data.npmStatus & NPM_STATUS_NOT_READY)   Logger.println("    -> NOT_READY (capteur pas pret)");
+    data.pm_ok = false;
+    Logger.println();
+    return;
   }
 
+  // 3) Lire les PM
   uint32_t pm1_raw  = readU32(REG_PM1_1MIN);
   uint32_t pm25_raw = readU32(REG_PM25_1MIN);
   uint32_t pm10_raw = readU32(REG_PM10_1MIN);
 
-  if (pm1_raw != 0xFFFFFFFF && pm25_raw != 0xFFFFFFFF && pm10_raw != 0xFFFFFFFF) {
-    data.pm1  = pm1_raw / 1000.0;
-    data.pm25 = pm25_raw / 1000.0;
-    data.pm10 = pm10_raw / 1000.0;
-    data.pm_ok = true;
-    Logger.printf("  PM1.0:  %.3f ug/m3\n", data.pm1);
-    Logger.printf("  PM2.5:  %.3f ug/m3\n", data.pm25);
-    Logger.printf("  PM10:   %.3f ug/m3\n", data.pm10);
-  } else {
+  if (pm1_raw == 0xFFFFFFFF || pm25_raw == 0xFFFFFFFF || pm10_raw == 0xFFFFFFFF) {
     data.pm_ok = false;
+    Logger.println("  Erreur Modbus sur lecture PM");
+    Logger.println();
+    return;
   }
 
+  float pm1  = pm1_raw  / 1000.0f;
+  float pm25 = pm25_raw / 1000.0f;
+  float pm10 = pm10_raw / 1000.0f;
+
+  // 4) Filtrer les valeurs hors plage capteur (0-1000 µg/m³)
+  if (pm1 > NPM_PM_MAX || pm25 > NPM_PM_MAX || pm10 > NPM_PM_MAX) {
+    data.pm_ok = false;
+    Logger.printf("  Valeurs aberrantes: PM1=%.1f PM2.5=%.1f PM10=%.1f (max %.0f ug/m3)\n",
+                  pm1, pm25, pm10, NPM_PM_MAX);
+    Logger.println();
+    return;
+  }
+
+  data.pm1  = pm1;
+  data.pm25 = pm25;
+  data.pm10 = pm10;
+  data.pm_ok = true;
+  Logger.printf("  PM1.0:  %.3f ug/m3\n", data.pm1);
+  Logger.printf("  PM2.5:  %.3f ug/m3\n", data.pm25);
+  Logger.printf("  PM10:   %.3f ug/m3\n", data.pm10);
+
+  // Temp/hum internes du capteur — purement informatif (la temp/hum metier vient du BME280)
   uint16_t temp_raw = readU16(REG_TEMP_INT);
   uint16_t hum_raw  = readU16(REG_HUM_INT);
-
   if (temp_raw != 0xFFFF)
     Logger.printf("  Temp (interne): %.1f C\n", temp_raw / 100.0);
   if (hum_raw != 0xFFFF)
@@ -96,16 +153,34 @@ static void readMHZ19() {
   Logger.println("[MH-Z19] Reading...");
 
   int co2 = mhz19.getCO2();
+  uint8_t err = mhz19.errorCode;
 
-  if (co2 > 0) {
-    data.co2 = co2;
-    data.co2_ok = true;
-    Logger.printf("  CO2:  %d ppm\n", co2);
-  } else {
+  // 1) Verifier l'errorCode de la lib WifWaf
+  if (err != RESULT_OK) {
     data.co2_ok = false;
-    Logger.println("  CO2:  error or warming up");
+    switch (err) {
+      case RESULT_NULL:    Logger.println("  Pas de reponse (NULL)"); break;
+      case RESULT_TIMEOUT: Logger.println("  Timeout UART — capteur deconnecte ?"); break;
+      case RESULT_MATCH:   Logger.println("  Header de trame invalide"); break;
+      case RESULT_CRC:     Logger.println("  Checksum invalide (bruit ligne ?)"); break;
+      case RESULT_FILTER:  Logger.println("  Valeur filtree par la lib (warm-up detecte)"); break;
+      default:             Logger.printf("  Erreur lib MHZ19: %u\n", err); break;
+    }
+    Logger.println();
+    return;
   }
 
+  // 2) Filtrer les valeurs hors plage physique (400-5000 ppm)
+  if (co2 < MHZ_CO2_MIN || co2 > MHZ_CO2_MAX) {
+    data.co2_ok = false;
+    Logger.printf("  CO2 hors plage: %d ppm (attendu %d-%d)\n", co2, MHZ_CO2_MIN, MHZ_CO2_MAX);
+    Logger.println();
+    return;
+  }
+
+  data.co2 = co2;
+  data.co2_ok = true;
+  Logger.printf("  CO2:  %d ppm\n", co2);
   Logger.printf("  Temp (MH-Z19): %d C\n", mhz19.getTemperature());
   Logger.println();
 }
