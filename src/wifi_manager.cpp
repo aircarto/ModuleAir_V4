@@ -23,6 +23,103 @@ static bool wifiConnected = false;
 static bool apMode = false;
 static int lastAPClients = 0;
 
+// ── Smart-connect : distinguer "AP absent" vs "echec transitoire" ──
+// Strategie eprouvee (cf. ESPHome, Tasmota) : on tente une fois, si echec on
+// scan pour voir si l'AP est physiquement la. Si absent -> mode AP direct
+// (capteur deplace, inutile de retry). Si present + auth fail -> mode AP direct
+// (mdp probablement faux). Sinon -> on retry une fois (probable bug temporaire :
+// box en train de rebooter, surcharge, etc.) avant de tomber en mode AP.
+
+#define WIFI_MAX_ATTEMPTS 2  // tentatives totales avant fallback AP
+
+enum WifiFailGroup {
+  WFG_NONE,            // pas d'echec (encore)
+  WFG_AP_NOT_FOUND,    // SSID introuvable
+  WFG_AUTH,            // auth refusee (mdp faux)
+  WFG_AP_REJECT,       // AP nous a refoule
+  WFG_TRANSIENT,       // autre / inconnu / transitoire
+};
+
+static volatile uint8_t lastDisconnectReason = 0;
+
+static void onWifiEvent(WiFiEvent_t e, WiFiEventInfo_t info) {
+  if (e == ARDUINO_EVENT_WIFI_STA_DISCONNECTED) {
+    lastDisconnectReason = info.wifi_sta_disconnected.reason;
+  }
+}
+
+// Classification basee sur les wifi_err_reason_t d'ESP-IDF.
+// Sur arduino-esp32 3.x un mauvais mdp WPA2 donne typiquement 15 (4WAY_HANDSHAKE_TIMEOUT)
+// ou 204 (HANDSHAKE_TIMEOUT), rarement 202 (AUTH_FAIL). On groupe tout l'auth ensemble.
+static WifiFailGroup classifyReason(uint8_t r) {
+  switch (r) {
+    case 200:  // BEACON_TIMEOUT
+    case 201:  // NO_AP_FOUND
+      return WFG_AP_NOT_FOUND;
+    case 0:    // legacy bug ESP-IDF #2359
+    case 15:   // 4WAY_HANDSHAKE_TIMEOUT (mdp WPA2)
+    case 16:   // GROUP_KEY_UPDATE_TIMEOUT
+    case 23:   // IEEE_802_1X_AUTH_FAILED
+    case 24:   // CIPHER_SUITE_REJECTED
+    case 202:  // AUTH_FAIL
+    case 204:  // HANDSHAKE_TIMEOUT
+      return WFG_AUTH;
+    case 5:    // ASSOC_TOOMANY
+    case 6:    // NOT_AUTHED
+    case 7:    // NOT_ASSOCED
+    case 13:   // IE_INVALID
+    case 14:   // MIC_FAILURE
+    case 203:  // ASSOC_FAIL
+      return WFG_AP_REJECT;
+    default:
+      return WFG_TRANSIENT;
+  }
+}
+
+static const char* failGroupLabel(WifiFailGroup g) {
+  switch (g) {
+    case WFG_AP_NOT_FOUND: return "AP introuvable";
+    case WFG_AUTH:         return "mdp/auth refuse";
+    case WFG_AP_REJECT:    return "AP a refoule";
+    case WFG_TRANSIENT:    return "transitoire/inconnu";
+    default:               return "rien";
+  }
+}
+
+// Tentative de connexion avec timeout. Reset le reason avant pour pouvoir
+// le lire apres. Renvoie true si connecte avant le timeout.
+static bool wifiTryConnect(const String& ssid, const String& password, unsigned long timeoutMs) {
+  lastDisconnectReason = 0;
+  WiFi.disconnect(true);
+  delay(100);
+  WiFi.begin(ssid.c_str(), password.c_str());
+  unsigned long start = millis();
+  while (WiFi.status() != WL_CONNECTED && millis() - start < timeoutMs) {
+    delay(500);
+    displayShowWifiDots();
+    Logger.print(".");
+  }
+  Logger.println();
+  return WiFi.status() == WL_CONNECTED;
+}
+
+// Lance un scan synchrone (~2-4s) et renvoie true si le SSID est visible.
+static bool wifiSsidIsVisible(const String& ssid) {
+  Logger.printf("[WiFi] Scan pour verifier presence de '%s'...\n", ssid.c_str());
+  int n = WiFi.scanNetworks();
+  bool found = false;
+  for (int i = 0; i < n; i++) {
+    if (WiFi.SSID(i) == ssid) {
+      found = true;
+      Logger.printf("[WiFi] SSID trouve au scan (RSSI %d dBm)\n", WiFi.RSSI(i));
+      break;
+    }
+  }
+  if (!found) Logger.printf("[WiFi] SSID '%s' absent du scan (%d reseaux vus)\n", ssid.c_str(), n);
+  WiFi.scanDelete();
+  return found;
+}
+
 // Résultats du scan WiFi (mis en cache)
 static int scanCount = -1;
 static bool scanInProgress = false;
@@ -808,21 +905,38 @@ void wifiManagerInit() {
 
   if (ssid.length() > 0) {
     Logger.printf("[WiFi] Saved SSID found: %s\n", ssid.c_str());
-    Logger.printf("[WiFi] Connecting to %s...\n", ssid.c_str());
-    displayShowWifiConnecting(ssid.c_str());
     WiFi.mode(WIFI_STA);
     WiFi.setHostname(MDNS_NAME);
-    WiFi.begin(ssid.c_str(), password.c_str());
+    WiFi.onEvent(onWifiEvent);
+    displayShowWifiConnecting(ssid.c_str());
 
-    unsigned long start = millis();
-    while (WiFi.status() != WL_CONNECTED && millis() - start < WIFI_CONNECT_TIMEOUT) {
-      delay(500);
-      displayShowWifiDots();
-      Logger.print(".");
+    // Tentative 1
+    Logger.printf("[WiFi] Tentative 1/%d (timeout %ds)...\n", WIFI_MAX_ATTEMPTS, WIFI_CONNECT_TIMEOUT / 1000);
+    bool connected = wifiTryConnect(ssid, password, WIFI_CONNECT_TIMEOUT);
+
+    // Si echec : decider via scan + classification reason si on retry ou pas
+    if (!connected) {
+      WifiFailGroup g = classifyReason(lastDisconnectReason);
+      Logger.printf("[WiFi] Echec tentative 1 (reason=%u, %s)\n",
+                    lastDisconnectReason, failGroupLabel(g));
+
+      if (g == WFG_AUTH) {
+        Logger.println("[WiFi] -> mode AP direct (mdp probablement faux, retry inutile)");
+      } else if (!wifiSsidIsVisible(ssid)) {
+        Logger.println("[WiFi] -> mode AP direct (SSID absent, capteur deplace ou AP eteint)");
+      } else {
+        // SSID present + echec non-auth -> probablement transitoire, on retry
+        Logger.printf("[WiFi] SSID visible, retry... (tentative 2/%d)\n", WIFI_MAX_ATTEMPTS);
+        connected = wifiTryConnect(ssid, password, WIFI_CONNECT_TIMEOUT);
+        if (!connected) {
+          g = classifyReason(lastDisconnectReason);
+          Logger.printf("[WiFi] Echec tentative 2 (reason=%u, %s) -> mode AP\n",
+                        lastDisconnectReason, failGroupLabel(g));
+        }
+      }
     }
-    Logger.println();
 
-    if (WiFi.status() == WL_CONNECTED) {
+    if (connected) {
       wifiConnected = true;
       apMode = false;
       Logger.printf("[WiFi] Connected!\n");
@@ -836,7 +950,6 @@ void wifiManagerInit() {
       delay(3000);
       displayShowLogo();
     } else {
-      Logger.printf("[WiFi] Connection failed (status: %d)\n", WiFi.status());
       Logger.println("[WiFi] Falling back to AP mode...");
     }
   } else {
