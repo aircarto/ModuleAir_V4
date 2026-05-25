@@ -4,6 +4,7 @@
 #include "config.h"
 #include "logger.h"
 #include "display.h"
+#include "logo_storage.h"
 #include "wifi_manager.h"
 #include "sensors.h"
 #include "data_sender.h"
@@ -30,6 +31,7 @@ void setup() {
 
   configInit();
   settingsInit();
+  logoStorageInit();
   displayInit();
   displayShowBootAnim();
 
