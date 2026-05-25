@@ -516,21 +516,45 @@ static void handleRootConnected() {
     server.sendContent(chunk);
   }
 
-  // Logs
+  // Logs — tail incremental avec curseur seq, smart scroll, pause/clear
   server.sendContent(
-    "<div class='card wide'><h2>Logs</h2>"
+    "<div class='card wide'><h2 style='display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px'>"
+    "<span>Logs en temps reel</span>"
+    "<span style='font-size:0.75em;font-weight:normal;color:#888'>"
+    "<span id='log-status' style='margin-right:10px'>&#9679; live</span>"
+    "<button id='log-pause' style='width:auto;padding:4px 10px;font-size:0.9em' onclick='toggleLogPause()'>Pause</button> "
+    "<button style='width:auto;padding:4px 10px;font-size:0.9em;background:#333;color:#aaa' onclick='clearLogs()'>Vider</button>"
+    "</span></h2>"
     "<pre id='log-box' style='background:#0a0a1a;padding:10px;border-radius:8px;"
-    "max-height:300px;overflow-y:auto;font-size:0.8em;color:#aaa;white-space:pre-wrap;word-break:break-all;'>"
-    "Chargement...</pre>"
+    "height:50vh;min-height:300px;overflow-y:auto;font-size:0.8em;color:#aaa;"
+    "white-space:pre-wrap;word-break:break-all;margin:0'>Chargement...</pre>"
     "<script>"
-    "function refreshLogs(){"
-    "fetch('/logs').then(r=>r.text()).then(t=>{"
-    "var b=document.getElementById('log-box');"
-    "b.textContent=t||'(vide)';"
-    "b.scrollTop=b.scrollHeight;"
-    "});"
+    "var logSeq=0,logPaused=false,logFirst=true;"
+    "var logBox=document.getElementById('log-box');"
+    "var logStatus=document.getElementById('log-status');"
+    "function clearLogs(){logBox.textContent='';}"
+    "function toggleLogPause(){"
+    "logPaused=!logPaused;"
+    "document.getElementById('log-pause').textContent=logPaused?'Reprendre':'Pause';"
+    "logStatus.innerHTML=logPaused?'&#9679; pause':'&#9679; live';"
+    "logStatus.style.color=logPaused?'#ffcc80':'#a5d6a7';"
     "}"
-    "refreshLogs();setInterval(refreshLogs,5000);"
+    "function tailLogs(){"
+    "if(logPaused)return;"
+    "fetch('/logs?since='+logSeq).then(function(r){"
+    "var s=parseInt(r.headers.get('X-Log-Seq'));"
+    "if(!isNaN(s))logSeq=s;"
+    "return r.text();"
+    "}).then(function(t){"
+    "if(logFirst){logBox.textContent=t||'(aucun log)';logFirst=false;logBox.scrollTop=logBox.scrollHeight;return;}"
+    "if(!t)return;"
+    "var atBottom=logBox.scrollHeight-logBox.scrollTop-logBox.clientHeight<60;"
+    "logBox.textContent+=t;"
+    "if(atBottom)logBox.scrollTop=logBox.scrollHeight;"
+    "}).catch(function(){});"
+    "}"
+    "logStatus.style.color='#a5d6a7';"
+    "tailLogs();setInterval(tailLogs,1000);"
     "</script></div>");
 
   // Mise à jour OTA
@@ -795,11 +819,19 @@ static void handleDebugSplash() {
 // =============================================
 
 static void handleLogs() {
+  // Tail incremental : le client passe ?since=N (dernier seq qu'il a vu),
+  // on renvoie uniquement les nouvelles lignes + le seq courant en header.
+  uint32_t since = 0;
+  if (server.hasArg("since")) since = (uint32_t)strtoul(server.arg("since").c_str(), nullptr, 10);
+
+  uint32_t currentSeq = loggerCurrentSeq();
+  server.sendHeader("X-Log-Seq", String(currentSeq));
+  server.sendHeader("Access-Control-Expose-Headers", "X-Log-Seq");
+
   // Streaming chunked : evite de construire une grosse String en heap
-  // (qui doublerait la taille du buffer logger en RAM le temps de l'envoi).
   server.setContentLength(CONTENT_LENGTH_UNKNOWN);
   server.send(200, "text/plain", "");
-  loggerForEachLine([](const char* line) {
+  loggerForEachLineSince(since, [](uint32_t seq, const char* line) {
     server.sendContent(line);
     server.sendContent("\n");
   });
