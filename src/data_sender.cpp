@@ -86,13 +86,16 @@ SendResult dataSenderSend() {
     json += ",\"ISO_VB_unit\":\"" + String(d.hcho, 1) + " ppb\"";
   }
 
-  // error_flags (bitmask)
+  // error_flags (bitmask, cf. aircarto-protocols/formats/json-payload.md)
+  // Le ModuleAir n'a que 3 bits applicables : BME280, NextPM, CO2.
+  // Les bits 0/1 (RTC), 4 (ENVEA), 5 (NOISE), 6 (MPPT) restent a 0 car le
+  // ModuleAir n'embarque pas ces capteurs — on ne doit PAS les detourner.
+  // CCS811 (TVOC) et SFA40 (HCHO) n'ont pas de bit dedie dans le protocole :
+  // leur absence est implicite (pas de champ ISO correspondant dans le JSON).
   uint8_t errorFlags = 0;
-  if (!d.bme_ok)   errorFlags |= 0x04;  // Bit 2 = BME280_ERROR
-  if (!d.pm_ok)    errorFlags |= 0x08;  // Bit 3 = NPM_ERROR
-  if (!d.ccs_ok)   errorFlags |= 0x10;  // Bit 4 = CCS811_ERROR
-  if (!d.sfa40_ok) errorFlags |= 0x20;  // Bit 5 = SFA40_ERROR
-  if (!d.co2_ok)   errorFlags |= 0x80;  // Bit 7 = MHZ19_ERROR
+  if (!d.bme_ok) errorFlags |= 0x04;  // Bit 2 = BME280_ERROR
+  if (!d.pm_ok)  errorFlags |= 0x08;  // Bit 3 = NPM_ERROR
+  if (!d.co2_ok) errorFlags |= 0x80;  // Bit 7 = CO2_ERROR (MH-Z19 sur ModuleAir)
   json += ",\"error_flags\":" + String(errorFlags);
 
   // npm_status (registre statut NextPM)
