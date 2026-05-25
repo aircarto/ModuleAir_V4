@@ -328,6 +328,69 @@ static void handleRootConnected() {
 
   server.sendContent("<div class='grid'>");
 
+  // ── Banniere d'alertes (visible uniquement s'il y a des erreurs) ──
+  // On ne pollue pas l'UI quand tout va bien : la banniere n'apparait
+  // que si au moins un capteur active est en erreur.
+  {
+    const SensorSettings& sc = settingsGetSensors();
+    bool hasAlerts =
+        (!d.pm_ok    && sc.npm_enabled)    ||
+        (!d.co2_ok   && sc.mhz19_enabled)  ||
+        (!d.bme_ok   && sc.bme280_enabled) ||
+        (!d.ccs_ok   && sc.ccs811_enabled) ||
+        (!d.sfa40_ok && sc.sfa40_enabled);
+
+    if (hasAlerts) {
+      String alerts = "<div class='card wide' style='background:#3e1a1a;border-left:4px solid #ef5350'>"
+                      "<h2 style='color:#ef9a9a;display:flex;align-items:center;gap:10px;margin-bottom:8px'>"
+                      "<span style='font-size:1.4em'>&#9888;</span> Alertes capteurs"
+                      "</h2>";
+
+      // NextPM — on decode npm_status pour donner la cause precise
+      if (!d.pm_ok && sc.npm_enabled) {
+        String detail;
+        if (d.npmStatus == 0xFF) {
+          detail = "Communication impossible (capteur muet)";
+        } else if (d.npmStatus == 0) {
+          detail = "Valeur aberrante ou lecture echouee";
+        } else {
+          const char* sep = "";
+          if (d.npmStatus & 0x80) { detail += sep; detail += "laser HS";        sep = ", "; }
+          if (d.npmStatus & 0x40) { detail += sep; detail += "memoire KO";      sep = ", "; }
+          if (d.npmStatus & 0x20) { detail += sep; detail += "ventilateur HS";  sep = ", "; }
+          if (d.npmStatus & 0x10) { detail += sep; detail += "T/H interne KO";  sep = ", "; }
+          if (d.npmStatus & 0x08) { detail += sep; detail += "humidite excessive"; sep = ", "; }
+          if (d.npmStatus & 0x04) { detail += sep; detail += "pas pret";        sep = ", "; }
+          if (d.npmStatus & 0x02) { detail += sep; detail += "mode degrade";    sep = ", "; }
+          if (d.npmStatus & 0x01) { detail += sep; detail += "en veille";       sep = ", "; }
+          if (detail.length() == 0) detail = "status 0x" + String(d.npmStatus, HEX);
+        }
+        alerts += "<div class='data-row'><span class='data-label'>NextPM (PM)</span>"
+                  "<span class='data-value bad' style='text-align:right'>" + detail + "</span></div>";
+      }
+
+      if (!d.co2_ok && sc.mhz19_enabled) {
+        alerts += "<div class='data-row'><span class='data-label'>MH-Z19 (CO2)</span>"
+                  "<span class='data-value bad' style='text-align:right'>Erreur de lecture (voir logs)</span></div>";
+      }
+      if (!d.bme_ok && sc.bme280_enabled) {
+        alerts += "<div class='data-row'><span class='data-label'>BME280 (T/H/P)</span>"
+                  "<span class='data-value bad' style='text-align:right'>Capteur introuvable</span></div>";
+      }
+      if (!d.ccs_ok && sc.ccs811_enabled) {
+        alerts += "<div class='data-row'><span class='data-label'>CCS811 (COV)</span>"
+                  "<span class='data-value bad' style='text-align:right'>Capteur introuvable</span></div>";
+      }
+      if (!d.sfa40_ok && sc.sfa40_enabled) {
+        alerts += "<div class='data-row'><span class='data-label'>SFA40 (HCHO)</span>"
+                  "<span class='data-value bad' style='text-align:right'>Capteur introuvable</span></div>";
+      }
+
+      alerts += "</div>";
+      server.sendContent(alerts);
+    }
+  }
+
   // Status WiFi
   String chunk = "<div class='card span2'><h2>Connexion</h2>";
   chunk += "<div class='data-row'><span class='data-label'>Reseau</span><span class='data-value'>" + WiFi.SSID() + "</span></div>";
