@@ -13,6 +13,7 @@ Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versi
 - Ecrans matrice : `SCR_PM_ERR` et `SCR_CO2_ERR` ne s'affichent plus quand l'utilisateur a desactive le capteur correspondant (NPM ou MH-Z19) — on cache l'ecran au lieu de signaler une erreur fictive.
 - Web dashboard (card Systeme) : les badges capteurs deviennent tri-state (vert "ok" / rouge "err" / gris barre "off") au lieu d'afficher en rouge un capteur juste desactive par l'utilisateur.
 - Toggle NextPM / MH-Z19 : reactivation a la volee sans reboot. Pattern ESPHome / Tasmota : les UART restent ouverts en permanence au boot peu importe le toggle, et on gate uniquement la lecture. Lors d'une transition desactive->actif, drain du buffer RX + re-bind de la lib pour eviter une trame corrompue au premier cycle. La mention "Redemarrage requis" disparait de l'UI.
+- Web UI : les toggles d'ecrans matrice se grisent automatiquement quand leur capteur parent est desactive (ex: si NextPM est off, les toggles PM1/PM2.5/PM10 deviennent non-cliquables avec mention "(capteur off)"). Les preferences utilisateur sont conservees — quand on reactive le capteur, les toggles d'ecrans retrouvent l'etat precedent automatiquement.
 - OTA : ecran matrice reste lit pendant toute la mise a jour (avant : noir entre les paliers car le refresh ISR etait mis en pause)
 - OTA : debit du telechargement multiplie par ~10-20x grace a trois optims combinees :
   - `WiFi.setSleep(false)` pendant l'OTA (le power-save par defaut ajoute ~100-300 ms de latence par paquet)

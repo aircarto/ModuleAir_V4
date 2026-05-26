@@ -185,6 +185,9 @@ button.update:hover{background:#ffa726;}
 #ota-btn{display:none;}
 .toggle-row{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #0f3460;}
 .toggle-row:last-child{border-bottom:none;}
+.toggle-row.locked{opacity:0.4;}
+.toggle-row.locked span{color:#666;}
+.toggle-hint{font-size:0.75em;color:#888;margin-left:6px;}
 .switch{position:relative;width:40px;height:22px;flex-shrink:0;}
 .switch input{opacity:0;width:0;height:0;}
 .slider{position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background:#333;border-radius:22px;transition:.3s;}
@@ -539,17 +542,32 @@ static void handleRootConnected() {
   // Ecrans affichés
   {
     const ScreenSettings& ss = settingsGetScreens();
+    const SensorSettings& sc = settingsGetSensors();
     chunk = "<div class='card'><h2>Ecrans matrice</h2>";
 
-    // Polluants
+    // Polluants. Each pollutant screen is locked when its parent sensor is
+    // disabled — we keep the user's saved preference (it'll come back when
+    // they re-enable the sensor) but the toggle is greyed out and not
+    // clickable to avoid the "screen toggle is on but nothing shows" trap.
     chunk += "<p style='color:#4fc3f7;font-size:0.85em;margin:0 0 6px;font-weight:bold'>Polluants</p>";
-    const char* pollNames[] = { "PM1", "PM2.5", "PM10", "CO2", "Temperature", "Humidite", "COV (TVOC)", "Formaldehyde" };
-    const char* pollKeys[] = { "pm1", "pm25", "pm10", "co2", "temp", "humi", "tvoc", "hcho" };
-    bool pollVals[] = { ss.pm1, ss.pm25, ss.pm10, ss.co2, ss.temp, ss.humi, ss.tvoc, ss.hcho };
+    const char* pollNames[]  = { "PM1", "PM2.5", "PM10", "CO2", "Temperature", "Humidite", "COV (TVOC)", "Formaldehyde" };
+    const char* pollKeys[]   = { "pm1", "pm25", "pm10", "co2", "temp", "humi", "tvoc", "hcho" };
+    bool pollVals[]          = { ss.pm1, ss.pm25, ss.pm10, ss.co2, ss.temp, ss.humi, ss.tvoc, ss.hcho };
+    bool pollParentOn[]      = { sc.npm_enabled, sc.npm_enabled, sc.npm_enabled,
+                                 sc.mhz19_enabled,
+                                 sc.bme280_enabled, sc.bme280_enabled,
+                                 sc.ccs811_enabled,
+                                 sc.sfa40_enabled };
     for (int i = 0; i < 8; i++) {
-      chunk += "<div class='toggle-row'><span>" + String(pollNames[i]) + "</span>";
+      bool locked = !pollParentOn[i];
+      chunk += "<div class='toggle-row";
+      if (locked) chunk += " locked";
+      chunk += "'><span>" + String(pollNames[i]);
+      if (locked) chunk += "<span class='toggle-hint'>(capteur off)</span>";
+      chunk += "</span>";
       chunk += "<label class='switch'><input type='checkbox'";
       if (pollVals[i]) chunk += " checked";
+      if (locked) chunk += " disabled";
       chunk += " onchange=\"fetch('/set-screen',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'key=" + String(pollKeys[i]) + "&val='+(this.checked?'1':'0')})\">";
       chunk += "<span class='slider'></span></label></div>";
     }
