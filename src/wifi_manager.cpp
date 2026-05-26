@@ -996,9 +996,9 @@ static void handleDoUpdate() {
 
   WiFiClientSecure secClient;
   secClient.setInsecure();  // Skip certificate validation
-  // Larger RX buffer keeps the TLS record reassembly fast; small TX buffer
-  // is enough since we only send the GET request once.
-  secClient.setBufferSizes(16384, 512);
+  // Note: setBufferSizes() is an ESP8266/BearSSL API; on ESP32 mbedTLS the
+  // TLS record buffer is fixed at 16 KB internally, so there's nothing to
+  // tune here. Just raise the read timeout to survive TLS slow start.
   secClient.setTimeout(60000);  // 60s — HTTPUpdate's internal 8s default trips on slow start
   String firmwareUrl = String(OTA_UPDATE_URL) + "/firmware.bin?sensor=" + deviceId + "&current_version=" + FIRMWARE_VERSION;
 

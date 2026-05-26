@@ -18,7 +18,7 @@ Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versi
 - OTA : debit du telechargement multiplie par ~10-20x grace a trois optims combinees :
   - `WiFi.setSleep(false)` pendant l'OTA (le power-save par defaut ajoute ~100-300 ms de latence par paquet)
   - `SPIFFS.end()` avant l'update (la flash SPI est single-master, chaque lecture SPIFFS stalle l'ecriture OTA)
-  - `WiFiClientSecure.setBufferSizes(16384, 512)` + `setTimeout(60000)` (HTTPUpdate a un timeout court hardcode qui trip sur slow start TLS)
+  - `WiFiClientSecure.setTimeout(60000)` (HTTPUpdate a un timeout court hardcode qui trip sur slow start TLS)
 - OTA : log "[OTA] Progress: X%" desormais limite aux paliers de 10% (avant : un log par chunk = ~400 lignes pour un download)
 
 ## [0.3.0] - 2026-05-26
