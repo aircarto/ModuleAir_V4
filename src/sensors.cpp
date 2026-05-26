@@ -15,6 +15,15 @@ static ModbusMaster nextpm;
 static HardwareSerial mhzSerial(2);
 static MHZ19 mhz19;
 
+// Previous toggle state, used to detect disabled->enabled transitions in
+// sensorsRead() so we can drain the stale RX buffer and re-bind the library
+// to the (already opened) UART. We follow the ESPHome / Tasmota convention:
+// keep the UART permanently begun at boot regardless of the toggle, and gate
+// the actual read at poll time. This avoids HardwareSerial::end()/begin()
+// re-init bugs that arduino-esp32 has accumulated over the years.
+static bool prevNpmEnabled = false;
+static bool prevMhzEnabled = false;
+
 static Adafruit_BME280 bme;
 static bool bmeFound = false;
 
@@ -433,22 +442,23 @@ static void readSFA40() {
 void sensorsInit() {
   const SensorSettings& cfg = settingsGetSensors();
 
-  if (cfg.npm_enabled) {
-    nextpmSerial.begin(NEXTPM_BAUD, SERIAL_8E1, NEXTPM_RX, NEXTPM_TX);
-    nextpm.begin(NEXTPM_ADDR, nextpmSerial);
-    Logger.println("NextPM init OK (Modbus RTU)");
-  } else {
-    Logger.println("NextPM disabled");
-  }
+  // UART sensors: always open the port at boot regardless of the user toggle.
+  // The toggle gates the *read*, not the hardware lifecycle. This means a
+  // user re-enabling NPM or MH-Z19 from the web UI gets a working sensor on
+  // the next cycle without needing a reboot, and we never call
+  // HardwareSerial::end() (which has a long bug history on ESP32).
+  nextpmSerial.begin(NEXTPM_BAUD, SERIAL_8E1, NEXTPM_RX, NEXTPM_TX);
+  nextpm.begin(NEXTPM_ADDR, nextpmSerial);
+  Logger.println(cfg.npm_enabled ? "NextPM init OK (Modbus RTU)"
+                                 : "NextPM init OK (Modbus RTU, disabled by user)");
+  prevNpmEnabled = cfg.npm_enabled;
 
-  if (cfg.mhz19_enabled) {
-    mhzSerial.begin(MHZ19_BAUD, SERIAL_8N1, MHZ19_RX, MHZ19_TX);
-    mhz19.begin(mhzSerial);
-    mhz19.autoCalibration(false);
-    Logger.println("MH-Z19 init OK");
-  } else {
-    Logger.println("MH-Z19 disabled");
-  }
+  mhzSerial.begin(MHZ19_BAUD, SERIAL_8N1, MHZ19_RX, MHZ19_TX);
+  mhz19.begin(mhzSerial);
+  mhz19.autoCalibration(false);
+  Logger.println(cfg.mhz19_enabled ? "MH-Z19 init OK"
+                                   : "MH-Z19 init OK (disabled by user)");
+  prevMhzEnabled = cfg.mhz19_enabled;
 
   Wire.begin(I2C_SDA, I2C_SCL);
   Wire.setClock(100000);
@@ -508,16 +518,49 @@ void sensorsInit() {
   }
 }
 
+// On a disabled->enabled UART transition, the sensor has been streaming or
+// idling on a line whose RX FIFO we haven't drained for an arbitrary amount
+// of time. Read it dry, give it a brief settle window, and re-attach the
+// library to the stream (calling begin() again is free — both libs just
+// store a Stream* — but it resets any internal state machine).
+static void rearmNpmUart() {
+  while (nextpmSerial.available()) nextpmSerial.read();
+  delay(80);
+  nextpm.begin(NEXTPM_ADDR, nextpmSerial);
+  Logger.println("[NextPM] Re-enabled at runtime");
+}
+
+static void rearmMhzUart() {
+  while (mhzSerial.available()) mhzSerial.read();
+  delay(80);
+  mhz19.begin(mhzSerial);
+  mhz19.autoCalibration(false);
+  Logger.println("[MH-Z19] Re-enabled at runtime");
+}
+
 void sensorsRead() {
   const SensorSettings& cfg = settingsGetSensors();
 
   // When a sensor is disabled by the user, force its _ok flag to false so
   // downstream consumers (data_sender, display, web dashboard) stop treating
   // the last cached reading as fresh data. Without this, toggling a sensor
-  // off only stops the read but leaves stale values being sent for up to
-  // a full reboot cycle.
-  if (cfg.npm_enabled)    readNextPM();  else data.pm_ok    = false;
-  if (cfg.mhz19_enabled)  readMHZ19();   else data.co2_ok   = false;
+  // off only stops the read but leaves stale values being sent.
+  if (cfg.npm_enabled) {
+    if (!prevNpmEnabled) rearmNpmUart();
+    readNextPM();
+  } else {
+    data.pm_ok = false;
+  }
+  prevNpmEnabled = cfg.npm_enabled;
+
+  if (cfg.mhz19_enabled) {
+    if (!prevMhzEnabled) rearmMhzUart();
+    readMHZ19();
+  } else {
+    data.co2_ok = false;
+  }
+  prevMhzEnabled = cfg.mhz19_enabled;
+
   if (cfg.bme280_enabled) readBME280();  else data.bme_ok   = false;
   if (cfg.ccs811_enabled) readCCS811();  else data.ccs_ok   = false;
   if (cfg.sfa40_enabled)  readSFA40();   else data.sfa40_ok = false;

@@ -521,7 +521,7 @@ static void handleRootConnected() {
   {
     const SensorSettings& sc = settingsGetSensors();
     chunk = "<div class='card'><h2>Capteurs actifs</h2>"
-            "<p style='color:#888;font-size:0.8em;margin:0 0 8px'>Redemarrage requis</p>";
+            "<p style='color:#888;font-size:0.8em;margin:0 0 8px'>Effet immediat (au prochain cycle de mesure)</p>";
     const char* sensorNames[] = { "NextPM (PM)", "MH-Z19 (CO2)", "BME280 (T/H/P)", "CCS811 (COV)", "SFA40 (HCHO)" };
     const char* sensorKeys[] = { "npm", "mhz19", "bme280", "ccs811", "sfa40" };
     bool sensorVals[] = { sc.npm_enabled, sc.mhz19_enabled, sc.bme280_enabled, sc.ccs811_enabled, sc.sfa40_enabled };
@@ -852,7 +852,7 @@ static void handleSetSensor() {
   String key = server.arg("key");
   bool val = server.arg("val") == "1";
   settingsSetSensorEnabled(key.c_str(), val);
-  Logger.printf("[Web] Sensor %s = %s (reboot required)\n", key.c_str(), val ? "on" : "off");
+  Logger.printf("[Web] Sensor %s = %s\n", key.c_str(), val ? "on" : "off");
   server.send(200, "text/plain", "ok");
 }
 

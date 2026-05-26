@@ -12,6 +12,7 @@ Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versi
 - Toggle capteur : un capteur volontairement desactive ne leve plus son bit `error_flags` (BME280=0x04, NPM=0x08, MHZ19=0x80) cote serveur — le bit est gate par `enabled && !ok` au lieu de `!ok` seul, pour distinguer "panne" de "choix utilisateur".
 - Ecrans matrice : `SCR_PM_ERR` et `SCR_CO2_ERR` ne s'affichent plus quand l'utilisateur a desactive le capteur correspondant (NPM ou MH-Z19) — on cache l'ecran au lieu de signaler une erreur fictive.
 - Web dashboard (card Systeme) : les badges capteurs deviennent tri-state (vert "ok" / rouge "err" / gris barre "off") au lieu d'afficher en rouge un capteur juste desactive par l'utilisateur.
+- Toggle NextPM / MH-Z19 : reactivation a la volee sans reboot. Pattern ESPHome / Tasmota : les UART restent ouverts en permanence au boot peu importe le toggle, et on gate uniquement la lecture. Lors d'une transition desactive->actif, drain du buffer RX + re-bind de la lib pour eviter une trame corrompue au premier cycle. La mention "Redemarrage requis" disparait de l'UI.
 - OTA : ecran matrice reste lit pendant toute la mise a jour (avant : noir entre les paliers car le refresh ISR etait mis en pause)
 - OTA : debit du telechargement multiplie par ~10-20x grace a trois optims combinees :
   - `WiFi.setSleep(false)` pendant l'OTA (le power-save par defaut ajoute ~100-300 ms de latence par paquet)
