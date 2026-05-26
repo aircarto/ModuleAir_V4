@@ -4,6 +4,29 @@ Toutes les modifications notables du firmware ModuleAir V4 sont documentées ici
 
 Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versioning [Semantic Versioning](https://semver.org/).
 
+## [0.3.0] - 2026-05-26
+
+### Ajouté
+
+- Badge connectivité WiFi en haut a droite des ecrans de donnees (3 etats : connecte / connexion / hors-ligne), icone redessinee en 3 arcs
+- Ecrans de connexion WiFi portes de la V2.1 : icone animee + layout 3 lignes, duree minimale d'affichage 1.8 s
+- Nouvelle animation de boot : spinner circulaire avec trainee anti-aliasee et fondu progressif (1 tour de spin + 1 tour de fade)
+- Ecran d'erreur dedie pour les capteurs PM (NextPM) et CO2 (MH-Z19) defaillants
+- Bandeau d'alertes en haut du dashboard web pour signaler les capteurs en erreur
+- Streaming des logs sur `/logs` en mode tail cursor-based avec auto-scroll intelligent, pause et clear
+- Logos de boot stockes en SPIFFS (3 logos) et charges en RAM a l'init pour liberer de la flash
+- Re-detection live des capteurs I2C a chaque cycle de mesure (BME280 / CCS811 / SFA40 hot-plug)
+- Connexion WiFi "smart" : decision scan-based pour basculer en mode AP plutot que retry aveugle
+
+### Modifié
+
+- Detection d'erreur durcie pour NextPM et MH-Z19 (moins de faux positifs / faux negatifs)
+- Position verticale des unites sur les ecrans de mesure (compensation auto-shift +6 du setFont)
+
+### Corrigé
+
+- `data_sender` : arret de l'usage detourne des bits ENVEA/NOISE pour CCS811 et SFA40 dans `error_flags`
+
 ## [0.2.9] - 2026-04-07
 
 ### Modifié
