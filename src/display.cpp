@@ -880,6 +880,81 @@ void displayShowBleReboot() {
 // across the whole download — pausing it (as the old code did) blacked out
 // the screen between progress ticks because HUB75 LEDs need constant scan.
 // Framebuffer updates here are picked up by the next ISR tick (~4 ms).
+//
+// Layout (64x32 matrix) during download:
+//
+//   ┌─────────────────────────────────────────────────────┐
+//   │ Mise a              ░▓█░                            │  y=0-7
+//   │ jour                ▓███▓                           │  y=8-15
+//   │                      ░█░                            │  y=16-23
+//   │ 42 %                                                │  y=22-29
+//   └─────────────────────────────────────────────────────┘
+//      <─── text zone ───>  <──── spinner zone ────>
+//        x=0..43               x=44..63
+//
+// The spinner is a tiny anti-aliased version of the boot animation drawn
+// every progress callback, so the user sees continuous motion even when
+// the percentage is stuck for a while (slow download). The percentage
+// text is only redrawn when it actually changes value, which eliminates
+// the flicker the old fillRect-the-whole-zone approach caused.
+
+// Anti-aliased OTA spinner. Frame counter advances once per call so the
+// rotation reflects download activity — if the callback stops firing,
+// the spinner freezes, which is itself a useful "OTA stalled" hint.
+static void drawOtaSpinner() {
+  static int frame = 0;
+  frame++;
+
+  const float cx = 53.0f, cy = 12.0f;
+  const float radius = 5.0f;
+  const int tailLen = 14;
+  const int stepsPerLap = 36;  // 10 deg per step
+  const float angleStep = (2.0f * (float)M_PI) / stepsPerLap;
+  const int BS = 14;
+  static uint16_t spinBuf[14 * 14];
+  memset(spinBuf, 0, sizeof(spinBuf));
+  const int bx0 = (int)floorf(cx - BS / 2.0f);
+  const int by0 = (int)floorf(cy - BS / 2.0f);
+
+  uint8_t tailBright[14];
+  for (int i = 0; i < tailLen; i++) {
+    float t = 1.0f - (float)i / tailLen;
+    tailBright[i] = (uint8_t)(t * t * t * 255);
+  }
+
+  float headAngle = (float)frame * angleStep - (float)M_PI / 2.0f;
+  for (int i = 0; i < tailLen; i++) {
+    float a = headAngle - (float)i * angleStep;
+    float fx = cx + radius * cosf(a);
+    float fy = cy + radius * sinf(a);
+    float B = (float)tailBright[i];
+    int x0 = (int)floorf(fx), y0 = (int)floorf(fy);
+    float dx = fx - x0, dy = fy - y0;
+    float w[4] = { (1 - dx) * (1 - dy), dx * (1 - dy), (1 - dx) * dy, dx * dy };
+    const int ox[4] = { 0, 1, 0, 1 };
+    const int oy[4] = { 0, 0, 1, 1 };
+    for (int k = 0; k < 4; k++) {
+      int px = x0 + ox[k] - bx0, py = y0 + oy[k] - by0;
+      if (px >= 0 && px < BS && py >= 0 && py < BS) {
+        uint32_t acc = spinBuf[py * BS + px] + (uint32_t)(B * w[k]);
+        spinBuf[py * BS + px] = (uint16_t)(acc > 255 ? 255 : acc);
+      }
+    }
+  }
+
+  // Blit the accumulator to the framebuffer, tinted orange (r=255, g=140, b=0).
+  // Clear-and-redraw is atomic-enough at this small size that the ISR rarely
+  // catches a torn frame; if it does, the brightness accumulation makes it
+  // visually negligible.
+  for (int by = 0; by < BS; by++) {
+    for (int bx = 0; bx < BS; bx++) {
+      uint8_t b = (uint8_t)spinBuf[by * BS + bx];
+      uint8_t r  = b;
+      uint8_t g  = (uint8_t)((b * 140u) / 255u);
+      display.drawPixel(bx + bx0, by + by0, display.color565(r, g, 0));
+    }
+  }
+}
 
 void displayShowOtaUpdate() {
   Logger.println("[Display] OTA update starting");
@@ -887,41 +962,45 @@ void displayShowOtaUpdate() {
   display.setTextSize(1);
   display.setTextColor(COLOR_ORANGE);
   display.setCursor(1, 0);
-  display.print("Mise a jour");
-  display.setTextColor(COLOR_GRAY);
+  display.print("Mise a");
   display.setCursor(1, 10);
-  display.print("Telecharg...");
-  display.drawRect(2, 22, 60, 7, COLOR_GRAY);
+  display.print("jour");
+  display.setTextColor(COLOR_WHITE);
+  display.setCursor(1, 22);
+  display.print("--%");
+  drawOtaSpinner();
 }
 
 void displayShowOtaProgress(int percent) {
-  static int lastDisplayed = -1;
+  static int lastPct = -2;
   if (percent < 0) percent = 0;
   if (percent > 100) percent = 100;
 
-  // Throttle to 5% steps: redrawing too often during OTA can starve the
-  // download (each fillRect/print touches the framebuffer, and the SPI
-  // flash write loop is sensitive to long-running tasks on the same core).
-  int rounded = (percent / 5) * 5;
-  if (rounded == lastDisplayed && percent != 100) return;
-  lastDisplayed = rounded;
+  // Always advance the spinner — its job is to communicate "still working".
+  drawOtaSpinner();
 
-  // Update only the percentage text (clear just that zone)
-  display.fillRect(1, 10, 62, 8, 0);
-  display.setTextSize(1);
+  // Only redraw the percentage text when the displayed value actually
+  // changes. Throttle to 1% boundaries: enough for smooth perceived
+  // progress without thrashing the framebuffer (which can starve the
+  // SPI flash writer during OTA).
+  if (percent == lastPct) return;
+  lastPct = percent;
+
+  display.fillRect(0, 22, 44, 8, 0);
   display.setTextColor(COLOR_WHITE);
-  String pct = String(percent) + "%";
-  int pctWidth = pct.length() * 6;
-  display.setCursor((MATRIX_WIDTH - pctWidth) / 2, 10);
-  display.print(pct);
+  display.setCursor(1, 22);
+  display.print(percent);
+  display.print(" %");
+}
 
-  // Update only the bar fill (clear just the bar interior)
-  display.fillRect(4, 24, 56, 3, 0);
-  int barWidth = (56 * percent) / 100;
-  if (barWidth > 0) {
-    uint16_t color = percent < 50 ? COLOR_ORANGE : COLOR_GREEN;
-    display.fillRect(4, 24, barWidth, 3, color);
-  }
+// Helper: print a string horizontally centered on the matrix at the given y.
+// Default GFX font is 6 px per char (5 glyph + 1 spacing), so width = 6*len.
+static void printCentered(const char* s, int y) {
+  int width = (int)strlen(s) * 6;
+  int x = (MATRIX_WIDTH - width) / 2;
+  if (x < 0) x = 0;
+  display.setCursor(x, y);
+  display.print(s);
 }
 
 void displayShowOtaDone() {
@@ -929,11 +1008,10 @@ void displayShowOtaDone() {
   display.clearDisplay();
   display.setTextSize(1);
   display.setTextColor(COLOR_GREEN);
-  display.setCursor(1, 4);
-  display.print("Mise a jour");
+  printCentered("Mise a",   1);   // 6 chars  -> x=14
+  printCentered("reussie!", 11);  // 8 chars  -> x=8
   display.setTextColor(COLOR_WHITE);
-  display.setCursor(7, 18);
-  display.print("OK! Reboot");
+  printCentered("Reboot...", 22); // 9 chars  -> x=5
 }
 
 void displayShowOtaFailed() {
@@ -941,11 +1019,10 @@ void displayShowOtaFailed() {
   display.clearDisplay();
   display.setTextSize(1);
   display.setTextColor(COLOR_RED);
-  display.setCursor(1, 4);
-  display.print("Mise a jour");
-  display.setTextColor(COLOR_ORANGE);
-  display.setCursor(13, 18);
-  display.print("Echec!");
+  printCentered("Mise a",  1);   // 6 chars -> x=14
+  printCentered("jour KO", 11);  // 7 chars -> x=11
+  display.setTextColor(COLOR_GRAY);
+  printCentered("Voir logs", 22); // 9 chars -> x=5
 }
 
 // ── Preferences ──
