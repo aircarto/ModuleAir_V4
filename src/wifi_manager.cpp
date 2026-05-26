@@ -180,6 +180,7 @@ button.danger:hover{background:#f44336;}
 .sensor-badge.ok{background:#1b5e20;color:#a5d6a7;}
 .sensor-badge.err{background:#b71c1c;color:#ef9a9a;}
 .sensor-badge.off{background:#37474f;color:#90a4ae;text-decoration:line-through;}
+.sensor-badge.warm{background:#4e342e;color:#ffcc80;}
 button.update{background:#ff9800;}
 button.update:hover{background:#ffa726;}
 #ota-btn{display:none;}
@@ -335,15 +336,20 @@ static void handleRootConnected() {
 
   // ── Banniere d'alertes (visible uniquement s'il y a des erreurs) ──
   // On ne pollue pas l'UI quand tout va bien : la banniere n'apparait
-  // que si au moins un capteur active est en erreur.
+  // que si au moins un capteur active est en erreur. Et on attend qu'au
+  // moins un cycle de mesure ait eu lieu, sinon au boot tous les _ok
+  // sont a false (zero-init du struct) et on afficherait une fausse
+  // alerte "tous les capteurs introuvables" pendant les 60 premieres
+  // secondes apres reboot.
   {
     const SensorSettings& sc = settingsGetSensors();
-    bool hasAlerts =
+    bool readyToAlert = d.lastReadTime > 0;
+    bool hasAlerts = readyToAlert && (
         (!d.pm_ok    && sc.npm_enabled)    ||
         (!d.co2_ok   && sc.mhz19_enabled)  ||
         (!d.bme_ok   && sc.bme280_enabled) ||
         (!d.ccs_ok   && sc.ccs811_enabled) ||
-        (!d.sfa40_ok && sc.sfa40_enabled);
+        (!d.sfa40_ok && sc.sfa40_enabled));
 
     if (hasAlerts) {
       String alerts = "<div class='card wide' style='background:#3e1a1a;border-left:4px solid #ef5350'>"
@@ -486,12 +492,20 @@ static void handleRootConnected() {
   chunk += "<div class='data-row'><span class='data-label'>CPU</span><span class='data-value'>" + String(ESP.getCpuFreqMHz()) + " <span class='data-unit'>MHz</span></span></div>";
   chunk += "<div class='data-row'><span class='data-label'>RAM libre</span><span class='data-value'>" + String(ESP.getFreeHeap() / 1024) + " <span class='data-unit'>KB</span></span></div>";
   chunk += "<div class='data-row'><span class='data-label'>MAC</span><span class='data-value'>" + WiFi.macAddress() + "</span></div>";
-  // Tri-state badge: ok / err / off. A user-disabled sensor must not look
-  // like a failure — its badge is greyed out and struck through.
+  // Quad-state badge: ok / err / off / warm.
+  //  - off  : capteur desactive par l'utilisateur (gris barre)
+  //  - warm : pas encore lu une seule fois depuis le boot (orange "...")
+  //           sinon on afficherait "err" en rouge pendant les ~60 premieres
+  //           secondes apres reboot a cause du zero-init du struct SensorData
+  //  - ok   : capteur actif et lecture OK (vert)
+  //  - err  : capteur actif mais lecture KO (rouge)
   {
     const SensorSettings& sc = settingsGetSensors();
-    auto badgeClass = [](bool enabled, bool ok) {
-      return !enabled ? "off" : (ok ? "ok" : "err");
+    bool warmingUp = (d.lastReadTime == 0);
+    auto badgeClass = [&](bool enabled, bool ok) {
+      if (!enabled) return "off";
+      if (warmingUp) return "warm";
+      return ok ? "ok" : "err";
     };
     chunk += "<div class='data-row'><span class='data-label'>Capteurs</span><span class='data-value'>";
     chunk += "<span class='sensor-badge " + String(badgeClass(sc.npm_enabled,    d.pm_ok))    + "'>NextPM</span>";
