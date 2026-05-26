@@ -273,6 +273,21 @@ function doUpdate(){
     d.innerHTML="<span class='data-value good'>Mise a jour en cours, le capteur redémarre...</span>";
   });
 }
+// Auto-refresh dashboard every 60s to pull fresh sensor data and reflect
+// any state change (toggle effects on badges, locked screens, etc).
+// Pause while the user is actively interacting so we don't reload mid-edit.
+(function(){
+  var lastTouch = 0;
+  ['input','change','keydown','mousedown'].forEach(function(ev){
+    addEventListener(ev, function(){ lastTouch = Date.now(); }, true);
+  });
+  setInterval(function(){
+    var ae = document.activeElement;
+    if (ae && ['INPUT','TEXTAREA','SELECT'].indexOf(ae.tagName) >= 0) return;
+    if (Date.now() - lastTouch < 5000) return;
+    location.reload();
+  }, 60000);
+})();
 )";
 
 // =============================================
@@ -546,7 +561,7 @@ static void handleRootConnected() {
       chunk += "<div class='toggle-row'><span>" + String(sensorNames[i]) + "</span>";
       chunk += "<label class='switch'><input type='checkbox'";
       if (sensorVals[i]) chunk += " checked";
-      chunk += " onchange=\"fetch('/set-sensor',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'key=" + String(sensorKeys[i]) + "&val='+(this.checked?'1':'0')})\">";
+      chunk += " onchange=\"fetch('/set-sensor',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'key=" + String(sensorKeys[i]) + "&val='+(this.checked?'1':'0')}).then(()=>location.reload())\">";
       chunk += "<span class='slider'></span></label></div>";
     }
     chunk += "</div>";
