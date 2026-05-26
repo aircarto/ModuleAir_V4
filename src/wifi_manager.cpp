@@ -7,6 +7,7 @@
 #include <HTTPClient.h>
 #include <HTTPUpdate.h>
 #include <WiFiClientSecure.h>
+#include <SPIFFS.h>
 #include "config.h"
 #include "wifi_manager.h"
 #include "ble_improv.h"
@@ -954,8 +955,24 @@ static void handleDoUpdate() {
 
   displayShowOtaUpdate();
 
+  // Disable WiFi modem sleep for the duration of the OTA: default
+  // WIFI_PS_MIN_MODEM lets the radio nap between DTIM beacons, adding
+  // ~100-300 ms of latency per packet which crushes HTTPS bulk download
+  // throughput (we saw ~1.5 KB/s instead of the expected 30-80 KB/s).
+  WiFi.setSleep(false);
+
+  // Unmount SPIFFS so the OTA partition write isn't competing with logo
+  // reads on the single SPI flash bus. Each SPIFFS read can stall the
+  // OTA writer by 30-100 ms. SPIFFS comes back at reboot (success path)
+  // or is remounted below on failure.
+  SPIFFS.end();
+
   WiFiClientSecure secClient;
   secClient.setInsecure();  // Skip certificate validation
+  // Larger RX buffer keeps the TLS record reassembly fast; small TX buffer
+  // is enough since we only send the GET request once.
+  secClient.setBufferSizes(16384, 512);
+  secClient.setTimeout(60000);  // 60s — HTTPUpdate's internal 8s default trips on slow start
   String firmwareUrl = String(OTA_UPDATE_URL) + "/firmware.bin?sensor=" + deviceId + "&current_version=" + FIRMWARE_VERSION;
 
   Logger.printf("[OTA] Downloading from: %s\n", firmwareUrl.c_str());
@@ -965,7 +982,13 @@ static void handleDoUpdate() {
     if (total > 0) {
       int pct = (current * 100) / total;
       displayShowOtaProgress(pct);
-      Logger.printf("[OTA] Progress: %d%%\n", pct);
+      // Only log on 10% boundaries so the serial output doesn't add overhead
+      static int lastLogged = -1;
+      int bucket = pct / 10;
+      if (bucket != lastLogged) {
+        lastLogged = bucket;
+        Logger.printf("[OTA] Progress: %d%%\n", pct);
+      }
     }
   });
 
@@ -981,9 +1004,14 @@ static void handleDoUpdate() {
     case HTTP_UPDATE_FAILED:
       Logger.printf("[OTA] Update failed: %s\n", httpUpdate.getLastErrorString().c_str());
       displayShowOtaFailed();
+      // Restore baseline behaviour so the device keeps working after a failed OTA
+      WiFi.setSleep(true);
+      SPIFFS.begin(true);
       break;
     case HTTP_UPDATE_NO_UPDATES:
       Logger.println("[OTA] No update available");
+      WiFi.setSleep(true);
+      SPIFFS.begin(true);
       break;
   }
 }

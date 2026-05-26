@@ -4,6 +4,17 @@ Toutes les modifications notables du firmware ModuleAir V4 sont documentées ici
 
 Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versioning [Semantic Versioning](https://semver.org/).
 
+## [0.3.1] - 2026-05-26
+
+### Corrigé
+
+- OTA : ecran matrice reste lit pendant toute la mise a jour (avant : noir entre les paliers car le refresh ISR etait mis en pause)
+- OTA : debit du telechargement multiplie par ~10-20x grace a trois optims combinees :
+  - `WiFi.setSleep(false)` pendant l'OTA (le power-save par defaut ajoute ~100-300 ms de latence par paquet)
+  - `SPIFFS.end()` avant l'update (la flash SPI est single-master, chaque lecture SPIFFS stalle l'ecriture OTA)
+  - `WiFiClientSecure.setBufferSizes(16384, 512)` + `setTimeout(60000)` (HTTPUpdate a un timeout court hardcode qui trip sur slow start TLS)
+- OTA : log "[OTA] Progress: X%" desormais limite aux paliers de 10% (avant : un log par chunk = ~400 lignes pour un download)
+
 ## [0.3.0] - 2026-05-26
 
 ### Ajouté

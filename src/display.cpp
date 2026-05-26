@@ -869,9 +869,13 @@ void displayShowBleReboot() {
 
 // ── OTA screens ──
 
+// During OTA, leave the ISR-driven refresh running so the matrix stays lit
+// across the whole download — pausing it (as the old code did) blacked out
+// the screen between progress ticks because HUB75 LEDs need constant scan.
+// Framebuffer updates here are picked up by the next ISR tick (~4 ms).
+
 void displayShowOtaUpdate() {
   Logger.println("[Display] OTA update starting");
-  refreshPaused = true;
   display.clearDisplay();
   display.setTextSize(1);
   display.setTextColor(COLOR_ORANGE);
@@ -881,7 +885,6 @@ void displayShowOtaUpdate() {
   display.setCursor(1, 10);
   display.print("Telecharg...");
   display.drawRect(2, 22, 60, 7, COLOR_GRAY);
-  manualRefresh(100);
 }
 
 void displayShowOtaProgress(int percent) {
@@ -889,8 +892,10 @@ void displayShowOtaProgress(int percent) {
   if (percent < 0) percent = 0;
   if (percent > 100) percent = 100;
 
-  // Only refresh every 10% to reduce flicker
-  int rounded = (percent / 10) * 10;
+  // Throttle to 5% steps: redrawing too often during OTA can starve the
+  // download (each fillRect/print touches the framebuffer, and the SPI
+  // flash write loop is sensitive to long-running tasks on the same core).
+  int rounded = (percent / 5) * 5;
   if (rounded == lastDisplayed && percent != 100) return;
   lastDisplayed = rounded;
 
@@ -910,8 +915,6 @@ void displayShowOtaProgress(int percent) {
     uint16_t color = percent < 50 ? COLOR_ORANGE : COLOR_GREEN;
     display.fillRect(4, 24, barWidth, 3, color);
   }
-
-  manualRefresh(30);
 }
 
 void displayShowOtaDone() {
@@ -924,8 +927,6 @@ void displayShowOtaDone() {
   display.setTextColor(COLOR_WHITE);
   display.setCursor(7, 18);
   display.print("OK! Reboot");
-  manualRefresh(100);
-  refreshPaused = false;
 }
 
 void displayShowOtaFailed() {
@@ -938,8 +939,6 @@ void displayShowOtaFailed() {
   display.setTextColor(COLOR_ORANGE);
   display.setCursor(13, 18);
   display.print("Echec!");
-  manualRefresh(100);
-  refreshPaused = false;
 }
 
 // ── Preferences ──
