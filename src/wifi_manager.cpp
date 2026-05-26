@@ -283,7 +283,17 @@ function refreshUI(){
     var doc = new DOMParser().parseFromString(html, 'text/html');
     var oldGrid = document.querySelector('.grid');
     var newGrid = doc.querySelector('.grid');
-    if (oldGrid && newGrid) oldGrid.replaceWith(newGrid);
+    if (!oldGrid || !newGrid) return;
+    // Preserve cards marked [data-keep]: they hold accumulated state (live
+    // log buffer + scroll position, OTA progress, running setIntervals, etc)
+    // that a naive swap would wipe — making the logs flash "Chargement..."
+    // every 30s and leaking zombie tailLogs() intervals on each refresh.
+    newGrid.querySelectorAll('[data-keep]').forEach(function(stub){
+      var id = stub.getAttribute('data-keep');
+      var keeper = oldGrid.querySelector('[data-keep="'+id+'"]');
+      if (keeper) stub.replaceWith(keeper);
+    });
+    oldGrid.replaceWith(newGrid);
   }).catch(function(){});
 }
 (function(){
@@ -649,9 +659,12 @@ static void handleRootConnected() {
     server.sendContent(chunk);
   }
 
-  // Logs — tail incremental avec curseur seq, smart scroll, pause/clear
+  // Logs — tail incremental avec curseur seq, smart scroll, pause/clear.
+  // data-keep="logs" tells refreshUI() to leave this card alone during a
+  // .grid swap so the log buffer, scroll position, pause state and the
+  // tailLogs() setInterval survive across dashboard refreshes.
   server.sendContent(
-    "<div class='card wide'><h2 style='display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px'>"
+    "<div class='card wide' data-keep='logs'><h2 style='display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px'>"
     "<span>Logs en temps reel</span>"
     "<span style='font-size:0.75em;font-weight:normal;color:#888'>"
     "<span id='log-status' style='margin-right:10px'>&#9679; live</span>"
@@ -690,9 +703,11 @@ static void handleRootConnected() {
     "tailLogs();setInterval(tailLogs,1000);"
     "</script></div>");
 
-  // Mise à jour OTA
+  // Mise à jour OTA — data-keep prevents the card from being wiped during
+  // a refresh while an OTA check or update is in progress (otherwise the
+  // user would see the status reset to empty while their click is in flight).
   server.sendContent(
-    "<div class='card wide'><h2>Mise a jour</h2>"
+    "<div class='card wide' data-keep='ota'><h2>Mise a jour</h2>"
     "<div id='ota-status'></div>"
     "<button class='update' onclick='checkUpdate()'>Verifier les mises a jour</button>"
     "<button id='ota-btn' class='update'></button>"
