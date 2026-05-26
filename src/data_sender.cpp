@@ -6,6 +6,7 @@
 #include "sensors.h"
 #include "data_sender.h"
 #include "logger.h"
+#include "settings.h"
 
 // Vérifie l'accès internet en résolvant un DNS fiable
 static bool checkInternetAccess() {
@@ -92,10 +93,15 @@ SendResult dataSenderSend() {
   // ModuleAir n'embarque pas ces capteurs — on ne doit PAS les detourner.
   // CCS811 (TVOC) et SFA40 (HCHO) n'ont pas de bit dedie dans le protocole :
   // leur absence est implicite (pas de champ ISO correspondant dans le JSON).
+  //
+  // Un capteur volontairement desactive par l'utilisateur (toggle web) ne
+  // doit PAS lever son bit d'erreur : ce n'est pas une panne, c'est un choix.
+  // On gate donc chaque bit sur (enabled && !ok).
+  const SensorSettings& cfg = settingsGetSensors();
   uint8_t errorFlags = 0;
-  if (!d.bme_ok) errorFlags |= 0x04;  // Bit 2 = BME280_ERROR
-  if (!d.pm_ok)  errorFlags |= 0x08;  // Bit 3 = NPM_ERROR
-  if (!d.co2_ok) errorFlags |= 0x80;  // Bit 7 = CO2_ERROR (MH-Z19 sur ModuleAir)
+  if (cfg.bme280_enabled && !d.bme_ok) errorFlags |= 0x04;  // Bit 2 = BME280_ERROR
+  if (cfg.npm_enabled    && !d.pm_ok)  errorFlags |= 0x08;  // Bit 3 = NPM_ERROR
+  if (cfg.mhz19_enabled  && !d.co2_ok) errorFlags |= 0x80;  // Bit 7 = CO2_ERROR (MH-Z19 sur ModuleAir)
   json += ",\"error_flags\":" + String(errorFlags);
 
   // npm_status (registre statut NextPM)

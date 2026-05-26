@@ -468,20 +468,27 @@ void displayUpdate() {
 
   // Build list of available screens: all data screens, then 1 logo (rotated each cycle)
   const ScreenSettings& scfg = settingsGetScreens();
+  const SensorSettings& sensCfg = settingsGetSensors();
   Screen avail[SCR_COUNT];
   int count = 0;
 
-  // Data screens. When a sensor is KO and at least one of its screens was
-  // enabled, surface a single error screen instead of silently dropping it.
+  // Data screens. We distinguish three states per family:
+  //   1. Sensor enabled + reading OK    -> show data screens
+  //   2. Sensor enabled + reading KO    -> show single error screen
+  //   3. Sensor disabled by user        -> hide everything (NOT an error)
   if (sensorCache.pm_ok) {
     if (scfg.pm1)  avail[count++] = SCR_PM1;
     if (scfg.pm25) avail[count++] = SCR_PM25;
     if (scfg.pm10) avail[count++] = SCR_PM10;
-  } else if (scfg.pm1 || scfg.pm25 || scfg.pm10) {
+  } else if (sensCfg.npm_enabled && (scfg.pm1 || scfg.pm25 || scfg.pm10)) {
     avail[count++] = SCR_PM_ERR;
   }
   if (scfg.co2) {
-    avail[count++] = sensorCache.co2_ok ? SCR_CO2 : SCR_CO2_ERR;
+    if (sensorCache.co2_ok) {
+      avail[count++] = SCR_CO2;
+    } else if (sensCfg.mhz19_enabled) {
+      avail[count++] = SCR_CO2_ERR;
+    }
   }
   if (sensorCache.bme_ok) {
     if (scfg.temp) avail[count++] = SCR_TEMP;

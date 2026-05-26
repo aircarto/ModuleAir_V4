@@ -179,6 +179,7 @@ button.danger:hover{background:#f44336;}
 .sensor-badge{display:inline-block;padding:3px 8px;border-radius:4px;font-size:0.8em;margin:2px;}
 .sensor-badge.ok{background:#1b5e20;color:#a5d6a7;}
 .sensor-badge.err{background:#b71c1c;color:#ef9a9a;}
+.sensor-badge.off{background:#37474f;color:#90a4ae;text-decoration:line-through;}
 button.update{background:#ff9800;}
 button.update:hover{background:#ffa726;}
 #ota-btn{display:none;}
@@ -482,13 +483,21 @@ static void handleRootConnected() {
   chunk += "<div class='data-row'><span class='data-label'>CPU</span><span class='data-value'>" + String(ESP.getCpuFreqMHz()) + " <span class='data-unit'>MHz</span></span></div>";
   chunk += "<div class='data-row'><span class='data-label'>RAM libre</span><span class='data-value'>" + String(ESP.getFreeHeap() / 1024) + " <span class='data-unit'>KB</span></span></div>";
   chunk += "<div class='data-row'><span class='data-label'>MAC</span><span class='data-value'>" + WiFi.macAddress() + "</span></div>";
-  chunk += "<div class='data-row'><span class='data-label'>Capteurs</span><span class='data-value'>";
-  chunk += "<span class='sensor-badge " + String(d.pm_ok ? "ok" : "err") + "'>NextPM</span>";
-  chunk += "<span class='sensor-badge " + String(d.co2_ok ? "ok" : "err") + "'>MH-Z19</span>";
-  chunk += "<span class='sensor-badge " + String(d.bme_ok ? "ok" : "err") + "'>BME280</span>";
-  chunk += "<span class='sensor-badge " + String(d.ccs_ok ? "ok" : "err") + "'>CCS811</span>";
-  chunk += "<span class='sensor-badge " + String(d.sfa40_ok ? "ok" : "err") + "'>SFA40</span>";
-  chunk += "</span></div>";
+  // Tri-state badge: ok / err / off. A user-disabled sensor must not look
+  // like a failure — its badge is greyed out and struck through.
+  {
+    const SensorSettings& sc = settingsGetSensors();
+    auto badgeClass = [](bool enabled, bool ok) {
+      return !enabled ? "off" : (ok ? "ok" : "err");
+    };
+    chunk += "<div class='data-row'><span class='data-label'>Capteurs</span><span class='data-value'>";
+    chunk += "<span class='sensor-badge " + String(badgeClass(sc.npm_enabled,    d.pm_ok))    + "'>NextPM</span>";
+    chunk += "<span class='sensor-badge " + String(badgeClass(sc.mhz19_enabled,  d.co2_ok))   + "'>MH-Z19</span>";
+    chunk += "<span class='sensor-badge " + String(badgeClass(sc.bme280_enabled, d.bme_ok))   + "'>BME280</span>";
+    chunk += "<span class='sensor-badge " + String(badgeClass(sc.ccs811_enabled, d.ccs_ok))   + "'>CCS811</span>";
+    chunk += "<span class='sensor-badge " + String(badgeClass(sc.sfa40_enabled,  d.sfa40_ok)) + "'>SFA40</span>";
+    chunk += "</span></div>";
+  }
   if (d.lastReadTime > 0) {
     chunk += "<div class='data-row'><span class='data-label'>Derniere mesure</span><span class='data-value'>il y a " + String(ago) + " <span class='data-unit'>s</span></span></div>";
   }

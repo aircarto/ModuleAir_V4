@@ -510,11 +510,17 @@ void sensorsInit() {
 
 void sensorsRead() {
   const SensorSettings& cfg = settingsGetSensors();
-  if (cfg.npm_enabled)    readNextPM();
-  if (cfg.mhz19_enabled)  readMHZ19();
-  if (cfg.bme280_enabled) readBME280();
-  if (cfg.ccs811_enabled) readCCS811();
-  if (cfg.sfa40_enabled)  readSFA40();
+
+  // When a sensor is disabled by the user, force its _ok flag to false so
+  // downstream consumers (data_sender, display, web dashboard) stop treating
+  // the last cached reading as fresh data. Without this, toggling a sensor
+  // off only stops the read but leaves stale values being sent for up to
+  // a full reboot cycle.
+  if (cfg.npm_enabled)    readNextPM();  else data.pm_ok    = false;
+  if (cfg.mhz19_enabled)  readMHZ19();   else data.co2_ok   = false;
+  if (cfg.bme280_enabled) readBME280();  else data.bme_ok   = false;
+  if (cfg.ccs811_enabled) readCCS811();  else data.ccs_ok   = false;
+  if (cfg.sfa40_enabled)  readSFA40();   else data.sfa40_ok = false;
   data.lastReadTime = millis();
 }
 
