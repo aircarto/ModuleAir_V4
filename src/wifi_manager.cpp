@@ -273,9 +273,19 @@ function doUpdate(){
     d.innerHTML="<span class='data-value good'>Mise a jour en cours, le capteur redémarre...</span>";
   });
 }
-// Auto-refresh dashboard every 60s to pull fresh sensor data and reflect
-// any state change (toggle effects on badges, locked screens, etc).
-// Pause while the user is actively interacting so we don't reload mid-edit.
+// Live dashboard updates without a full page reload. We refetch /, parse
+// only the .grid container, and swap it in place. Scroll position, focus
+// outside .grid, and CSS animation state are preserved. Inputs INSIDE
+// .grid (CO2 thresholds, brightness) are replaced, so the periodic loop
+// pauses while the user is actively interacting.
+function refreshUI(){
+  return fetch('/').then(function(r){return r.text();}).then(function(html){
+    var doc = new DOMParser().parseFromString(html, 'text/html');
+    var oldGrid = document.querySelector('.grid');
+    var newGrid = doc.querySelector('.grid');
+    if (oldGrid && newGrid) oldGrid.replaceWith(newGrid);
+  }).catch(function(){});
+}
 (function(){
   var lastTouch = 0;
   ['input','change','keydown','mousedown'].forEach(function(ev){
@@ -285,8 +295,11 @@ function doUpdate(){
     var ae = document.activeElement;
     if (ae && ['INPUT','TEXTAREA','SELECT'].indexOf(ae.tagName) >= 0) return;
     if (Date.now() - lastTouch < 5000) return;
-    location.reload();
-  }, 60000);
+    refreshUI();
+  }, 30000);
+  document.addEventListener('visibilitychange', function(){
+    if (!document.hidden) refreshUI();   // instant refresh on tab focus
+  });
 })();
 )";
 
@@ -561,7 +574,7 @@ static void handleRootConnected() {
       chunk += "<div class='toggle-row'><span>" + String(sensorNames[i]) + "</span>";
       chunk += "<label class='switch'><input type='checkbox'";
       if (sensorVals[i]) chunk += " checked";
-      chunk += " onchange=\"fetch('/set-sensor',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'key=" + String(sensorKeys[i]) + "&val='+(this.checked?'1':'0')}).then(()=>location.reload())\">";
+      chunk += " onchange=\"fetch('/set-sensor',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'key=" + String(sensorKeys[i]) + "&val='+(this.checked?'1':'0')}).then(refreshUI)\">";
       chunk += "<span class='slider'></span></label></div>";
     }
     chunk += "</div>";
