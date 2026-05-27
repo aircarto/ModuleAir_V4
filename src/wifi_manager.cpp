@@ -93,6 +93,13 @@ static volatile uint8_t lastDisconnectReason = 0;
 static void onWifiEvent(WiFiEvent_t e, WiFiEventInfo_t info) {
   if (e == ARDUINO_EVENT_WIFI_STA_DISCONNECTED) {
     lastDisconnectReason = info.wifi_sta_disconnected.reason;
+    // Update the badge instantly instead of waiting for the network_monitor
+    // task's next 15 s tick. The handler runs in the WiFi event task on
+    // core 0 but displaySetNetStatus is just a single 32-bit write so it's
+    // safe from any context.
+    if (wifiState == WS_STA_CONNECTED) {
+      displaySetNetStatus(NET_OFFLINE);
+    }
   }
 }
 
@@ -1474,7 +1481,11 @@ void wifiManagerLoop() {
         dnsServer.stop();
         WiFi.mode(WIFI_STA);
         setWifiState(WS_STA_CONNECTED);
-        displayShowWifiReconnected();
+        // Push the badge to OK instantly. The "Connecte" splash is drawn
+        // by main.cpp on the next wasConnected/connected transition and
+        // held for 3 s by the display suppression timer, after which the
+        // rotation resumes — the badge will already say NET_OK then.
+        displaySetNetStatus(NET_OK);
       } else if (now - stateEnteredAt > AP_RETRY_TIMEOUT_MS) {
         // 30 s elapsed without a successful association — abandon and go
         // back to AP_DATA. The 10-min counter restarts from now.

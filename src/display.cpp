@@ -60,6 +60,11 @@ static unsigned long lastScreenChange = 0;
 static int currentScreen = 0;
 #define SCREEN_INTERVAL 5000
 
+// When a transient splash (WiFi connected / lost / reconnected) is drawn,
+// suppress the rotating-data displayUpdate() for a short window so the
+// splash stays readable before the rotation resumes naturally.
+static unsigned long suppressUpdateUntil = 0;
+
 // Screen IDs
 enum Screen { SCR_PM1, SCR_PM25, SCR_PM10, SCR_CO2, SCR_TEMP, SCR_HUMI, SCR_COV, SCR_HCHO,
               SCR_PM_ERR, SCR_CO2_ERR,
@@ -479,6 +484,8 @@ void displaySetSensorData(const SensorData& data) {
 
 void displayUpdate() {
   if (!hasData) return;
+  // Hold whatever splash was just drawn until its suppression window expires.
+  if (millis() < suppressUpdateUntil) return;
 
   unsigned long now = millis();
   if (now - lastScreenChange < SCREEN_INTERVAL) return;
@@ -663,6 +670,11 @@ void displayShowWifiConnected(const char* ssid, int rssi) {
   display.print(truncSSID(ssid, 7));
 
   drawWifiIcon(WIFI_ICON_FRAMES - 1);
+
+  // Hold the splash for ~3 s, then the data rotation resumes naturally
+  // — we DO NOT touch hasData so the existing measurement cache is
+  // shown immediately after the suppression window (no 60 s wait).
+  suppressUpdateUntil = millis() + 3000;
 }
 
 void displayShowAPMode(const char* apName, const char* apIP) {
@@ -696,10 +708,18 @@ void displayShowWifiLost() {
   display.setCursor(4, 16);
   display.print("Deconnect");
   display.write(130);
+
+  // Hold for 2 s, then resume normal rotation (with the badge already
+  // showing NET_OFFLINE since the WiFi event handler updated it).
+  suppressUpdateUntil = millis() + 2000;
 }
 
 void displayShowWifiReconnected() {
-  hasData = false;
+  // Kept as a public hook for compatibility, but it's now a soft reset:
+  // we just restart the screen cycle from the first slot. We DO NOT
+  // clear hasData (that previously forced a 60 s wait for fresh data
+  // before the matrix would resume — meanwhile the "Connecte" splash
+  // stayed frozen on screen).
   currentScreen = 0;
   lastScreenChange = 0;
 }
