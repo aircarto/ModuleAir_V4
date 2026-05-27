@@ -884,120 +884,48 @@ void displayShowBleReboot() {
 // Layout (64x32 matrix) during download:
 //
 //   ┌─────────────────────────────────────────────────────┐
-//   │ Mise a              ░▓█░                            │  y=0-7
-//   │ jour                ▓███▓                           │  y=8-15
-//   │                      ░█░                            │  y=16-23
-//   │ 42 %                                                │  y=22-29
+//   │              Mise a                                 │  y=2  orange
+//   │               jour                                  │  y=12 orange
+//   │              42 %                                   │  y=22 white
 //   └─────────────────────────────────────────────────────┘
-//      <─── text zone ───>  <──── spinner zone ────>
-//        x=0..43               x=44..63
 //
-// The spinner is a tiny anti-aliased version of the boot animation drawn
-// every progress callback, so the user sees continuous motion even when
-// the percentage is stuck for a while (slow download). The percentage
-// text is only redrawn when it actually changes value, which eliminates
-// the flicker the old fillRect-the-whole-zone approach caused.
+// No spinner: the framebuffer is only touched when the integer percent
+// changes (~100 small redraws across the whole download), eliminating
+// the tearing/hot-row artifacts that concurrent draws produced during
+// PxMatrix scan stalls. The residual dimming during flash sector
+// erases is inherent to PxMatrix+ESP32-OTA — see arduino-esp32#1356,
+// PxMatrix#229; the full fix is migrating to ESP32-HUB75-MatrixPanel-
+// DMA (I2S DMA keeps scanning while the instruction cache is off).
 
-// Anti-aliased OTA spinner. Frame counter advances once per call so the
-// rotation reflects download activity — if the callback stops firing,
-// the spinner freezes, which is itself a useful "OTA stalled" hint.
-static void drawOtaSpinner() {
-  static int frame = 0;
-  frame++;
-
-  const float cx = 53.0f, cy = 12.0f;
-  const float radius = 5.0f;
-  const int tailLen = 14;
-  const int stepsPerLap = 36;  // 10 deg per step
-  const float angleStep = (2.0f * (float)M_PI) / stepsPerLap;
-  const int BS = 14;
-  static uint16_t spinBuf[14 * 14];
-  memset(spinBuf, 0, sizeof(spinBuf));
-  const int bx0 = (int)floorf(cx - BS / 2.0f);
-  const int by0 = (int)floorf(cy - BS / 2.0f);
-
-  uint8_t tailBright[14];
-  for (int i = 0; i < tailLen; i++) {
-    float t = 1.0f - (float)i / tailLen;
-    tailBright[i] = (uint8_t)(t * t * t * 255);
-  }
-
-  float headAngle = (float)frame * angleStep - (float)M_PI / 2.0f;
-  for (int i = 0; i < tailLen; i++) {
-    float a = headAngle - (float)i * angleStep;
-    float fx = cx + radius * cosf(a);
-    float fy = cy + radius * sinf(a);
-    float B = (float)tailBright[i];
-    int x0 = (int)floorf(fx), y0 = (int)floorf(fy);
-    float dx = fx - x0, dy = fy - y0;
-    float w[4] = { (1 - dx) * (1 - dy), dx * (1 - dy), (1 - dx) * dy, dx * dy };
-    const int ox[4] = { 0, 1, 0, 1 };
-    const int oy[4] = { 0, 0, 1, 1 };
-    for (int k = 0; k < 4; k++) {
-      int px = x0 + ox[k] - bx0, py = y0 + oy[k] - by0;
-      if (px >= 0 && px < BS && py >= 0 && py < BS) {
-        uint32_t acc = spinBuf[py * BS + px] + (uint32_t)(B * w[k]);
-        spinBuf[py * BS + px] = (uint16_t)(acc > 255 ? 255 : acc);
-      }
-    }
-  }
-
-  // Blit the accumulator to the framebuffer, tinted orange (r=255, g=140, b=0).
-  // Clear-and-redraw is atomic-enough at this small size that the ISR rarely
-  // catches a torn frame; if it does, the brightness accumulation makes it
-  // visually negligible.
-  for (int by = 0; by < BS; by++) {
-    for (int bx = 0; bx < BS; bx++) {
-      uint8_t b = (uint8_t)spinBuf[by * BS + bx];
-      uint8_t r  = b;
-      uint8_t g  = (uint8_t)((b * 140u) / 255u);
-      display.drawPixel(bx + bx0, by + by0, display.color565(r, g, 0));
-    }
-  }
-}
+// Forward decl: printCentered is defined just below the OTA screens.
+static void printCentered(const char* s, int y);
 
 void displayShowOtaUpdate() {
   Logger.println("[Display] OTA update starting");
   display.clearDisplay();
   display.setTextSize(1);
   display.setTextColor(COLOR_ORANGE);
-  display.setCursor(1, 0);
-  display.print("Mise a");
-  display.setCursor(1, 10);
-  display.print("jour");
+  printCentered("Mise a", 2);   // 6 chars -> x=14
+  printCentered("jour",   12);  // 4 chars -> x=20
   display.setTextColor(COLOR_WHITE);
-  display.setCursor(1, 22);
-  display.print("--%");
-  drawOtaSpinner();
+  printCentered("--%", 22);
 }
 
 void displayShowOtaProgress(int percent) {
   static int lastPct = -2;
   if (percent < 0) percent = 0;
   if (percent > 100) percent = 100;
-
-  // The spinner is drawn ONCE by displayShowOtaUpdate() at the start of
-  // the OTA and never redrawn here. PxMatrix's display.display() lives
-  // in flash, so every 4 KB flash sector erase (~25-80 ms) disables the
-  // CPU instruction cache and stalls the matrix scan task — there's
-  // nothing we can do about that residual dimming. But concurrent
-  // framebuffer writes during the stalled window produced visible
-  // tearing/hot-row artifacts on top of the dimming. The smallest, most
-  // robust mitigation is to STOP touching the framebuffer during OTA
-  // except when we have something meaningful to show: i.e. only when
-  // the integer percent actually changes (about 100 redraws total over
-  // the whole download, each on a 44x8 zone). Net effect: no tearing,
-  // residual dimming is uniform and visually acceptable.
-  // Full fix (zero flicker) is migrating to ESP32-HUB75-MatrixPanel-DMA
-  // — I2S DMA keeps scanning even when cache is disabled.
   if (percent == lastPct) return;
   lastPct = percent;
 
-  display.fillRect(0, 22, 44, 8, 0);
+  // Clear the full percent row and redraw centered. ~100 redraws total
+  // over the whole download — minimal framebuffer churn so the residual
+  // PxMatrix dimming during flash erases stays uniform (no tearing).
+  display.fillRect(0, 22, MATRIX_WIDTH, 8, 0);
   display.setTextColor(COLOR_WHITE);
-  display.setCursor(1, 22);
-  display.print(percent);
-  display.print(" %");
+  char buf[8];
+  snprintf(buf, sizeof(buf), "%d %%", percent);
+  printCentered(buf, 22);
 }
 
 // Helper: print a string horizontally centered on the matrix at the given y.
