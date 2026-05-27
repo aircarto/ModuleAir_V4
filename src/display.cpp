@@ -973,31 +973,23 @@ void displayShowOtaUpdate() {
 
 void displayShowOtaProgress(int percent) {
   static int lastPct = -2;
-  static unsigned long lastSpinDraw = 0;
   if (percent < 0) percent = 0;
   if (percent > 100) percent = 100;
 
-  // Throttle the spinner to ~5 fps. The OTA progress callback fires per
-  // TCP chunk (kHz-ish), and redrawing the framebuffer that often during
-  // OTA is wasteful AND multiplies tearing on top of the inherent
-  // PxMatrix-vs-flash-write flicker: every 4 KB sector erase disables
-  // the ESP32 instruction cache for 25-80 ms, stalling the matrix scan
-  // task (PxMatrix's display.display() lives in flash, not IRAM). Spacing
-  // our redraws to ~200 ms keeps the visible animation smooth-enough
-  // while leaving most erase windows untouched, so the residual flicker
-  // is uniform dimming instead of tearing/hot-row artifacts.
-  // See PxMatrix#229 and arduino-esp32#1356 for the full story; the
-  // proper fix is migrating to ESP32-HUB75-MatrixPanel-DMA (I2S DMA
-  // keeps scanning during flash writes), which we'll do separately.
-  unsigned long now = millis();
-  if (now - lastSpinDraw >= 200) {
-    drawOtaSpinner();
-    lastSpinDraw = now;
-  }
-
-  // Percentage text: only redraw when the integer value actually changes.
-  // ~100 redraws over an entire download, each touching a 44x8 zone —
-  // negligible churn next to the inherent flash-cache stalls.
+  // The spinner is drawn ONCE by displayShowOtaUpdate() at the start of
+  // the OTA and never redrawn here. PxMatrix's display.display() lives
+  // in flash, so every 4 KB flash sector erase (~25-80 ms) disables the
+  // CPU instruction cache and stalls the matrix scan task — there's
+  // nothing we can do about that residual dimming. But concurrent
+  // framebuffer writes during the stalled window produced visible
+  // tearing/hot-row artifacts on top of the dimming. The smallest, most
+  // robust mitigation is to STOP touching the framebuffer during OTA
+  // except when we have something meaningful to show: i.e. only when
+  // the integer percent actually changes (about 100 redraws total over
+  // the whole download, each on a 44x8 zone). Net effect: no tearing,
+  // residual dimming is uniform and visually acceptable.
+  // Full fix (zero flicker) is migrating to ESP32-HUB75-MatrixPanel-DMA
+  // — I2S DMA keeps scanning even when cache is disabled.
   if (percent == lastPct) return;
   lastPct = percent;
 
