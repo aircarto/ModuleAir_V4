@@ -973,16 +973,31 @@ void displayShowOtaUpdate() {
 
 void displayShowOtaProgress(int percent) {
   static int lastPct = -2;
+  static unsigned long lastSpinDraw = 0;
   if (percent < 0) percent = 0;
   if (percent > 100) percent = 100;
 
-  // Always advance the spinner — its job is to communicate "still working".
-  drawOtaSpinner();
+  // Throttle the spinner to ~5 fps. The OTA progress callback fires per
+  // TCP chunk (kHz-ish), and redrawing the framebuffer that often during
+  // OTA is wasteful AND multiplies tearing on top of the inherent
+  // PxMatrix-vs-flash-write flicker: every 4 KB sector erase disables
+  // the ESP32 instruction cache for 25-80 ms, stalling the matrix scan
+  // task (PxMatrix's display.display() lives in flash, not IRAM). Spacing
+  // our redraws to ~200 ms keeps the visible animation smooth-enough
+  // while leaving most erase windows untouched, so the residual flicker
+  // is uniform dimming instead of tearing/hot-row artifacts.
+  // See PxMatrix#229 and arduino-esp32#1356 for the full story; the
+  // proper fix is migrating to ESP32-HUB75-MatrixPanel-DMA (I2S DMA
+  // keeps scanning during flash writes), which we'll do separately.
+  unsigned long now = millis();
+  if (now - lastSpinDraw >= 200) {
+    drawOtaSpinner();
+    lastSpinDraw = now;
+  }
 
-  // Only redraw the percentage text when the displayed value actually
-  // changes. Throttle to 1% boundaries: enough for smooth perceived
-  // progress without thrashing the framebuffer (which can starve the
-  // SPI flash writer during OTA).
+  // Percentage text: only redraw when the integer value actually changes.
+  // ~100 redraws over an entire download, each touching a 44x8 zone —
+  // negligible churn next to the inherent flash-cache stalls.
   if (percent == lastPct) return;
   lastPct = percent;
 
