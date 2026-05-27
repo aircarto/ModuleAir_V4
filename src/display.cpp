@@ -458,9 +458,11 @@ static void drawScreenCO2Error() { drawErrorScreen("CO2"); }
 // this screen is no longer added to the rotation — the hotspot keeps
 // running in the background, the matrix shows pollutants only.
 //
-// Layout: text vertically centered on the 32-row matrix. Each text row
-// is 8 px tall; with two rows + ~2 px gap the block is ~18 px, centered
-// at y=7-25 (top margin = 7, bottom margin = 7).
+// Vertical layout (32-row matrix, default 8-row font):
+//   y=7  "Config"   line 1  (top margin 7)
+//   y=17 "WiFi"     line 2  (gap of 2 between lines)
+//   bottom margin 7
+// → symmetric 7/8/2/8/7 = 32, text block visually centered.
 static void drawScreenConfigWifi() {
   display.clearDisplay();
   display.setTextSize(1);
@@ -468,7 +470,7 @@ static void drawScreenConfigWifi() {
   display.setCursor(1, 7);
   display.print("Config");
   display.setTextColor(COLOR_WHITE);
-  display.setCursor(1, 18);
+  display.setCursor(1, 17);
   display.print("WiFi");
   drawWifiIcon(WIFI_ICON_FRAMES - 1);
 }
