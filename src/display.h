@@ -37,11 +37,16 @@ void displayShowOtaProgress(int percent);
 void displayShowOtaDone();
 void displayShowOtaFailed();
 
-// Connectivity badge shown at the top-right of measurement screens
+// Connectivity badge shown at the top-right of measurement screens.
+// Three states map cleanly to the user's mental model:
+//   - WiFi off            -> no badge (clean look, "we're offline")
+//   - WiFi on, send OK    -> blue WiFi icon (everything works)
+//   - WiFi on, send KO    -> red up/down arrows (data can't reach server,
+//                            whatever the reason: no DNS, server down, 5xx)
 enum NetStatus {
-  NET_OK,           // WiFi + internet + last API send all OK → blue WiFi icon
-  NET_NO_INTERNET,  // no WiFi or DNS fails → red WiFi-with-dashes icon
-  NET_API_ERROR     // WiFi+internet OK but server unreachable → red up/down arrows
+  NET_OFFLINE,  // WiFi disconnected — badge hidden
+  NET_OK,       // WiFi connected and last data send succeeded
+  NET_ERROR     // WiFi connected but data didn't reach the server
 };
 void displaySetNetStatus(NetStatus s);
 

@@ -63,11 +63,12 @@ void loop() {
   if (wasConnected && !connected) {
     Logger.println("[WiFi] Deconnexion detectee");
     displayShowWifiLost();
-    displaySetNetStatus(NET_NO_INTERNET);
+    displaySetNetStatus(NET_OFFLINE);   // no badge while WiFi is down
   } else if (!wasConnected && connected) {
     Logger.println("[WiFi] Reconnexion detectee");
     displayShowWifiConnected(WiFi.SSID().c_str(), WiFi.RSSI());
     displayShowWifiReconnected();
+    displaySetNetStatus(NET_OK);        // optimistic until next send confirms
   }
   wasConnected = connected;
 
@@ -77,12 +78,13 @@ void loop() {
     displaySetSensorData(sensorsGetData());
     displayShowInterieur();
     if (connected) {
+      // Send result -> badge: any failure (no DNS / server down / 5xx) is
+      // collapsed to NET_ERROR (red arrows). The user doesn't need to
+      // distinguish "no DNS" from "server down" on a 8 px badge.
       SendResult r = dataSenderSend();
-      displaySetNetStatus(r == SEND_NO_INTERNET ? NET_NO_INTERNET
-                        : r == SEND_SERVER_DOWN ? NET_API_ERROR
-                                                : NET_OK);
+      displaySetNetStatus(r == SEND_OK ? NET_OK : NET_ERROR);
     } else {
-      displaySetNetStatus(NET_NO_INTERNET);
+      displaySetNetStatus(NET_OFFLINE);
     }
   }
 

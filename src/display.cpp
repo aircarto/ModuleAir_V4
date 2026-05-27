@@ -109,14 +109,12 @@ static void drawWifiIcon(int frame) {
 //   y3: ..#..#..   middle arc descending diagonally
 //   y4: ...##...   2×2 square at the base, row 1
 //   y5: ...##...   square row 2
-static const uint8_t iconNetOK[6]         = { 0x3C, 0x42, 0x18, 0x24, 0x18, 0x18 };
-// Same arcs without the central square → "broken" signal, drawn in red.
-static const uint8_t iconNetNoInternet[6] = { 0x3C, 0x42, 0x18, 0x24, 0x00, 0x00 };
-// Up + down arrows side by side (red — server unreachable / API failed):
+static const uint8_t iconNetOK[6]      = { 0x3C, 0x42, 0x18, 0x24, 0x18, 0x18 };
+// Up + down arrows side by side (red — data can't reach the server):
 //   ........   .#...#..   ###..#..   .#...#..   .#..###.   .#...#..   ........
-static const uint8_t iconNetApiError[7]   = { 0x00, 0x44, 0xE4, 0x44, 0x4E, 0x44, 0x00 };
+static const uint8_t iconNetError[7]   = { 0x00, 0x44, 0xE4, 0x44, 0x4E, 0x44, 0x00 };
 
-static NetStatus netStatus = NET_OK;
+static NetStatus netStatus = NET_OFFLINE;
 
 void displaySetNetStatus(NetStatus s) {
   netStatus = s;
@@ -134,9 +132,9 @@ static void drawMonoIcon(int x, int y, int w, int h, const uint8_t* bitmap, uint
 static void drawNetStatusBadge() {
   const int x = 55, y = 0;
   switch (netStatus) {
-    case NET_OK:           drawMonoIcon(x, y, 8, 6, iconNetOK,         COLOR_BLUE); break;
-    case NET_NO_INTERNET:  drawMonoIcon(x, y, 8, 6, iconNetNoInternet, COLOR_RED);  break;
-    case NET_API_ERROR:    drawMonoIcon(x, y, 8, 7, iconNetApiError,   COLOR_RED);  break;
+    case NET_OFFLINE: /* no badge */                                        break;
+    case NET_OK:      drawMonoIcon(x, y, 8, 6, iconNetOK,    COLOR_BLUE);   break;
+    case NET_ERROR:   drawMonoIcon(x, y, 8, 7, iconNetError, COLOR_RED);    break;
   }
 }
 
