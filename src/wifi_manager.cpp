@@ -45,32 +45,6 @@ static unsigned long stateEnteredAt = 0;
 static unsigned long lastReconnectKickAt = 0;   // last manual WiFi.reconnect() in STA_RECONNECTING
 static int lastAPClients = 0;
 
-// ── Pre-check / save FSM ────────────────────────────────────────────────────
-// The captive-portal POST /save handler USED to call wifiTryConnect()
-// directly, which blocked the HTTP handler for up to 10 s and crashed the
-// phone's TCP socket during the AP/STA channel hop — the JS button would
-// stay stuck on "Test..." forever. We now defer the attempt: the handler
-// just latches the credentials and returns immediately with {status:"trying"},
-// the main loop runs the non-blocking WiFi.begin() and polls WiFi.status()
-// until success or 10 s timeout, and the browser polls GET /save-status
-// every ~1.5 s for the verdict. Pattern lifted from tzapu/WiFiManager
-// (handleWifiSave + connect-flag + processConfigPortal main-loop drain).
-enum SaveState {
-  SAVE_IDLE,
-  SAVE_PENDING,         // handleSave() latched creds; loop hasn't picked up yet
-  SAVE_TRYING,          // WiFi.begin() in flight, awaiting status
-  SAVE_OK,              // associated successfully — preferences saved, reboot scheduled
-  SAVE_WRONG_PASSWORD,  // AUTH-class disconnect reason
-  SAVE_SSID_NOT_FOUND,  // beacon timeout / no AP found
-  SAVE_FAILED,          // other / transient failure
-};
-static volatile SaveState saveState = SAVE_IDLE;
-static String pendingSsid;
-static String pendingPass;
-static unsigned long saveStartedAt = 0;
-static uint8_t saveLastReason = 0;
-static unsigned long pendingRebootAt = 0;
-
 // Timings for the connection-recovery UX.
 static const unsigned long STA_RECONNECT_WINDOW_MS = 3UL  * 60UL * 1000UL;  // 3 min STA recovery
 static const unsigned long STA_RECONNECT_KICK_MS   = 30UL * 1000UL;         // explicit re-kick cadence
@@ -341,97 +315,6 @@ function selectWifi(el,ssid){
   var pw=form.querySelector('input[type=password]');
   if(pw)pw.focus();
 }
-// Pre-check WiFi credentials before saving + rebooting. The save handler
-// is non-blocking (it just queues the attempt) and responds immediately
-// with {status:"trying"}; we then poll /save-status every 1.5 s until we
-// get a final verdict. This dodges the channel-hop bug where the phone
-// momentarily lost its AP socket during a 10 s blocking handler and the
-// button stayed stuck on "Test..." forever.
-// Pattern: tzapu/WiFiManager handleWifiSave + processConfigPortal drain.
-function showSaveError(status, btn, code, reason){
-  var msg = code==='wrong_password'  ? 'Mot de passe incorrect.' :
-            code==='ssid_not_found'  ? 'Reseau introuvable (hors de portee ?).' :
-            code==='missing_ssid'    ? 'SSID manquant.' :
-            code==='failed'          ? ('Echec de connexion' + (reason ? ' (raison '+reason+')' : '') + '.') :
-            code==='timeout'         ? 'Pas de reponse, reessayer.' :
-            code==='ap_unreachable'  ? 'Hotspot injoignable, reessayer.' :
-                                       'Echec.';
-  status.className = 'save-status status err';
-  status.textContent = msg;
-  btn.disabled = false;
-  btn.textContent = 'Reessayer';
-}
-function pollSaveStatus(status, btn, startMs, consecErrs){
-  if (Date.now() - startMs > 30000) {  // 30 s budget total
-    showSaveError(status, btn, 'timeout');
-    return;
-  }
-  setTimeout(function(){
-    var ac = new AbortController();
-    var to = setTimeout(function(){ ac.abort(); }, 4000);
-    fetch('/save-status', {signal: ac.signal})
-      .then(function(r){ clearTimeout(to); return r.json(); })
-      .then(function(d){
-        if (d.status === 'trying' || d.status === 'pending') {
-          pollSaveStatus(status, btn, startMs, 0);   // reset error count on success
-          return;
-        }
-        if (d.status === 'ok') {
-          status.className = 'save-status status ok';
-          status.textContent = 'Connexion reussie ! Redemarrage...';
-          return;  // device will reboot in ~3 s; no need to poll again
-        }
-        showSaveError(status, btn, d.status, d.reason);
-      })
-      .catch(function(){
-        clearTimeout(to);
-        // Likely the AP-hop blip: retry up to 4 consecutive failures.
-        if (consecErrs >= 3) {
-          showSaveError(status, btn, 'ap_unreachable');
-          return;
-        }
-        pollSaveStatus(status, btn, startMs, consecErrs + 1);
-      });
-  }, 1500);
-}
-function saveWifi(form){
-  var ssid = form.querySelector('input[name=ssid]').value;
-  var pw   = form.querySelector('input[name=password]').value;
-  var btn  = form.querySelector('button[type=submit]');
-  var status = form.querySelector('.save-status');
-  if (!status) {
-    status = document.createElement('div');
-    status.className = 'save-status status info';
-    form.appendChild(status);
-  }
-  status.className = 'save-status status info';
-  status.textContent = 'Test de connexion en cours (~10 s)...';
-  btn.disabled = true;
-  btn.textContent = 'Test...';
-
-  var ac = new AbortController();
-  var to = setTimeout(function(){ ac.abort(); }, 8000);
-  fetch('/save', {
-    method:'POST',
-    headers:{'Content-Type':'application/x-www-form-urlencoded'},
-    body:'ssid='+encodeURIComponent(ssid)+'&password='+encodeURIComponent(pw),
-    signal: ac.signal
-  })
-  .then(function(r){ clearTimeout(to); return r.json(); })
-  .then(function(d){
-    // d may be {status:"trying"} (queued) or {status:"err",error:"missing_ssid"}.
-    if (d.error === 'missing_ssid') {
-      showSaveError(status, btn, 'missing_ssid');
-      return;
-    }
-    pollSaveStatus(status, btn, Date.now(), 0);
-  })
-  .catch(function(){
-    clearTimeout(to);
-    showSaveError(status, btn, 'ap_unreachable');
-  });
-  return false;
-}
 function scanWifi(){
   var b=document.getElementById('scan-btn');
   var c=document.getElementById('wifi-list');
@@ -444,7 +327,7 @@ function scanWifi(){
       h+="<span class='wifi-name'>"+w.ssid;
       if(w.encrypted)h+="<span class='lock'>&#128274;</span>";
       h+="</span><span class='wifi-rssi'>"+sig+" "+w.rssi+"dBm</span></div>";
-      h+="<div class='wifi-form'><form action='/save' method='POST' onsubmit='return saveWifi(this)'>";
+      h+="<div class='wifi-form'><form action='/save' method='POST'>";
       h+="<input type='hidden' name='ssid' value='"+w.ssid+"'>";
       if(w.encrypted)h+="<div class='pw-wrap'><input type='password' name='password' placeholder='Mot de passe'><button type='button' class='pw-toggle' onclick='togglePw(this)'>&#128065;</button></div>";
       else h+="<input type='hidden' name='password' value=''>";
@@ -1000,7 +883,7 @@ static void handleRootAP() {
     chunk += "</div>";
 
     chunk += "<div class='wifi-form'>";
-    chunk += "<form action='/save' method='POST' onsubmit='return saveWifi(this)'>";
+    chunk += "<form action='/save' method='POST'>";
     chunk += "<input type='hidden' name='ssid' value='" + ssid + "'>";
     if (encrypted) {
       chunk += "<div class='pw-wrap'><input type='password' name='password' placeholder='Mot de passe'><button type='button' class='pw-toggle' onclick='togglePw(this)'>&#128065;</button></div>";
@@ -1056,11 +939,6 @@ static void handleRoot() {
   }
 }
 
-// Pre-check + save: non-blocking. We just latch the credentials and a
-// state flag, then return {status:"trying"} immediately. The actual
-// WiFi.begin() runs in the main loop (drainSaveFsm()) so this handler
-// returns BEFORE the AP/STA channel hop happens — the phone sees the
-// JSON response cleanly, then can poll /save-status to see the outcome.
 static void handleSave() {
   Logger.printf("[Web] Client %s requested /save\n", server.client().remoteIP().toString().c_str());
   String ssid = server.arg("ssid");
@@ -1068,41 +946,31 @@ static void handleSave() {
 
   if (ssid.length() == 0) {
     Logger.println("[Web] Save rejected: empty SSID");
-    server.send(400, "application/json", "{\"status\":\"err\",\"error\":\"missing_ssid\"}");
+    sendHeader();
+    server.sendContent(
+      "<div class='card'><div class='status ap'>SSID requis</div>"
+      "<br><a href='/'><button>Retour</button></a></div>");
+    sendFooter();
     return;
   }
 
-  pendingSsid = ssid;
-  pendingPass = password;
-  saveLastReason = 0;
-  saveState = SAVE_PENDING;
-  Logger.printf("[WiFi] Pre-check queued for '%s' (mdp len %d)\n", ssid.c_str(), password.length());
+  preferences.begin("wifi", false);
+  preferences.putString("ssid", ssid);
+  preferences.putString("password", password);
+  preferences.end();
 
-  // Immediate reply — channel hop hasn't happened yet, the AP is still on
-  // its original channel, the phone's TCP socket is healthy.
-  server.send(200, "application/json", "{\"status\":\"trying\"}");
-}
+  Logger.printf("[WiFi] Credentials saved - SSID: %s, password length: %d\n", ssid.c_str(), password.length());
+  Logger.println("[WiFi] Restarting in 3 seconds...");
 
-// GET /save-status — short-poll endpoint. Returns whatever the FSM currently
-// holds: trying / ok / wrong_password / ssid_not_found / failed.
-static void handleSaveStatus() {
-  String json = "{\"status\":\"";
-  switch (saveState) {
-    case SAVE_IDLE:            json += "idle";            break;
-    case SAVE_PENDING:         json += "trying";          break;
-    case SAVE_TRYING:          json += "trying";          break;
-    case SAVE_OK:              json += "ok";              break;
-    case SAVE_WRONG_PASSWORD:  json += "wrong_password";  break;
-    case SAVE_SSID_NOT_FOUND:  json += "ssid_not_found";  break;
-    case SAVE_FAILED:          json += "failed";          break;
-  }
-  json += "\"";
-  if (saveLastReason) {
-    json += ",\"reason\":";
-    json += String(saveLastReason);
-  }
-  json += "}";
-  server.send(200, "application/json", json);
+  sendHeader();
+  server.sendContent(
+    "<div class='card'><div class='status ok'>Configuration enregistree !<br><br>"
+    "SSID: <strong>" + ssid + "</strong><br><br>"
+    "Le capteur va redemarrer et tenter de se connecter.</div></div>");
+  sendFooter();
+
+  delay(3000);
+  ESP.restart();
 }
 
 static void handleReset() {
@@ -1423,7 +1291,6 @@ void wifiManagerInit() {
   server.on("/", handleRoot);
   server.on("/scan", handleScan);
   server.on("/save", HTTP_POST, handleSave);
-  server.on("/save-status", handleSaveStatus);
   server.on("/reset", HTTP_POST, handleReset);
   server.on("/reboot", HTTP_POST, handleReboot);
 
@@ -1476,58 +1343,6 @@ void wifiSaveCredentialsAndRestart(const String& ssid, const String& password) {
   Logger.println("[WiFi] Restarting in 2 seconds...");
   delay(2000);
   ESP.restart();
-}
-
-// Non-blocking drain of the save FSM. Called from wifiManagerLoop() on
-// every loop iteration (cheap when SAVE_IDLE — just a switch). On
-// SAVE_PENDING it fires WiFi.begin() and moves to SAVE_TRYING. On
-// SAVE_TRYING it polls WiFi.status() and falls through to OK / WRONG /
-// SSID_NOT_FOUND / FAILED on success or 10 s timeout. On SAVE_OK it
-// schedules a 3 s reboot so the browser can poll once and see "ok"
-// before the device restarts.
-static void drainSaveFsm() {
-  unsigned long now = millis();
-
-  if (saveState == SAVE_PENDING) {
-    Logger.printf("[WiFi] Pre-check: starting WiFi.begin('%s')\n", pendingSsid.c_str());
-    WiFi.mode(WIFI_AP_STA);
-    lastDisconnectReason = 0;
-    WiFi.begin(pendingSsid.c_str(), pendingPass.c_str());
-    saveStartedAt = now;
-    saveState = SAVE_TRYING;
-    return;
-  }
-
-  if (saveState == SAVE_TRYING) {
-    if (WiFi.status() == WL_CONNECTED) {
-      Logger.printf("[WiFi] Pre-check OK — RSSI %d dBm, saving credentials\n", WiFi.RSSI());
-      preferences.begin("wifi", false);
-      preferences.putString("ssid", pendingSsid);
-      preferences.putString("password", pendingPass);
-      preferences.end();
-      saveState = SAVE_OK;
-      // Give the browser a couple of polling ticks (1.5 s cadence) to see
-      // the "ok" status before we yank the AP and reboot into STA mode.
-      pendingRebootAt = now + 3000;
-    } else if (now - saveStartedAt > 10000) {
-      WifiFailGroup g = classifyReason(lastDisconnectReason);
-      saveLastReason = lastDisconnectReason;
-      Logger.printf("[WiFi] Pre-check FAILED reason=%u (%s) — credentials NOT saved\n",
-                    lastDisconnectReason, failGroupLabel(g));
-      WiFi.disconnect(false, false);
-      WiFi.mode(WIFI_AP);
-      saveState =
-        (g == WFG_AUTH)         ? SAVE_WRONG_PASSWORD :
-        (g == WFG_AP_NOT_FOUND) ? SAVE_SSID_NOT_FOUND :
-                                  SAVE_FAILED;
-    }
-    return;
-  }
-
-  if (pendingRebootAt && now >= pendingRebootAt) {
-    Logger.println("[WiFi] Rebooting after successful pre-check");
-    ESP.restart();
-  }
 }
 
 // Bring the SoftAP up and switch the FSM to WS_AP_CONFIG. Used both at boot
@@ -1586,10 +1401,6 @@ void wifiManagerLoop() {
     bleImprovLoop();
   }
   server.handleClient();
-
-  // Pre-check FSM drain (cheap when idle; runs every loop iteration so the
-  // user's POST /save gets picked up within a millisecond of returning).
-  drainSaveFsm();
 
   // Drain async scan results.
   if (scanInProgress) {
@@ -1659,23 +1470,13 @@ void wifiManagerLoop() {
       apClientLogTick();
       // Every 10 min, attempt to reconnect to the saved WiFi in case the AP
       // came back online (router rebooted, came back from vacation, etc.).
-      // Skip while a user-initiated pre-check is running — they share the
-      // radio and a second WiFi.begin() would override the user's creds.
-      if (saveState != SAVE_PENDING && saveState != SAVE_TRYING &&
-          now - stateEnteredAt > AP_RETRY_INTERVAL_MS) {
+      if (now - stateEnteredAt > AP_RETRY_INTERVAL_MS) {
         attemptBackgroundReconnect();
       }
       break;
 
     case WS_AP_RETRYING:
       if (WiFi.status() == WL_CONNECTED) {
-        // Don't tear down the AP while the user's pre-check is also
-        // succeeding — drainSaveFsm() owns the reboot in that case and
-        // we need to keep the AP up so the browser can poll one last
-        // time to see "ok" before the device restarts.
-        if (saveState == SAVE_PENDING || saveState == SAVE_TRYING || saveState == SAVE_OK) {
-          break;
-        }
         // Background reconnect succeeded — tear down AP gracefully and
         // switch to STA-only. No reboot, no display flash.
         Logger.println("[WiFi] Background reconnect SUCCEEDED");
