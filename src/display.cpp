@@ -457,14 +457,18 @@ static void drawScreenCO2Error() { drawErrorScreen("CO2"); }
 // is in WS_AP_CONFIG. After 3 minutes the FSM moves to WS_AP_DATA and
 // this screen is no longer added to the rotation — the hotspot keeps
 // running in the background, the matrix shows pollutants only.
+//
+// Layout: text vertically centered on the 32-row matrix. Each text row
+// is 8 px tall; with two rows + ~2 px gap the block is ~18 px, centered
+// at y=7-25 (top margin = 7, bottom margin = 7).
 static void drawScreenConfigWifi() {
   display.clearDisplay();
   display.setTextSize(1);
   display.setTextColor(COLOR_ORANGE);
-  display.setCursor(1, 0);
+  display.setCursor(1, 7);
   display.print("Config");
   display.setTextColor(COLOR_WHITE);
-  display.setCursor(1, 11);
+  display.setCursor(1, 18);
   display.print("WiFi");
   drawWifiIcon(WIFI_ICON_FRAMES - 1);
 }

@@ -54,6 +54,16 @@ void setup() {
   Logger.println();
 
   wasConnected = wifiIsConnected();
+
+  // Fire the first measurement cycle ~15 s after setup() finishes instead
+  // of waiting a full DATA_SEND_INTERVAL (60 s). 15 s is enough for the
+  // NextPM laser/fan + MH-Z19 UART + I2C sensors to settle into a usable
+  // first reading; before that NextPM tends to return its NOT_READY flag
+  // and the user would just see "PM ERR" anyway. By pre-loading lastCycle
+  // we shift the first tick of `millis() - lastCycle >= DATA_SEND_INTERVAL`
+  // forward without touching the interval itself.
+  static const unsigned long WARMUP_MS = 15000;
+  lastCycle = millis() - (DATA_SEND_INTERVAL - WARMUP_MS);
 }
 
 void loop() {
