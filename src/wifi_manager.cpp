@@ -93,6 +93,12 @@ enum WifiFailGroup {
   WFG_TRANSIENT,       // autre / inconnu / transitoire
 };
 
+// Forward declarations: onWifiEvent (defined just below) calls these helpers
+// to format the disconnect reason in the log line; their full definitions
+// live further down with the rest of the WiFi connection helpers.
+static WifiFailGroup classifyReason(uint8_t r);
+static const char* failGroupLabel(WifiFailGroup g);
+
 static volatile uint8_t lastDisconnectReason = 0;
 
 static void onWifiEvent(WiFiEvent_t e, WiFiEventInfo_t info) {
