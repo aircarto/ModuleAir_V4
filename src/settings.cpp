@@ -1,11 +1,34 @@
 #include <Arduino.h>
 #include <Preferences.h>
 #include "settings.h"
+#include "config.h"
 #include "logger.h"
 
 static SensorSettings sensors;
 static ScreenSettings screens;
 static ThresholdsCO2 thCO2;
+
+// Force a sensor's runtime-enabled flag to false when its compile-time
+// master switch is 0. Called from settingsInit() AND settingsGetSensors()
+// (the latter is defensive — even if NVS gets out of sync somehow, the
+// effective flag reflects the build choice).
+static inline void applyCompileTimeMask() {
+#if !SENSOR_NPM_COMPILED
+  sensors.npm_enabled = false;
+#endif
+#if !SENSOR_MHZ19_COMPILED
+  sensors.mhz19_enabled = false;
+#endif
+#if !SENSOR_BME280_COMPILED
+  sensors.bme280_enabled = false;
+#endif
+#if !SENSOR_CCS811_COMPILED
+  sensors.ccs811_enabled = false;
+#endif
+#if !SENSOR_SFA40_COMPILED
+  sensors.sfa40_enabled = false;
+#endif
+}
 
 void settingsInit() {
   Preferences prefs;
@@ -17,6 +40,7 @@ void settingsInit() {
   sensors.ccs811_enabled = prefs.getBool("ccs811", true);
   sensors.sfa40_enabled  = prefs.getBool("sfa40", true);
   prefs.end();
+  applyCompileTimeMask();
 
   prefs.begin("screens", true);
   screens.pm1  = prefs.getBool("pm1", true);
@@ -45,7 +69,10 @@ void settingsInit() {
     screens.logo_moduleair, screens.logo_aircarto, screens.logo_atmosud);
 }
 
-SensorSettings& settingsGetSensors() { return sensors; }
+SensorSettings& settingsGetSensors() {
+  applyCompileTimeMask();   // defensive: stay consistent if NVS is stale
+  return sensors;
+}
 ScreenSettings& settingsGetScreens() { return screens; }
 
 void settingsSetSensorEnabled(const char* key, bool enabled) {
@@ -62,6 +89,7 @@ void settingsSetSensorEnabled(const char* key, bool enabled) {
   sensors.ccs811_enabled = prefs.getBool("ccs811", true);
   sensors.sfa40_enabled  = prefs.getBool("sfa40", true);
   prefs.end();
+  applyCompileTimeMask();
 }
 
 void settingsSetScreenEnabled(const char* key, bool enabled) {

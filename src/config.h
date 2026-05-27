@@ -5,6 +5,27 @@
 
 #define FIRMWARE_VERSION "0.3.1"
 
+// ── Compile-time sensor master switches ────────────────────────────────────
+// Each flag is a build-time master switch: set to 0 to completely remove
+// a sensor from the system. When a sensor is COMPILED-OUT (= 0):
+//   - Its hardware is not initialised at boot (UART not opened, I2C not
+//     probed, library .begin() never called) — pins stay free, no startup
+//     latency for that sensor.
+//   - settingsGetSensors() forces its runtime-enabled flag to false even
+//     if NVS holds true (a previous build flipped it on, or user toggled).
+//   - The web-UI toggle row appears greyed-out with an "(off en code)"
+//     hint so the user understands it's a build choice, not a fault.
+//   - sensorsRead() skips it, data_sender.cpp drops its JSON fields,
+//     display.cpp drops its rotation screens — all driven by the same
+//     forced-false runtime flag, no per-consumer #ifdef needed.
+// Set to 1 to compile the sensor in (default — fully working sensor that
+// the user can then enable/disable at runtime from the web UI).
+#define SENSOR_NPM_COMPILED    1
+#define SENSOR_MHZ19_COMPILED  1
+#define SENSOR_BME280_COMPILED 1
+#define SENSOR_CCS811_COMPILED 1
+#define SENSOR_SFA40_COMPILED  1
+
 // WiFi AP
 // The hotspot is intentionally open (no password). The first-time-config
 // flow puts the user on a captive portal that ONLY exposes a network
