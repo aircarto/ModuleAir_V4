@@ -938,55 +938,65 @@ static void printCentered(const char* s, int y) {
   display.print(s);
 }
 
-// Draws a thick checkmark inside the bounding box (x..x+w, y..y+h).
-// The V-shape elbow sits at ~40% width / 80% height. Thickness is achieved
-// by stacking 3 parallel lines offset on Y — visually clean at this scale.
-static void drawCheckmark(int x, int y, int w, int h, uint16_t color) {
-  int elbowX = x + (int)(w * 0.40f);
-  int elbowY = y + (int)(h * 0.80f);
-  int startX = x;
-  int startY = y + (int)(h * 0.55f);
-  int endX   = x + w - 1;
-  int endY   = y;
-  for (int t = -1; t <= 1; t++) {
-    display.drawLine(startX, startY + t, elbowX, elbowY + t, color);
-    display.drawLine(elbowX, elbowY + t, endX,   endY   + t, color);
-  }
-}
+// 8x8 pixel-art icons drawn via drawBitmap. Hand-authored so every pixel
+// lands exactly where intended — no Bresenham rasterizer surprises at this
+// tiny scale (which is what made the 3-drawLine "thick check" look jagged
+// and disconnected at the elbow).
+//
+// Adafruit GFX bitmap convention: each byte is one row, MSB = leftmost pixel.
 
-// Draws a thick X inside the bounding box (x..x+w, y..y+h).
-static void drawCross(int x, int y, int w, int h, uint16_t color) {
-  for (int t = -1; t <= 1; t++) {
-    display.drawLine(x,         y     + t, x + w - 1, y + h - 1 + t, color);
-    display.drawLine(x,         y + h - 1 + t, x + w - 1, y     + t, color);
-  }
-}
+static const uint8_t PROGMEM ota_check_8x8[] = {
+  0b00000001,  // . . . . . . . X
+  0b00000011,  // . . . . . . X X
+  0b00000110,  // . . . . . X X .
+  0b00001100,  // . . . . X X . .
+  0b10011000,  // X . . X X . . .   <- elbow: short + long strokes meet
+  0b11110000,  // X X X X . . . .   <- short stroke base
+  0b01100000,  // . X X . . . . .
+  0b00000000,  // . . . . . . . .
+};
+
+static const uint8_t PROGMEM ota_cross_8x8[] = {
+  0b10000001,  // X . . . . . . X
+  0b01000010,  // . X . . . . X .
+  0b00100100,  // . . X . . X . .
+  0b00011000,  // . . . X X . . .
+  0b00011000,  // . . . X X . . .
+  0b00100100,  // . . X . . X . .
+  0b01000010,  // . X . . . . X .
+  0b10000001,  // X . . . . . . X
+};
 
 void displayShowOtaDone() {
   Logger.println("[Display] OTA done - rebooting");
   display.clearDisplay();
-  // Small green checkmark on top, "Mise a jour / reussi !" below.
-  drawCheckmark(26, 1, 12, 10, COLOR_GREEN);
+  // Small 8x8 green check icon centered horizontally near the top.
+  display.drawBitmap((MATRIX_WIDTH - 8) / 2, 1, ota_check_8x8, 8, 8, COLOR_GREEN);
+
   display.setTextSize(1);
+  // Disable auto-wrap so "Mise a jour" (65 px on a 64 px matrix) stays on
+  // its line: the trailing 'r' silently clips its rightmost column instead
+  // of wrapping the letter down to the next row.
+  display.setTextWrap(false);
   display.setTextColor(COLOR_WHITE);
-  // "Mise a jour" is 11 chars -> 65 px on a 64 px matrix. We start at x=0
-  // so the rightmost pixel of the trailing 'r' clips by exactly 1 column
-  // — barely visible in practice and lets us keep the full French phrase.
-  display.setCursor(0, 14);
+  display.setCursor(0, 13);
   display.print("Mise a jour");
+  display.setTextWrap(true);
+
   display.setTextColor(COLOR_GREEN);
-  printCentered("reussi !", 24);  // 8 chars -> x=8
+  printCentered("reussi !", 23);  // 8 chars -> x=8
 }
 
 void displayShowOtaFailed() {
   Logger.println("[Display] OTA failed");
   display.clearDisplay();
-  // Small red X on top, "Erreur / MAJ" below (same structure as success).
-  drawCross(26, 1, 12, 10, COLOR_RED);
+  // Small 8x8 red X icon centered horizontally near the top.
+  display.drawBitmap((MATRIX_WIDTH - 8) / 2, 1, ota_cross_8x8, 8, 8, COLOR_RED);
+
   display.setTextSize(1);
   display.setTextColor(COLOR_RED);
-  printCentered("Erreur", 14);  // 6 chars -> x=14
-  printCentered("MAJ",    24);  // 3 chars -> x=23
+  printCentered("Erreur", 13);  // 6 chars -> x=14
+  printCentered("MAJ",    23);  // 3 chars -> x=23
 }
 
 // ── Preferences ──
