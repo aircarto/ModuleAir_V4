@@ -34,6 +34,7 @@ static Preferences preferences;
 //                       to the saved credentials (no reboot needed if it works)
 enum WifiState {
   WS_STA_CONNECTED,
+  WS_STA_RECONNECTING,   // STA dropped: trying to reconnect for up to 3 min
   WS_AP_CONFIG,
   WS_AP_DATA,
   WS_AP_RETRYING,
@@ -41,19 +42,23 @@ enum WifiState {
 
 static WifiState wifiState = WS_AP_CONFIG;
 static unsigned long stateEnteredAt = 0;
+static unsigned long lastReconnectKickAt = 0;   // last manual WiFi.reconnect() in STA_RECONNECTING
 static int lastAPClients = 0;
 
-// Timings for the AP-fallback UX.
-static const unsigned long AP_CONFIG_DURATION_MS = 3UL  * 60UL * 1000UL;   // 3 min config splash
-static const unsigned long AP_RETRY_INTERVAL_MS  = 10UL * 60UL * 1000UL;   // retry every 10 min
-static const unsigned long AP_RETRY_TIMEOUT_MS   = 30UL * 1000UL;          // 30s per attempt
+// Timings for the connection-recovery UX.
+static const unsigned long STA_RECONNECT_WINDOW_MS = 3UL  * 60UL * 1000UL;  // 3 min STA recovery
+static const unsigned long STA_RECONNECT_KICK_MS   = 30UL * 1000UL;         // explicit re-kick cadence
+static const unsigned long AP_CONFIG_DURATION_MS   = 3UL  * 60UL * 1000UL;  // 3 min config splash
+static const unsigned long AP_RETRY_INTERVAL_MS    = 10UL * 60UL * 1000UL;  // retry every 10 min
+static const unsigned long AP_RETRY_TIMEOUT_MS     = 30UL * 1000UL;         // 30s per attempt
 
 static const char* wifiStateName(WifiState s) {
   switch (s) {
-    case WS_STA_CONNECTED: return "STA_CONNECTED";
-    case WS_AP_CONFIG:     return "AP_CONFIG";
-    case WS_AP_DATA:       return "AP_DATA";
-    case WS_AP_RETRYING:   return "AP_RETRYING";
+    case WS_STA_CONNECTED:    return "STA_CONNECTED";
+    case WS_STA_RECONNECTING: return "STA_RECONNECTING";
+    case WS_AP_CONFIG:        return "AP_CONFIG";
+    case WS_AP_DATA:          return "AP_DATA";
+    case WS_AP_RETRYING:      return "AP_RETRYING";
   }
   return "?";
 }
@@ -1413,6 +1418,21 @@ void wifiSaveCredentialsAndRestart(const String& ssid, const String& password) {
   ESP.restart();
 }
 
+// Bring the SoftAP up and switch the FSM to WS_AP_CONFIG. Used both at boot
+// (when the first STA attempt fails) and as the escalation step after a
+// failed 3-minute STA reconnect window. Idempotent enough to call when the
+// AP is already up — but normally only called on a real transition.
+static void startApFallback() {
+  WiFi.mode(WIFI_AP);
+  WiFi.softAP(apSSID.c_str(), AP_PASSWORD);
+  Logger.printf("[WiFi] AP started: %s (IP %s)\n",
+                apSSID.c_str(), WiFi.softAPIP().toString().c_str());
+  displayShowAPMode(apSSID.c_str(), WiFi.softAPIP().toString().c_str());
+  dnsServer.start(53, "*", WiFi.softAPIP());
+  Logger.println("[DNS] Captive portal DNS started");
+  setWifiState(WS_AP_CONFIG);
+}
+
 // Kick off a background reconnect attempt using the credentials in NVS.
 // Non-blocking: WiFi.begin() returns immediately, the WiFi driver runs the
 // association in its own task. We just switch state to WS_AP_RETRYING and
@@ -1473,12 +1493,39 @@ void wifiManagerLoop() {
 
   switch (wifiState) {
     case WS_STA_CONNECTED:
-      // Driver-level reconnect on a dropped association. ESP-IDF auto-retries
-      // anyway; calling reconnect() here is a no-op when association is still
-      // in progress and a manual kick otherwise.
+      // First detection of a dropped association: enter the 3-min recovery
+      // window rather than spamming reconnect() on every 1 Hz tick (which
+      // was the old behaviour — it filled /logs with hundreds of
+      // "Connection lost" lines and never escalated to AP fallback).
       if (WiFi.status() != WL_CONNECTED) {
-        Logger.println("[WiFi] Connection lost — auto-reconnect");
+        Logger.println("[WiFi] Connection lost — entering 3 min reconnect window");
         WiFi.reconnect();
+        lastReconnectKickAt = now;
+        setWifiState(WS_STA_RECONNECTING);
+      }
+      break;
+
+    case WS_STA_RECONNECTING:
+      if (WiFi.status() == WL_CONNECTED) {
+        // Recovered without needing the AP fallback.
+        Logger.printf("[WiFi] Reconnected to %s (RSSI %d dBm)\n",
+                      WiFi.SSID().c_str(), WiFi.RSSI());
+        setWifiState(WS_STA_CONNECTED);
+        displaySetNetStatus(NET_OK);
+      } else if (now - stateEnteredAt > STA_RECONNECT_WINDOW_MS) {
+        // 3 min elapsed without the driver getting back in — give up on
+        // STA, bring up the AP/captive portal so the user can act, and
+        // let the standard AP retry cycle (every 10 min) take over.
+        Logger.println("[WiFi] 3 min reconnect window expired — falling back to AP");
+        WiFi.disconnect(true);
+        delay(100);
+        startApFallback();
+      } else if (now - lastReconnectKickAt > STA_RECONNECT_KICK_MS) {
+        // Re-kick the driver every 30s in case its internal auto-retry
+        // backed off. One log line per kick — no per-tick spam.
+        Logger.println("[WiFi] Still reconnecting (kick)");
+        WiFi.reconnect();
+        lastReconnectKickAt = now;
       }
       break;
 
