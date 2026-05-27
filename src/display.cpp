@@ -965,22 +965,28 @@ static void drawCross(int x, int y, int w, int h, uint16_t color) {
 void displayShowOtaDone() {
   Logger.println("[Display] OTA done - rebooting");
   display.clearDisplay();
-  // Big green checkmark, then "Reussi !" centered below.
-  // Icon box: 18px wide x 14px tall, centered horizontally (x=23-40).
-  drawCheckmark(23, 1, 18, 14, COLOR_GREEN);
+  // Small green checkmark on top, "Mise a jour / reussi !" below.
+  drawCheckmark(26, 1, 12, 10, COLOR_GREEN);
   display.setTextSize(1);
   display.setTextColor(COLOR_WHITE);
-  printCentered("Reussi !", 22);  // 8 chars -> x=8
+  // "Mise a jour" is 11 chars -> 65 px on a 64 px matrix. We start at x=0
+  // so the rightmost pixel of the trailing 'r' clips by exactly 1 column
+  // — barely visible in practice and lets us keep the full French phrase.
+  display.setCursor(0, 14);
+  display.print("Mise a jour");
+  display.setTextColor(COLOR_GREEN);
+  printCentered("reussi !", 24);  // 8 chars -> x=8
 }
 
 void displayShowOtaFailed() {
   Logger.println("[Display] OTA failed");
   display.clearDisplay();
-  // Big red X, then "Echec" centered below.
-  drawCross(24, 2, 16, 13, COLOR_RED);
+  // Small red X on top, "Erreur / MAJ" below (same structure as success).
+  drawCross(26, 1, 12, 10, COLOR_RED);
   display.setTextSize(1);
-  display.setTextColor(COLOR_GRAY);
-  printCentered("Voir logs", 22);  // 9 chars -> x=5
+  display.setTextColor(COLOR_RED);
+  printCentered("Erreur", 14);  // 6 chars -> x=14
+  printCentered("MAJ",    24);  // 3 chars -> x=23
 }
 
 // ── Preferences ──
