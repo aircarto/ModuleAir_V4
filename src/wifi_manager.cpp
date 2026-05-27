@@ -164,6 +164,9 @@ button.danger:hover{background:#f44336;}
 .status{padding:10px;border-radius:8px;margin:10px 0;text-align:center;}
 .status.ok{background:#1b5e20;color:#a5d6a7;}
 .status.ap{background:#e65100;color:#ffcc80;}
+.status.info{background:#0d3a5e;color:#90caf9;}
+.status.err{background:#b71c1c;color:#ef9a9a;}
+.save-status{margin-top:8px;}
 .scan-info{color:#888;font-size:0.85em;text-align:center;margin:10px 0;}
 .wifi-form{padding:10px 10px 5px;margin:5px 0;background:#0a2040;border-radius:8px;display:none;}
 .wifi-form.active{display:block;}
@@ -212,6 +215,53 @@ function selectWifi(el,ssid){
   var pw=form.querySelector('input[type=password]');
   if(pw)pw.focus();
 }
+// Pre-check WiFi credentials BEFORE saving + rebooting. Without this the
+// firmware would persist whatever the user typed, reboot, fail to connect
+// (silently), and fall back to AP — leaving the user staring at a config
+// portal wondering what just happened. Now we try the creds in AP+STA mode
+// (the captive portal stays up the whole time) and only persist+reboot if
+// the connection actually succeeds. Pattern from tzapu/WiFiManager.
+function saveWifi(form){
+  var ssid=form.querySelector('input[name=ssid]').value;
+  var pw=form.querySelector('input[name=password]').value;
+  var btn=form.querySelector('button[type=submit]');
+  var status=form.querySelector('.save-status');
+  if(!status){
+    status=document.createElement('div');
+    status.className='save-status status info';
+    form.appendChild(status);
+  }
+  status.className='save-status status info';
+  status.textContent='Test de connexion en cours (10 s max)...';
+  btn.disabled=true;
+  btn.textContent='Test...';
+  fetch('/save',{
+    method:'POST',
+    headers:{'Content-Type':'application/x-www-form-urlencoded'},
+    body:'ssid='+encodeURIComponent(ssid)+'&password='+encodeURIComponent(pw)
+  }).then(function(r){return r.json();}).then(function(d){
+    if(d.ok){
+      status.className='save-status status ok';
+      status.textContent='Connexion reussie ! Redemarrage en cours...';
+      // Browser will likely lose the AP within seconds; nothing else to do.
+    } else {
+      var msg=d.error==='wrong_password'?'Mot de passe incorrect.':
+              d.error==='ssid_not_found'?'Reseau introuvable (hors de portee ?).':
+              d.error==='missing_ssid'?'SSID manquant.':
+              'Echec de connexion'+(d.reason?' (raison '+d.reason+')':'')+'.';
+      status.className='save-status status err';
+      status.textContent=msg;
+      btn.disabled=false;
+      btn.textContent='Reessayer';
+    }
+  }).catch(function(){
+    status.className='save-status status err';
+    status.textContent='Erreur reseau pendant le test.';
+    btn.disabled=false;
+    btn.textContent='Reessayer';
+  });
+  return false;
+}
 function scanWifi(){
   var b=document.getElementById('scan-btn');
   var c=document.getElementById('wifi-list');
@@ -224,7 +274,7 @@ function scanWifi(){
       h+="<span class='wifi-name'>"+w.ssid;
       if(w.encrypted)h+="<span class='lock'>&#128274;</span>";
       h+="</span><span class='wifi-rssi'>"+sig+" "+w.rssi+"dBm</span></div>";
-      h+="<div class='wifi-form'><form action='/save' method='POST'>";
+      h+="<div class='wifi-form'><form action='/save' method='POST' onsubmit='return saveWifi(this)'>";
       h+="<input type='hidden' name='ssid' value='"+w.ssid+"'>";
       if(w.encrypted)h+="<div class='pw-wrap'><input type='password' name='password' placeholder='Mot de passe'><button type='button' class='pw-toggle' onclick='togglePw(this)'>&#128065;</button></div>";
       else h+="<input type='hidden' name='password' value=''>";
@@ -780,7 +830,7 @@ static void handleRootAP() {
     chunk += "</div>";
 
     chunk += "<div class='wifi-form'>";
-    chunk += "<form action='/save' method='POST'>";
+    chunk += "<form action='/save' method='POST' onsubmit='return saveWifi(this)'>";
     chunk += "<input type='hidden' name='ssid' value='" + ssid + "'>";
     if (encrypted) {
       chunk += "<div class='pw-wrap'><input type='password' name='password' placeholder='Mot de passe'><button type='button' class='pw-toggle' onclick='togglePw(this)'>&#128065;</button></div>";
@@ -836,6 +886,13 @@ static void handleRoot() {
   }
 }
 
+// Pre-check + save flow. The browser posts credentials here; we try them
+// in AP+STA mode (the captive portal stays up via the AP interface) and
+// only persist + reboot on success. On failure we revert to AP-only and
+// reply with a JSON error so the captive portal can show "wrong password"
+// inline without losing its connection to the user's phone.
+//
+// Reference: tzapu/WiFiManager::handleWifiSave + connectWifi flow.
 static void handleSave() {
   Logger.printf("[Web] Client %s requested /save\n", server.client().remoteIP().toString().c_str());
   String ssid = server.arg("ssid");
@@ -843,36 +900,55 @@ static void handleSave() {
 
   if (ssid.length() == 0) {
     Logger.println("[Web] Save rejected: empty SSID");
-    sendHeader();
-    server.sendContent(
-      "<div class='card'><div class='status ap'>SSID requis</div>"
-      "<br><a href='/'><button>Retour</button></a></div>");
-    sendFooter();
+    server.send(400, "application/json", "{\"ok\":false,\"error\":\"missing_ssid\"}");
     return;
   }
 
+  Logger.printf("[WiFi] Pre-check: trying SSID '%s' (mdp length=%d) in AP+STA mode...\n",
+                ssid.c_str(), password.length());
+
+  // Switch to dual mode so the AP/captive portal stays alive during the
+  // STA connection attempt. The phone keeps its socket open via the AP.
+  // Note: AP and STA must share the same channel — when STA associates,
+  // the AP hops, and phones momentarily disassociate. They'll auto-reconnect.
+  WiFi.mode(WIFI_AP_STA);
+  delay(100);
+
+  bool ok = wifiTryConnect(ssid, password, 10000);
+
+  if (!ok) {
+    WifiFailGroup g = classifyReason(lastDisconnectReason);
+    Logger.printf("[WiFi] Pre-check FAILED: reason=%u (%s) — credentials NOT saved\n",
+                  lastDisconnectReason, failGroupLabel(g));
+
+    // Drop the failed STA attempt, restore AP-only for a clean captive portal.
+    WiFi.disconnect(false, false);
+    delay(100);
+    WiFi.mode(WIFI_AP);
+
+    const char* errKey =
+      (g == WFG_AUTH)         ? "wrong_password" :
+      (g == WFG_AP_NOT_FOUND) ? "ssid_not_found" :
+                                "connect_failed";
+
+    String json = "{\"ok\":false,\"error\":\"";
+    json += errKey;
+    json += "\",\"reason\":";
+    json += String(lastDisconnectReason);
+    json += "}";
+    server.send(200, "application/json", json);
+    return;
+  }
+
+  // Connection actually worked. Persist and reboot to come up in normal mode.
+  Logger.printf("[WiFi] Pre-check OK — saving credentials and rebooting\n");
   preferences.begin("wifi", false);
   preferences.putString("ssid", ssid);
   preferences.putString("password", password);
   preferences.end();
 
-  Logger.printf("[WiFi] Credentials saved - SSID: %s, password length: %d\n", ssid.c_str(), password.length());
-  Logger.println("[WiFi] Restarting in 3 seconds...");
-
-  sendHeader();
-  server.sendContent(
-    "<div class='card'><div class='status ok'>Configuration enregistree !<br><br>"
-    "SSID: <strong>" + ssid + "</strong><br><br>"
-    "Le capteur va redemarrer et tenter de se connecter.</div></div>"
-    "<div class='card'><h2>Indicateurs lumineux</h2>"
-    "<div class='data-row'><span class='data-label' style='color:#4fc3f7'>Clignotements bleus</span>"
-    "<span class='data-value'>Connexion WiFi reussie</span></div>"
-    "<div class='data-row'><span class='data-label' style='color:#ff7043'>Respiration orange</span>"
-    "<span class='data-value'>Echec, retour en mode AP</span></div>"
-    "</div>");
-  sendFooter();
-
-  delay(3000);
+  server.send(200, "application/json", "{\"ok\":true}");
+  delay(500);   // let the browser receive the JSON before we yank the AP
   ESP.restart();
 }
 
