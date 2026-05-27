@@ -13,7 +13,7 @@ Au démarrage, les LEDs jouent une courte animation arc-en-ciel puis passent en 
 Sur votre téléphone ou ordinateur, ouvrez les paramètres WiFi et connectez-vous au réseau :
 
 - **Nom du réseau** : `ModuleAir-XXXXXX` (les 6 derniers caractères sont propres à votre capteur)
-- **Mot de passe** : `moduleaircfg`
+- **Mot de passe** : aucun (réseau ouvert)
 
 ### Configurer le WiFi
 

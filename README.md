@@ -130,7 +130,7 @@ Exemples : `0` = tous les capteurs OK, `0x88` (136) = NextPM + MH-Z19 en erreur.
 Au premier démarrage, le capteur crée un point d'accès WiFi :
 
 - **SSID** : `ModuleAir-XXXXXX` (les 6 derniers caractères du MAC, unique par capteur)
-- **Mot de passe** : `moduleaircfg`
+- **Mot de passe** : aucun (réseau ouvert)
 
 La page de configuration s'ouvre automatiquement à la connexion (captive portal). Une fois connecté au WiFi, la page devient un dashboard affichant les dernières mesures, l'état des capteurs et les infos système. Elle est accessible via l'IP locale ou `http://moduleair.local`.
 

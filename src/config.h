@@ -6,7 +6,10 @@
 #define FIRMWARE_VERSION "0.3.1"
 
 // WiFi AP
-#define AP_PASSWORD "moduleaircfg"
+// The hotspot is intentionally open (no password). The first-time-config
+// flow puts the user on a captive portal that ONLY exposes a network
+// configuration UI — no sensitive data, no persistent local state to
+// protect — so a passphrase would just add friction without security benefit.
 #define MDNS_NAME   "moduleair"
 #define WIFI_CONNECT_TIMEOUT 15000
 

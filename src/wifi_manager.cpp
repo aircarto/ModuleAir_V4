@@ -1261,11 +1261,10 @@ void wifiManagerInit() {
 
   if (wifiState != WS_STA_CONNECTED) {
     WiFi.mode(WIFI_AP);
-    WiFi.softAP(apSSID.c_str(), AP_PASSWORD);
+    WiFi.softAP(apSSID.c_str());   // open network — see config.h for rationale
     setWifiState(WS_AP_CONFIG);   // start the 3-min config-splash timer
-    Logger.printf("[WiFi] AP started\n");
+    Logger.printf("[WiFi] AP started (open)\n");
     Logger.printf("[WiFi] SSID:     %s\n", apSSID.c_str());
-    Logger.printf("[WiFi] Password: %s\n", AP_PASSWORD);
     Logger.printf("[WiFi] AP IP:    %s\n", WiFi.softAPIP().toString().c_str());
     Logger.printf("[WiFi] AP MAC:   %s\n", WiFi.softAPmacAddress().c_str());
     displayShowAPMode(apSSID.c_str(), WiFi.softAPIP().toString().c_str());
@@ -1351,8 +1350,8 @@ void wifiSaveCredentialsAndRestart(const String& ssid, const String& password) {
 // AP is already up — but normally only called on a real transition.
 static void startApFallback() {
   WiFi.mode(WIFI_AP);
-  WiFi.softAP(apSSID.c_str(), AP_PASSWORD);
-  Logger.printf("[WiFi] AP started: %s (IP %s)\n",
+  WiFi.softAP(apSSID.c_str());   // open network
+  Logger.printf("[WiFi] AP started (open): %s (IP %s)\n",
                 apSSID.c_str(), WiFi.softAPIP().toString().c_str());
   displayShowAPMode(apSSID.c_str(), WiFi.softAPIP().toString().c_str());
   dnsServer.start(53, "*", WiFi.softAPIP());
