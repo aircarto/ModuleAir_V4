@@ -20,9 +20,56 @@ static WebServer server(80);
 static DNSServer dnsServer;
 static Preferences preferences;
 
-static bool wifiConnected = false;
-static bool apMode = false;
+// ── WiFi connection state machine ──────────────────────────────────────────
+// Modeled on ESPHome's wifi_component FSM (STATE_AP / STATE_STA_CONNECTING /
+// STATE_STA_CONNECTED) but specialized for our UX needs:
+//
+//   WS_STA_CONNECTED  : connected to a known WiFi, normal operation
+//   WS_AP_CONFIG      : boot connect failed, AP up, matrix shows "Config WiFi"
+//                       splash (first 3 minutes after entering this state)
+//   WS_AP_DATA        : 3+ minutes of AP-only, matrix switches to normal
+//                       pollutant data display, hotspot stays running in
+//                       background so the user can still reconfigure
+//   WS_AP_RETRYING    : AP+STA dual mode, attempting a background reconnect
+//                       to the saved credentials (no reboot needed if it works)
+enum WifiState {
+  WS_STA_CONNECTED,
+  WS_AP_CONFIG,
+  WS_AP_DATA,
+  WS_AP_RETRYING,
+};
+
+static WifiState wifiState = WS_AP_CONFIG;
+static unsigned long stateEnteredAt = 0;
 static int lastAPClients = 0;
+
+// Timings for the AP-fallback UX.
+static const unsigned long AP_CONFIG_DURATION_MS = 3UL  * 60UL * 1000UL;   // 3 min config splash
+static const unsigned long AP_RETRY_INTERVAL_MS  = 10UL * 60UL * 1000UL;   // retry every 10 min
+static const unsigned long AP_RETRY_TIMEOUT_MS   = 30UL * 1000UL;          // 30s per attempt
+
+static const char* wifiStateName(WifiState s) {
+  switch (s) {
+    case WS_STA_CONNECTED: return "STA_CONNECTED";
+    case WS_AP_CONFIG:     return "AP_CONFIG";
+    case WS_AP_DATA:       return "AP_DATA";
+    case WS_AP_RETRYING:   return "AP_RETRYING";
+  }
+  return "?";
+}
+
+static void setWifiState(WifiState s) {
+  if (s == wifiState) return;
+  Logger.printf("[WiFi FSM] %s -> %s\n", wifiStateName(wifiState), wifiStateName(s));
+  wifiState = s;
+  stateEnteredAt = millis();
+}
+
+static inline bool isApActive() {
+  return wifiState == WS_AP_CONFIG ||
+         wifiState == WS_AP_DATA   ||
+         wifiState == WS_AP_RETRYING;
+}
 
 // ── Smart-connect : distinguer "AP absent" vs "echec transitoire" ──
 // Strategie eprouvee (cf. ESPHome, Tasmota) : on tente une fois, si echec on
@@ -879,7 +926,7 @@ static void handleScan() {
 
 static void handleRoot() {
   Logger.printf("[Web] Client %s requested /\n", server.client().remoteIP().toString().c_str());
-  if (wifiConnected) {
+  if (wifiState == WS_STA_CONNECTED) {
     handleRootConnected();
   } else {
     handleRootAP();
@@ -1220,8 +1267,7 @@ void wifiManagerInit() {
     }
 
     if (connected) {
-      wifiConnected = true;
-      apMode = false;
+      setWifiState(WS_STA_CONNECTED);
       Logger.printf("[WiFi] Connected!\n");
       Logger.printf("[WiFi] IP:      %s\n", WiFi.localIP().toString().c_str());
       Logger.printf("[WiFi] Gateway: %s\n", WiFi.gatewayIP().toString().c_str());
@@ -1239,10 +1285,10 @@ void wifiManagerInit() {
     Logger.println("[WiFi] No saved credentials found");
   }
 
-  if (!wifiConnected) {
+  if (wifiState != WS_STA_CONNECTED) {
     WiFi.mode(WIFI_AP);
     WiFi.softAP(apSSID.c_str(), AP_PASSWORD);
-    apMode = true;
+    setWifiState(WS_AP_CONFIG);   // start the 3-min config-splash timer
     Logger.printf("[WiFi] AP started\n");
     Logger.printf("[WiFi] SSID:     %s\n", apSSID.c_str());
     Logger.printf("[WiFi] Password: %s\n", AP_PASSWORD);
@@ -1296,7 +1342,7 @@ void wifiManagerInit() {
 
   server.onNotFound([]() {
     Logger.printf("[Web] 404: %s %s\n", server.method() == HTTP_GET ? "GET" : "POST", server.uri().c_str());
-    if (apMode) {
+    if (isApActive()) {
       // Captive portal : rediriger toute requête inconnue vers /
       server.sendHeader("Location", "http://192.168.4.1/", true);
       server.send(302, "text/plain", "");
@@ -1308,7 +1354,7 @@ void wifiManagerInit() {
   Logger.println("[Web] Server started on port 80");
 
   // Lancer le premier scan en arrière-plan (uniquement en mode AP)
-  if (apMode) {
+  if (isApActive()) {
     startScanIfNeeded();
   }
 }
@@ -1325,14 +1371,49 @@ void wifiSaveCredentialsAndRestart(const String& ssid, const String& password) {
   ESP.restart();
 }
 
+// Kick off a background reconnect attempt using the credentials in NVS.
+// Non-blocking: WiFi.begin() returns immediately, the WiFi driver runs the
+// association in its own task. We just switch state to WS_AP_RETRYING and
+// the FSM tick polls WiFi.status() to detect success or timeout.
+static void attemptBackgroundReconnect() {
+  preferences.begin("wifi", true);
+  String ssid = preferences.getString("ssid", "");
+  String password = preferences.getString("password", "");
+  preferences.end();
+
+  if (ssid.length() == 0) {
+    Logger.println("[WiFi] No saved creds, skipping background reconnect");
+    setWifiState(WS_AP_DATA);   // resets stateEnteredAt so we wait 10 min again
+    return;
+  }
+
+  Logger.printf("[WiFi] Background reconnect to '%s' (AP stays up)...\n", ssid.c_str());
+  WiFi.mode(WIFI_AP_STA);
+  lastDisconnectReason = 0;
+  WiFi.begin(ssid.c_str(), password.c_str());
+  setWifiState(WS_AP_RETRYING);
+}
+
+// Log AP-client transitions (a phone joining/leaving the hotspot).
+static void apClientLogTick() {
+  int clients = WiFi.softAPgetStationNum();
+  if (clients != lastAPClients) {
+    Logger.printf("[WiFi] AP clients: %d -> %d\n", lastAPClients, clients);
+    lastAPClients = clients;
+  }
+}
+
 void wifiManagerLoop() {
-  if (apMode) {
+  // Fast path: serve pending HTTP/DNS requests and BLE events every loop.
+  // DNS captive portal stays alive in every AP state (including WS_AP_DATA)
+  // so a phone joining the AP at any time still hits the portal correctly.
+  if (isApActive()) {
     dnsServer.processNextRequest();
     bleImprovLoop();
   }
   server.handleClient();
 
-  // Vérifier si le scan async est terminé
+  // Drain async scan results.
   if (scanInProgress) {
     int result = WiFi.scanComplete();
     if (result != WIFI_SCAN_RUNNING) {
@@ -1342,29 +1423,80 @@ void wifiManagerLoop() {
     }
   }
 
-  static unsigned long lastCheck = 0;
+  // 1 Hz FSM tick. Throttled so we don't spam log + WiFi APIs.
+  static unsigned long lastTick = 0;
   unsigned long now = millis();
-  if (now - lastCheck < 10000) return;
-  lastCheck = now;
+  if (now - lastTick < 1000) return;
+  lastTick = now;
 
-  if (apMode) {
-    int clients = WiFi.softAPgetStationNum();
-    if (clients != lastAPClients) {
-      Logger.printf("[WiFi] AP clients: %d -> %d\n", lastAPClients, clients);
-      lastAPClients = clients;
-    }
-  } else if (wifiConnected) {
-    if (WiFi.status() != WL_CONNECTED) {
-      Logger.println("[WiFi] Connection lost! Reconnecting...");
-      WiFi.reconnect();
-    }
+  switch (wifiState) {
+    case WS_STA_CONNECTED:
+      // Driver-level reconnect on a dropped association. ESP-IDF auto-retries
+      // anyway; calling reconnect() here is a no-op when association is still
+      // in progress and a manual kick otherwise.
+      if (WiFi.status() != WL_CONNECTED) {
+        Logger.println("[WiFi] Connection lost — auto-reconnect");
+        WiFi.reconnect();
+      }
+      break;
+
+    case WS_AP_CONFIG:
+      apClientLogTick();
+      // After 3 min on the "Config WiFi" splash, switch the matrix to normal
+      // data display. The AP keeps running so the user can still configure.
+      if (now - stateEnteredAt > AP_CONFIG_DURATION_MS) {
+        Logger.println("[WiFi] 3 min in AP_CONFIG — matrix switches to data display");
+        setWifiState(WS_AP_DATA);
+      }
+      break;
+
+    case WS_AP_DATA:
+      apClientLogTick();
+      // Every 10 min, attempt to reconnect to the saved WiFi in case the AP
+      // came back online (router rebooted, came back from vacation, etc.).
+      // stateEnteredAt was just reset on entry, so the first retry happens
+      // 10 min after the AP_DATA transition (i.e. ~13 min after boot).
+      if (now - stateEnteredAt > AP_RETRY_INTERVAL_MS) {
+        attemptBackgroundReconnect();
+      }
+      break;
+
+    case WS_AP_RETRYING:
+      if (WiFi.status() == WL_CONNECTED) {
+        // Background reconnect succeeded — tear down AP gracefully and
+        // switch to STA-only. No reboot, no display flash.
+        Logger.println("[WiFi] Background reconnect SUCCEEDED");
+        Logger.printf("[WiFi] IP: %s, RSSI: %d dBm, channel %d\n",
+                      WiFi.localIP().toString().c_str(),
+                      WiFi.RSSI(), WiFi.channel());
+        delay(500);  // let any in-flight HTTP response flush over the AP
+        WiFi.softAPdisconnect(true);
+        dnsServer.stop();
+        WiFi.mode(WIFI_STA);
+        setWifiState(WS_STA_CONNECTED);
+        displayShowWifiReconnected();
+      } else if (now - stateEnteredAt > AP_RETRY_TIMEOUT_MS) {
+        // 30 s elapsed without a successful association — abandon and go
+        // back to AP_DATA. The 10-min counter restarts from now.
+        WifiFailGroup g = classifyReason(lastDisconnectReason);
+        Logger.printf("[WiFi] Background reconnect timeout (reason=%u, %s)\n",
+                      lastDisconnectReason, failGroupLabel(g));
+        WiFi.disconnect(false, false);   // drop STA part, keep AP
+        WiFi.mode(WIFI_AP);
+        setWifiState(WS_AP_DATA);
+      }
+      break;
   }
 }
 
 bool wifiIsConnected() {
-  return wifiConnected && WiFi.status() == WL_CONNECTED;
+  return wifiState == WS_STA_CONNECTED && WiFi.status() == WL_CONNECTED;
 }
 
 bool wifiIsApMode() {
-  return apMode;
+  return isApActive();
+}
+
+bool wifiShouldShowConfigSplash() {
+  return wifiState == WS_AP_CONFIG;
 }
