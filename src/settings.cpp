@@ -75,7 +75,29 @@ SensorSettings& settingsGetSensors() {
 }
 ScreenSettings& settingsGetScreens() { return screens; }
 
+// Hard-block re-enabling a sensor that's been compiled out. Three layers
+// of defense for this case: the web UI greys the toggle and adds
+// `disabled` so the browser refuses the click; this setter refuses to
+// write NVS if a curl request gets through; settingsGetSensors() masks
+// the runtime flag to false regardless of what NVS holds. The user's
+// build-time choice is authoritative end-to-end.
+static bool isSensorCompiledIn(const char* key) {
+  if (!key) return true;
+  if (strcmp(key, "npm")    == 0) return SENSOR_NPM_COMPILED    != 0;
+  if (strcmp(key, "mhz19")  == 0) return SENSOR_MHZ19_COMPILED  != 0;
+  if (strcmp(key, "bme280") == 0) return SENSOR_BME280_COMPILED != 0;
+  if (strcmp(key, "ccs811") == 0) return SENSOR_CCS811_COMPILED != 0;
+  if (strcmp(key, "sfa40")  == 0) return SENSOR_SFA40_COMPILED  != 0;
+  return true;   // unknown keys: let through (forward-compat with future sensors)
+}
+
 void settingsSetSensorEnabled(const char* key, bool enabled) {
+  if (enabled && !isSensorCompiledIn(key)) {
+    Logger.printf("[Settings] Refused to enable '%s': disabled in code (SENSOR_%s_COMPILED=0)\n",
+                  key, key);
+    return;
+  }
+
   Preferences prefs;
   prefs.begin("sensors", false);
   prefs.putBool(key, enabled);
