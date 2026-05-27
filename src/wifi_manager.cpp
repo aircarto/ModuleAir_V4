@@ -91,15 +91,50 @@ enum WifiFailGroup {
 static volatile uint8_t lastDisconnectReason = 0;
 
 static void onWifiEvent(WiFiEvent_t e, WiFiEventInfo_t info) {
-  if (e == ARDUINO_EVENT_WIFI_STA_DISCONNECTED) {
-    lastDisconnectReason = info.wifi_sta_disconnected.reason;
-    // Update the badge instantly instead of waiting for the network_monitor
-    // task's next 15 s tick. The handler runs in the WiFi event task on
-    // core 0 but displaySetNetStatus is just a single 32-bit write so it's
-    // safe from any context.
-    if (wifiState == WS_STA_CONNECTED) {
-      displaySetNetStatus(NET_OFFLINE);
-    }
+  // Log every significant WiFi event so the /logs page traces the full
+  // life-cycle (association, disconnect, IP, AP clients). Routine /noisy
+  // events (AUTHMODE_CHANGE etc.) are intentionally skipped.
+  switch (e) {
+    case ARDUINO_EVENT_WIFI_STA_START:
+      Logger.println("[WiFi event] STA_START");
+      break;
+    case ARDUINO_EVENT_WIFI_STA_CONNECTED:
+      Logger.println("[WiFi event] STA_CONNECTED (associated)");
+      break;
+    case ARDUINO_EVENT_WIFI_STA_DISCONNECTED:
+      lastDisconnectReason = info.wifi_sta_disconnected.reason;
+      Logger.printf("[WiFi event] STA_DISCONNECTED reason=%u (%s)\n",
+                    lastDisconnectReason,
+                    failGroupLabel(classifyReason(lastDisconnectReason)));
+      if (wifiState == WS_STA_CONNECTED) {
+        displaySetNetStatus(NET_OFFLINE);
+      }
+      break;
+    case ARDUINO_EVENT_WIFI_STA_GOT_IP:
+      Logger.printf("[WiFi event] STA_GOT_IP %s\n", WiFi.localIP().toString().c_str());
+      break;
+    case ARDUINO_EVENT_WIFI_STA_LOST_IP:
+      Logger.println("[WiFi event] STA_LOST_IP");
+      break;
+    case ARDUINO_EVENT_WIFI_AP_START:
+      Logger.println("[WiFi event] AP_START");
+      break;
+    case ARDUINO_EVENT_WIFI_AP_STOP:
+      Logger.println("[WiFi event] AP_STOP");
+      break;
+    case ARDUINO_EVENT_WIFI_AP_STACONNECTED:
+      Logger.println("[WiFi event] AP_STACONNECTED (client joined hotspot)");
+      break;
+    case ARDUINO_EVENT_WIFI_AP_STADISCONNECTED:
+      Logger.println("[WiFi event] AP_STADISCONNECTED (client left hotspot)");
+      break;
+    case ARDUINO_EVENT_WIFI_SCAN_DONE:
+      // The scan-done count is fetched separately by the scan handler; we
+      // just note that a scan completed.
+      Logger.println("[WiFi event] SCAN_DONE");
+      break;
+    default:
+      break;
   }
 }
 

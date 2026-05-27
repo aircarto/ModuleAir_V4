@@ -1,5 +1,9 @@
 #include "logger.h"
 
+extern "C" {
+  #include "esp_log.h"
+}
+
 // Buffer circulaire en RAM (DRAM statique).
 // Cout : LOG_MAX_LINES * LOG_MAX_LINE_LEN octets.
 // 200 * 120 = 24000 octets (~24 KB), confortable sur ESP32.
@@ -15,6 +19,26 @@ static uint32_t logSeq = 0;   // compteur monotone (incremente a chaque ligne)
 
 LoggerPrint Logger;
 
+// Custom vprintf hook for ESP-IDF logs. The framework's log_e/log_w/log_i
+// macros and any code calling esp_log_write* normally go straight to UART
+// via ets_printf, bypassing our LoggerPrint class — that's why the web
+// /logs endpoint was missing entries like `[E][WiFiClient.cpp:429] ...`
+// that the USB serial monitor showed. By installing this hook we capture
+// every framework log line into the same Logger pipeline, so the serial
+// output and the web buffer stay strictly identical.
+static int customVprintf(const char* fmt, va_list args) {
+  char buf[256];
+  int len = vsnprintf(buf, sizeof(buf), fmt, args);
+  if (len > 0) {
+    // Logger.print writes to Serial AND appends to the circular buffer.
+    // We use a copy of args to format twice (vsnprintf consumed the
+    // original), but since we already produced the formatted string in buf
+    // we can just print it directly without re-formatting.
+    Logger.print(buf);
+  }
+  return len;
+}
+
 void loggerInit() {
   memset(logBuffer, 0, sizeof(logBuffer));
   memset(logSeqs, 0, sizeof(logSeqs));
@@ -22,6 +46,9 @@ void loggerInit() {
   logCount = 0;
   logLinePos = 0;
   logSeq = 0;
+
+  // Redirect ESP-IDF logs through our Logger so they appear in /logs.
+  esp_log_set_vprintf(customVprintf);
 }
 
 void loggerForEachLine(void (*cb)(const char* line)) {
