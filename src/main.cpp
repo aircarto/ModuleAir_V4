@@ -79,20 +79,15 @@ void loop() {
     lastCycle = millis();
     sensorsRead();
     displaySetSensorData(sensorsGetData());
-    // Suppress the "Interieur" intro screen + the rotating data screens
-    // during the first 3 minutes of AP-fallback mode: the matrix is owned
-    // by the AP-config splash so the user can read the hotspot credentials.
-    // After 3 min the wifi FSM transitions out of WS_AP_CONFIG and these
-    // resume normally; the hotspot itself stays running in the background.
-    if (!wifiShouldShowConfigSplash()) {
-      displayShowInterieur();
-    }
+    displayShowInterieur();
     if (connected) {
       dataSenderSend();
     }
   }
 
-  if (!wifiShouldShowConfigSplash()) {
-    displayUpdate();
-  }
+  // The "Config WiFi" slot is now part of the rotation itself (inserted by
+  // displayUpdate() when wifiShouldShowConfigSplash() is true), so we no
+  // longer need to gate the whole displayUpdate() to keep the AP screen
+  // visible. The slot drops out automatically after 3 min.
+  displayUpdate();
 }

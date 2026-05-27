@@ -10,6 +10,7 @@
 #include "logger.h"
 #include "fonts/Font4x7Fixed.h"
 #include "wifi_icon.h"
+#include "wifi_manager.h"
 
 // ── Hardware ──
 
@@ -68,7 +69,9 @@ static unsigned long suppressUpdateUntil = 0;
 // Screen IDs
 enum Screen { SCR_PM1, SCR_PM25, SCR_PM10, SCR_CO2, SCR_TEMP, SCR_HUMI, SCR_COV, SCR_HCHO,
               SCR_PM_ERR, SCR_CO2_ERR,
-              SCR_LOGO_MA, SCR_LOGO_AC, SCR_LOGO_AS, SCR_COUNT };
+              SCR_LOGO_MA, SCR_LOGO_AC, SCR_LOGO_AS,
+              SCR_CONFIG_WIFI,
+              SCR_COUNT };
 
 // ── Helpers ──
 
@@ -450,6 +453,22 @@ static void drawScreenHCHO() {
 static void drawScreenPMError()  { drawErrorScreen("PM");  }
 static void drawScreenCO2Error() { drawErrorScreen("CO2"); }
 
+// Config-WiFi screen, drawn as part of the normal rotation while the FSM
+// is in WS_AP_CONFIG. After 3 minutes the FSM moves to WS_AP_DATA and
+// this screen is no longer added to the rotation — the hotspot keeps
+// running in the background, the matrix shows pollutants only.
+static void drawScreenConfigWifi() {
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(COLOR_ORANGE);
+  display.setCursor(1, 0);
+  display.print("Config");
+  display.setTextColor(COLOR_WHITE);
+  display.setCursor(1, 11);
+  display.print("WiFi");
+  drawWifiIcon(WIFI_ICON_FRAMES - 1);
+}
+
 // ── Public API ──
 
 void displayInit() {
@@ -496,6 +515,14 @@ void displayUpdate() {
   const SensorSettings& sensCfg = settingsGetSensors();
   Screen avail[SCR_COUNT];
   int count = 0;
+
+  // Config-WiFi reminder slot. Present only during the first 3 min of the
+  // AP-fallback (FSM in WS_AP_CONFIG). After that the FSM moves to
+  // WS_AP_DATA, wifiShouldShowConfigSplash() returns false, and this slot
+  // drops out of the rotation while the hotspot itself stays up.
+  if (wifiShouldShowConfigSplash()) {
+    avail[count++] = SCR_CONFIG_WIFI;
+  }
 
   // Data screens. We distinguish three states per family:
   //   1. Sensor enabled + reading OK    -> show data screens
@@ -545,7 +572,8 @@ void displayUpdate() {
 
   static const char* screenNames[] = { "PM1", "PM2.5", "PM10", "CO2", "Temp", "Humi", "COV", "HCHO",
                                        "PM ERR", "CO2 ERR",
-                                       "Logo ModuleAir", "Logo AirCarto", "Logo AtmoSud" };
+                                       "Logo ModuleAir", "Logo AirCarto", "Logo AtmoSud",
+                                       "Config WiFi" };
 
   Screen scr = avail[currentScreen];
   Logger.printf("[Display](%ds) Screen %d/%d: %s\n", SCREEN_INTERVAL / 1000, currentScreen + 1, count, screenNames[scr]);
@@ -564,6 +592,7 @@ void displayUpdate() {
     case SCR_LOGO_MA: displayShowLogo();           break;
     case SCR_LOGO_AC: displayShowLogoAirCarto();   break;
     case SCR_LOGO_AS: displayShowLogoAtmoSud();    break;
+    case SCR_CONFIG_WIFI: drawScreenConfigWifi();  break;
     default: break;
   }
 
@@ -677,6 +706,12 @@ void displayShowWifiConnected(const char* ssid, int rssi) {
   suppressUpdateUntil = millis() + 3000;
 }
 
+// Drawn once when the AP first comes up (boot fallback or runtime
+// escalation) to give immediate feedback before the rotation starts
+// inserting the SCR_CONFIG_WIFI slot itself. The "3 min." countdown
+// text was removed: the screen now lives inside the data rotation and
+// disappears naturally when the FSM transitions to WS_AP_DATA, so a
+// fixed countdown would be misleading.
 void displayShowAPMode(const char* apName, const char* apIP) {
   Logger.printf("[Display] AP mode: %s (%s)\n", apName, apIP);
   display.clearDisplay();
@@ -689,10 +724,6 @@ void displayShowAPMode(const char* apName, const char* apIP) {
   display.setTextColor(COLOR_WHITE);
   display.setCursor(1, 11);
   display.print("WiFi");
-
-  display.setTextColor(COLOR_GRAY);
-  display.setCursor(1, 22);
-  display.print("3 min.");
 
   drawWifiIcon(WIFI_ICON_FRAMES - 1);
 }
