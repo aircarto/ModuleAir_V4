@@ -37,16 +37,24 @@ void displayShowOtaProgress(int percent);
 void displayShowOtaDone();
 void displayShowOtaFailed();
 
-// Connectivity badge shown at the top-right of measurement screens.
-// Three states map cleanly to the user's mental model:
-//   - WiFi off            -> no badge (clean look, "we're offline")
-//   - WiFi on, send OK    -> blue WiFi icon (everything works)
-//   - WiFi on, send KO    -> red up/down arrows (data can't reach server,
-//                            whatever the reason: no DNS, server down, 5xx)
+// Connectivity badge (top-right of measurement screens). 4 states, each
+// composable from two independent network-monitor probes:
+//
+//   - WiFi off                          -> no badge
+//   - WiFi up + internet OK + server OK -> blue WiFi icon
+//   - WiFi up + no internet             -> both arrows RED (uplink AND downlink broken)
+//   - WiFi up + internet OK + server KO -> up arrow RED, down arrow GREEN
+//                                          (we can reach the internet but our
+//                                           server doesn't answer)
+//
+// Convention: the UP arrow is uplink (data going to our server) and the
+// DOWN arrow is downlink (general internet reachability). Pattern inspired
+// by ESPHome's layered status_binary_sensor.
 enum NetStatus {
-  NET_OFFLINE,  // WiFi disconnected — badge hidden
-  NET_OK,       // WiFi connected and last data send succeeded
-  NET_ERROR     // WiFi connected but data didn't reach the server
+  NET_OFFLINE,      // WiFi disconnected — badge hidden
+  NET_OK,           // Everything works
+  NET_NO_INTERNET,  // WiFi up but no internet (both arrows red)
+  NET_NO_SERVER     // Internet OK but our server unreachable (up red, down green)
 };
 void displaySetNetStatus(NetStatus s);
 

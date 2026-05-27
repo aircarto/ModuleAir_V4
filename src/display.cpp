@@ -110,9 +110,15 @@ static void drawWifiIcon(int frame) {
 //   y4: ...##...   2×2 square at the base, row 1
 //   y5: ...##...   square row 2
 static const uint8_t iconNetOK[6]      = { 0x3C, 0x42, 0x18, 0x24, 0x18, 0x18 };
-// Up + down arrows side by side (red — data can't reach the server):
-//   ........   .#...#..   ###..#..   .#...#..   .#..###.   .#...#..   ........
-static const uint8_t iconNetError[7]   = { 0x00, 0x44, 0xE4, 0x44, 0x4E, 0x44, 0x00 };
+
+// Up-arrow only (uplink — data going to OUR server). Half of the original
+// two-arrow icon. Allows independent coloring of each arrow.
+//   ........   .#......   ###.....   .#......   .#......   .#......   ........
+static const uint8_t iconArrowUp[7]    = { 0x00, 0x40, 0xE0, 0x40, 0x40, 0x40, 0x00 };
+
+// Down-arrow only (downlink — general internet reachability).
+//   ........   .....#..   .....#..   .....#..   ....###.   .....#..   ........
+static const uint8_t iconArrowDown[7]  = { 0x00, 0x04, 0x04, 0x04, 0x0E, 0x04, 0x00 };
 
 static NetStatus netStatus = NET_OFFLINE;
 
@@ -132,9 +138,23 @@ static void drawMonoIcon(int x, int y, int w, int h, const uint8_t* bitmap, uint
 static void drawNetStatusBadge() {
   const int x = 55, y = 0;
   switch (netStatus) {
-    case NET_OFFLINE: /* no badge */                                        break;
-    case NET_OK:      drawMonoIcon(x, y, 8, 6, iconNetOK,    COLOR_BLUE);   break;
-    case NET_ERROR:   drawMonoIcon(x, y, 8, 7, iconNetError, COLOR_RED);    break;
+    case NET_OFFLINE:
+      // No badge — keep the corner clean when we have no network at all.
+      break;
+    case NET_OK:
+      drawMonoIcon(x, y, 8, 6, iconNetOK, COLOR_BLUE);
+      break;
+    case NET_NO_INTERNET:
+      // Both arrows red: nothing flows in either direction.
+      drawMonoIcon(x, y, 8, 7, iconArrowUp,   COLOR_RED);
+      drawMonoIcon(x, y, 8, 7, iconArrowDown, COLOR_RED);
+      break;
+    case NET_NO_SERVER:
+      // Up red (uploads to our server fail) + down green (general internet
+      // works) — tells the user at a glance "it's our server, not your wifi".
+      drawMonoIcon(x, y, 8, 7, iconArrowUp,   COLOR_RED);
+      drawMonoIcon(x, y, 8, 7, iconArrowDown, COLOR_GREEN);
+      break;
   }
 }
 

@@ -1,0 +1,85 @@
+#include <Arduino.h>
+#include <WiFi.h>
+#include <WiFiClient.h>
+#include "network_monitor.h"
+#include "display.h"
+#include "logger.h"
+
+// Probe target for "is the internet reachable?". We use 1.1.1.1 (Cloudflare)
+// because it's a literal IP — no DNS lookup needed, so we test purely the
+// IP-routing layer. Other public anycast options: 8.8.8.8 (Google),
+// 9.9.9.9 (Quad9).
+static const char* INTERNET_PROBE_HOST = "1.1.1.1";
+static const uint16_t INTERNET_PROBE_PORT = 80;
+
+// Probe target for "is our data server reachable?". A plain TCP connect on
+// :443 is enough — we don't speak TLS here, we just want SYN/ACK to confirm
+// the server is listening. If this fails while internet probe succeeds,
+// it's a server-side issue, not a network issue.
+static const char* SERVER_PROBE_HOST = "gestion.aircarto.fr";
+static const uint16_t SERVER_PROBE_PORT = 443;
+
+// Cadence. 15 s is the sweet spot used by Tasmota & ESPHome — reactive
+// enough that state changes show up quickly, low enough that we're not
+// hammering the network or the upstream hosts.
+static const uint32_t PROBE_INTERVAL_MS = 15000;
+
+// Per-probe TCP connect timeout. Keep it short so an unreachable host
+// doesn't block the whole task for too long. With both probes failing,
+// worst-case task tick is 2 * PROBE_TIMEOUT_MS.
+static const uint16_t PROBE_TIMEOUT_MS = 2500;
+
+// Test reachability via TCP SYN/ACK. We open the connection, immediately
+// close it. Returns true if the 3-way handshake completed within timeoutMs.
+static bool tcpProbe(const char* host, uint16_t port, uint16_t timeoutMs) {
+  WiFiClient c;
+  bool ok = c.connect(host, port, timeoutMs);
+  c.stop();
+  return ok;
+}
+
+static NetStatus probeNetworkOnce() {
+  if (WiFi.status() != WL_CONNECTED) return NET_OFFLINE;
+
+  bool internet = tcpProbe(INTERNET_PROBE_HOST, INTERNET_PROBE_PORT, PROBE_TIMEOUT_MS);
+  if (!internet) return NET_NO_INTERNET;
+
+  bool server = tcpProbe(SERVER_PROBE_HOST, SERVER_PROBE_PORT, PROBE_TIMEOUT_MS);
+  return server ? NET_OK : NET_NO_SERVER;
+}
+
+static const char* statusLabel(NetStatus s) {
+  switch (s) {
+    case NET_OFFLINE:     return "OFFLINE";
+    case NET_OK:          return "OK";
+    case NET_NO_INTERNET: return "NO_INTERNET";
+    case NET_NO_SERVER:   return "NO_SERVER";
+  }
+  return "?";
+}
+
+static void networkMonitorTask(void *param) {
+  // Sentinel value so the FIRST probe always triggers a log + badge update,
+  // even if the result happens to match the (initial) NET_OFFLINE state.
+  int last = -1;
+  for (;;) {
+    NetStatus s = probeNetworkOnce();
+    if ((int)s != last) {
+      if (last == -1) {
+        Logger.printf("[NetMon] initial: %s\n", statusLabel(s));
+      } else {
+        Logger.printf("[NetMon] %s -> %s\n", statusLabel((NetStatus)last), statusLabel(s));
+      }
+      displaySetNetStatus(s);
+      last = (int)s;
+    }
+    vTaskDelay(pdMS_TO_TICKS(PROBE_INTERVAL_MS));
+  }
+}
+
+void networkMonitorInit() {
+  Logger.println("[NetMon] init");
+  // Pinned to core 1 alongside the Arduino main loop. 4 KB stack — TCP
+  // probes don't allocate much, but WiFiClient + lwIP has some overhead.
+  xTaskCreatePinnedToCore(networkMonitorTask, "netmon", 4096, NULL, 1, NULL, 1);
+}

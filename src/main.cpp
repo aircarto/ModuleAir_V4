@@ -9,6 +9,7 @@
 #include "sensors.h"
 #include "data_sender.h"
 #include "settings.h"
+#include "network_monitor.h"
 
 unsigned long lastCycle = 0;
 bool wasConnected = false;
@@ -41,6 +42,7 @@ void setup() {
 
   wifiManagerInit();
   sensorsInit();
+  networkMonitorInit();   // background task: probes WiFi/internet/server every 15s
 
   if (wifiIsConnected()) {
     Logger.println();
@@ -59,16 +61,17 @@ void loop() {
 
   bool connected = wifiIsConnected();
 
-  // Détection perte / retour WiFi
+  // Détection perte / retour WiFi (purely for the WiFi-lost / -reconnected
+  // splash screens). The connectivity BADGE is owned by the network monitor
+  // task which probes every 15s — we don't touch displaySetNetStatus from
+  // here anymore to avoid racing with it.
   if (wasConnected && !connected) {
     Logger.println("[WiFi] Deconnexion detectee");
     displayShowWifiLost();
-    displaySetNetStatus(NET_OFFLINE);   // no badge while WiFi is down
   } else if (!wasConnected && connected) {
     Logger.println("[WiFi] Reconnexion detectee");
     displayShowWifiConnected(WiFi.SSID().c_str(), WiFi.RSSI());
     displayShowWifiReconnected();
-    displaySetNetStatus(NET_OK);        // optimistic until next send confirms
   }
   wasConnected = connected;
 
@@ -78,13 +81,7 @@ void loop() {
     displaySetSensorData(sensorsGetData());
     displayShowInterieur();
     if (connected) {
-      // Send result -> badge: any failure (no DNS / server down / 5xx) is
-      // collapsed to NET_ERROR (red arrows). The user doesn't need to
-      // distinguish "no DNS" from "server down" on a 8 px badge.
-      SendResult r = dataSenderSend();
-      displaySetNetStatus(r == SEND_OK ? NET_OK : NET_ERROR);
-    } else {
-      displaySetNetStatus(NET_OFFLINE);
+      dataSenderSend();
     }
   }
 
