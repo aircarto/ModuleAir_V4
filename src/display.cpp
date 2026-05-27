@@ -938,26 +938,49 @@ static void printCentered(const char* s, int y) {
   display.print(s);
 }
 
+// Draws a thick checkmark inside the bounding box (x..x+w, y..y+h).
+// The V-shape elbow sits at ~40% width / 80% height. Thickness is achieved
+// by stacking 3 parallel lines offset on Y — visually clean at this scale.
+static void drawCheckmark(int x, int y, int w, int h, uint16_t color) {
+  int elbowX = x + (int)(w * 0.40f);
+  int elbowY = y + (int)(h * 0.80f);
+  int startX = x;
+  int startY = y + (int)(h * 0.55f);
+  int endX   = x + w - 1;
+  int endY   = y;
+  for (int t = -1; t <= 1; t++) {
+    display.drawLine(startX, startY + t, elbowX, elbowY + t, color);
+    display.drawLine(elbowX, elbowY + t, endX,   endY   + t, color);
+  }
+}
+
+// Draws a thick X inside the bounding box (x..x+w, y..y+h).
+static void drawCross(int x, int y, int w, int h, uint16_t color) {
+  for (int t = -1; t <= 1; t++) {
+    display.drawLine(x,         y     + t, x + w - 1, y + h - 1 + t, color);
+    display.drawLine(x,         y + h - 1 + t, x + w - 1, y     + t, color);
+  }
+}
+
 void displayShowOtaDone() {
   Logger.println("[Display] OTA done - rebooting");
   display.clearDisplay();
+  // Big green checkmark, then "Reussi !" centered below.
+  // Icon box: 18px wide x 14px tall, centered horizontally (x=23-40).
+  drawCheckmark(23, 1, 18, 14, COLOR_GREEN);
   display.setTextSize(1);
-  display.setTextColor(COLOR_GREEN);
-  printCentered("Mise a",   1);   // 6 chars  -> x=14
-  printCentered("reussie!", 11);  // 8 chars  -> x=8
   display.setTextColor(COLOR_WHITE);
-  printCentered("Reboot...", 22); // 9 chars  -> x=5
+  printCentered("Reussi !", 22);  // 8 chars -> x=8
 }
 
 void displayShowOtaFailed() {
   Logger.println("[Display] OTA failed");
   display.clearDisplay();
+  // Big red X, then "Echec" centered below.
+  drawCross(24, 2, 16, 13, COLOR_RED);
   display.setTextSize(1);
-  display.setTextColor(COLOR_RED);
-  printCentered("Mise a",  1);   // 6 chars -> x=14
-  printCentered("jour KO", 11);  // 7 chars -> x=11
   display.setTextColor(COLOR_GRAY);
-  printCentered("Voir logs", 22); // 9 chars -> x=5
+  printCentered("Voir logs", 22);  // 9 chars -> x=5
 }
 
 // ── Preferences ──
