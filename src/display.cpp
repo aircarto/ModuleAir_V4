@@ -190,11 +190,15 @@ static uint16_t colorPM(float val, float s1, float s2, float s3) {
   return COLOR_RED;
 }
 
+// Level labels are UPPERCASE on purpose: the default GFX font's lowercase
+// descenders (g, y, p, q, j) drop below the baseline and clip off the bottom
+// of the matrix on the lower text rows (e.g. the 'y' in "Moyen", 'g' in
+// "Degrade"). Uppercase has no descenders, so nothing overflows.
 static const char* msgPM(float val, float s1, float s2, float s3) {
-  if (val < s1) return "Bon";
-  if (val < s2) return "Moyen";
-  if (val < s3) return "Degrade";
-  return "Mauvais";
+  if (val < s1) return "BON";
+  if (val < s2) return "MOYEN";
+  if (val < s3) return "DEGRADE";
+  return "MAUVAIS";
 }
 
 // CO2: 3 levels (thresholds from settings)
@@ -207,9 +211,9 @@ static uint16_t colorCO2(int val) {
 
 static const char* msgCO2(int val) {
   const ThresholdsCO2& th = settingsGetThresholdsCO2();
-  if (val < th.good) return "Bon";
-  if (val < th.bad)  return "Aerer SVP";
-  return "Mauvais";
+  if (val < th.good) return "BON";
+  if (val < th.bad)  return "AERER SVP";
+  return "MAUVAIS";
 }
 
 // Temperature: comfort zone
@@ -220,9 +224,9 @@ static uint16_t colorTemp(float val) {
 }
 
 static const char* msgTemp(float val) {
-  if (val < 19) return "Froid";
+  if (val < 19) return "FROID";
   if (val < 28) return "OK";
-  return "Chaud";
+  return "CHAUD";
 }
 
 // Humidity: comfort zone
@@ -233,9 +237,9 @@ static uint16_t colorHumi(float val) {
 }
 
 static const char* msgHumi(float val) {
-  if (val < 40) return "Sec";
-  if (val < 60) return "Ideal";
-  return "Humide";
+  if (val < 40) return "SEC";
+  if (val < 60) return "IDEAL";
+  return "HUMIDE";
 }
 
 // COV (TVOC): based on CCS811 ranges
@@ -247,10 +251,10 @@ static uint16_t colorCOV(int val) {
 }
 
 static const char* msgCOV(int val) {
-  if (val < 220)  return "Bon";
-  if (val < 660)  return "Moyen";
-  if (val < 2200) return "Degrade";
-  return "Mauvais";
+  if (val < 220)  return "BON";
+  if (val < 660)  return "MOYEN";
+  if (val < 2200) return "DEGRADE";
+  return "MAUVAIS";
 }
 
 static uint16_t colorHCHO(float val) {
@@ -261,10 +265,10 @@ static uint16_t colorHCHO(float val) {
 }
 
 static const char* msgHCHO(float val) {
-  if (val < 10)  return "Bon";
-  if (val < 30)  return "Moyen";
-  if (val < 100) return "Degrade";
-  return "Mauvais";
+  if (val < 10)  return "BON";
+  if (val < 30)  return "MOYEN";
+  if (val < 100) return "DEGRADE";
+  return "MAUVAIS";
 }
 
 // ── Generic measurement screen ──
@@ -276,12 +280,6 @@ static const char* msgHCHO(float val) {
 // Unit IDs for special character rendering
 enum UnitType { UNIT_UGM3, UNIT_PPM, UNIT_PPB, UNIT_DEGC, UNIT_PERCENT };
 
-// Tiny raised "3" exponent for µg/m³. The font's native ³ glyph (0xB3) is
-// full-height (height 7, yOffset -7) so it renders like a baseline "3" — it
-// reads as "m3", not "m³". We draw a proper 3px-wide superscript by hand in
-// the top rows instead. Pattern (MSB = leftmost): ### / ..# / ### / ..# / ###
-static const uint8_t superscript3[5] = { 0xE0, 0x20, 0xE0, 0x20, 0xE0 };
-
 static void drawUnit(UnitType unit) {
   display.setFont(&Font4x7Fixed);
   display.setTextColor(COLOR_GRAY);
@@ -289,8 +287,7 @@ static void drawUnit(UnitType unit) {
     case UNIT_UGM3:
       display.write(181);  // µ
       display.print("g/m");
-      // Raised superscript 3 (the font's full-height ³ looks wrong here).
-      drawMonoIcon(display.getCursorX(), 0, 3, 5, superscript3, COLOR_GRAY);
+      display.write(179);  // ³
       break;
     case UNIT_PPM:
       display.setFont(NULL);
@@ -334,28 +331,20 @@ static void drawMeasurementScreen(const char* label, UnitType unit,
   display.setCursor(display.getCursorX() + 2, 1);
   drawUnit(unit);
 
-  // Vertical packing on the 32-row matrix, tuned so the classic font (8 rows
-  // tall, descenders included) never clips at the bottom edge:
-  //   label/unit  rows 0-7
-  //   value (x2)  rows 8-23   (drawn at y=8)
-  //   status      rows 24-31  (drawn at y=24 — a status like "Moyen" needs
-  //                            its 'y' descender on row 31; at the old y=25
-  //                            it spilled onto the off-screen row 32)
-
-  // Color indicator square (top-right), aligned with the value row
-  display.fillRect(50, 8, 14, 14, levelColor);
+  // Color indicator square (top-right)
+  display.fillRect(50, 9, 14, 14, levelColor);
 
   // Value (large, centered in left 50px)
   display.setFont(NULL);
   display.setTextSize(2);
   display.setTextColor(COLOR_WHITE);
-  drawCentreString(value, 8, 14);
+  drawCentreString(value, 9, 14);
 
   // Status message (bottom, colored, centered)
   display.setFont(NULL);
   display.setTextSize(1);
   display.setTextColor(levelColor);
-  drawCentreString(String(statusMsg), 24);
+  drawCentreString(String(statusMsg), 25);
 
   // Connectivity badge top-right (above the color square)
   drawNetStatusBadge();
