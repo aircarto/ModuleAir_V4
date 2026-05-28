@@ -23,6 +23,28 @@
 #define SENSOR_CCS811_DEFAULT  true
 #define SENSOR_SFA40_DEFAULT   true
 
+// ── Default matrix screen / logo state ──────────────────────────────────────
+// First-boot defaults for the matrix rotation — same semantics as the sensor
+// defaults above: they set the initial enabled state, stay toggleable at
+// runtime via the "Ecrans matrice" web UI, and NVS wins once the user touches
+// a toggle. Edit these to choose what a freshly-flashed board shows. (On a
+// board that's already been booted with a stored toggle, NVS wins — use the
+// web UI toggle, or do a WiFi/NVS reset to re-apply these.)
+//
+// AtmoSud logo is OFF by default — flip LOGO_ATMOSUD_DEFAULT to true if you
+// want it back in the rotation.
+#define SCREEN_PM1_DEFAULT      true
+#define SCREEN_PM25_DEFAULT     true
+#define SCREEN_PM10_DEFAULT     true
+#define SCREEN_CO2_DEFAULT      true
+#define SCREEN_TEMP_DEFAULT     true
+#define SCREEN_HUMI_DEFAULT     true
+#define SCREEN_TVOC_DEFAULT     true
+#define SCREEN_HCHO_DEFAULT     true
+#define LOGO_MODULEAIR_DEFAULT  true
+#define LOGO_AIRCARTO_DEFAULT   true
+#define LOGO_ATMOSUD_DEFAULT    false
+
 // WiFi AP
 // The hotspot is intentionally open (no password). The first-time-config
 // flow puts the user on a captive portal that ONLY exposes a network

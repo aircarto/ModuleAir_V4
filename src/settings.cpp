@@ -24,17 +24,17 @@ void settingsInit() {
   prefs.end();
 
   prefs.begin("screens", true);
-  screens.pm1  = prefs.getBool("pm1", true);
-  screens.pm25 = prefs.getBool("pm25", true);
-  screens.pm10 = prefs.getBool("pm10", true);
-  screens.co2  = prefs.getBool("co2", true);
-  screens.temp = prefs.getBool("temp", true);
-  screens.humi = prefs.getBool("humi", true);
-  screens.tvoc = prefs.getBool("tvoc", true);
-  screens.hcho = prefs.getBool("hcho", true);
-  screens.logo_moduleair = prefs.getBool("logo_ma", true);
-  screens.logo_aircarto  = prefs.getBool("logo_ac", true);
-  screens.logo_atmosud   = prefs.getBool("logo_as", true);
+  screens.pm1  = prefs.getBool("pm1",  SCREEN_PM1_DEFAULT);
+  screens.pm25 = prefs.getBool("pm25", SCREEN_PM25_DEFAULT);
+  screens.pm10 = prefs.getBool("pm10", SCREEN_PM10_DEFAULT);
+  screens.co2  = prefs.getBool("co2",  SCREEN_CO2_DEFAULT);
+  screens.temp = prefs.getBool("temp", SCREEN_TEMP_DEFAULT);
+  screens.humi = prefs.getBool("humi", SCREEN_HUMI_DEFAULT);
+  screens.tvoc = prefs.getBool("tvoc", SCREEN_TVOC_DEFAULT);
+  screens.hcho = prefs.getBool("hcho", SCREEN_HCHO_DEFAULT);
+  screens.logo_moduleair = prefs.getBool("logo_ma", LOGO_MODULEAIR_DEFAULT);
+  screens.logo_aircarto  = prefs.getBool("logo_ac", LOGO_AIRCARTO_DEFAULT);
+  screens.logo_atmosud   = prefs.getBool("logo_as", LOGO_ATMOSUD_DEFAULT);
   prefs.end();
 
   prefs.begin("thresholds", true);
@@ -76,17 +76,17 @@ void settingsSetScreenEnabled(const char* key, bool enabled) {
   prefs.end();
 
   prefs.begin("screens", true);
-  screens.pm1  = prefs.getBool("pm1", true);
-  screens.pm25 = prefs.getBool("pm25", true);
-  screens.pm10 = prefs.getBool("pm10", true);
-  screens.co2  = prefs.getBool("co2", true);
-  screens.temp = prefs.getBool("temp", true);
-  screens.humi = prefs.getBool("humi", true);
-  screens.tvoc = prefs.getBool("tvoc", true);
-  screens.hcho = prefs.getBool("hcho", true);
-  screens.logo_moduleair = prefs.getBool("logo_ma", true);
-  screens.logo_aircarto  = prefs.getBool("logo_ac", true);
-  screens.logo_atmosud   = prefs.getBool("logo_as", true);
+  screens.pm1  = prefs.getBool("pm1",  SCREEN_PM1_DEFAULT);
+  screens.pm25 = prefs.getBool("pm25", SCREEN_PM25_DEFAULT);
+  screens.pm10 = prefs.getBool("pm10", SCREEN_PM10_DEFAULT);
+  screens.co2  = prefs.getBool("co2",  SCREEN_CO2_DEFAULT);
+  screens.temp = prefs.getBool("temp", SCREEN_TEMP_DEFAULT);
+  screens.humi = prefs.getBool("humi", SCREEN_HUMI_DEFAULT);
+  screens.tvoc = prefs.getBool("tvoc", SCREEN_TVOC_DEFAULT);
+  screens.hcho = prefs.getBool("hcho", SCREEN_HCHO_DEFAULT);
+  screens.logo_moduleair = prefs.getBool("logo_ma", LOGO_MODULEAIR_DEFAULT);
+  screens.logo_aircarto  = prefs.getBool("logo_ac", LOGO_AIRCARTO_DEFAULT);
+  screens.logo_atmosud   = prefs.getBool("logo_as", LOGO_ATMOSUD_DEFAULT);
   prefs.end();
 }
 
