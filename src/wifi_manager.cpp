@@ -1209,6 +1209,18 @@ void wifiManagerInit() {
   String password = preferences.getString("password", "");
   preferences.end();
 
+  // First boot (or after a WiFi reset): NVS holds no SSID. Fall back to the
+  // compile-time default credentials so a factory-fresh board auto-joins the
+  // lab network. The defaults are transient — we don't write them to NVS, so
+  // a user-configured network always wins on later boots. If the default
+  // network isn't reachable, the connect attempt below fails and we drop into
+  // the normal AP-config flow, exactly as if no creds existed.
+  if (ssid.length() == 0 && strlen(DEFAULT_WIFI_SSID) > 0) {
+    ssid = DEFAULT_WIFI_SSID;
+    password = DEFAULT_WIFI_PASSWORD;
+    Logger.printf("[WiFi] No saved creds — trying default SSID '%s'\n", ssid.c_str());
+  }
+
   if (ssid.length() > 0) {
     Logger.printf("[WiFi] Saved SSID found: %s\n", ssid.c_str());
     WiFi.mode(WIFI_STA);

@@ -31,6 +31,19 @@
 #define MDNS_NAME   "moduleair"
 #define WIFI_CONNECT_TIMEOUT 15000
 
+// ── Default WiFi credentials (first-boot auto-connect) ──────────────────────
+// On a factory-fresh device (NVS empty, no SSID ever saved), the firmware
+// tries these credentials before falling back to the captive-portal config
+// mode. Handy for lab/QA: a freshly-flashed board auto-joins the bench
+// network on first power-up. These are TRANSIENT — never written to NVS, so
+// the moment the user configures a real network through the captive portal,
+// that NVS value wins and the default is forgotten on every later boot. If
+// the default network isn't in range, the connect attempt fails and the
+// device drops into the normal AP-config flow. Set DEFAULT_WIFI_SSID to ""
+// to disable the default entirely and go straight to config mode.
+#define DEFAULT_WIFI_SSID      "AirLab"
+#define DEFAULT_WIFI_PASSWORD  "123plouf"
+
 // Data server
 #define DATA_SERVER_URL "https://data.moduleair.fr/wifi_newDriver2026.php?device_type=ModuleAir"
 #define DATA_SEND_INTERVAL 60000  // 60 secondes
