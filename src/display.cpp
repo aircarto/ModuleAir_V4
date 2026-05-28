@@ -714,21 +714,20 @@ void displayShowWifiConnected(const char* ssid, int rssi) {
 
 // Drawn once when the AP first comes up (boot fallback or runtime
 // escalation) to give immediate feedback before the rotation starts
-// inserting the SCR_CONFIG_WIFI slot itself. The "3 min." countdown
-// text was removed: the screen now lives inside the data rotation and
-// disappears naturally when the FSM transitions to WS_AP_DATA, so a
-// fixed countdown would be misleading.
+// inserting the SCR_CONFIG_WIFI slot itself. Uses the SAME y-coordinates
+// (7 / 17) as drawScreenConfigWifi() so there's no visible jump when the
+// rotation later takes over with its own centered copy of this screen.
 void displayShowAPMode(const char* apName, const char* apIP) {
   Logger.printf("[Display] AP mode: %s (%s)\n", apName, apIP);
   display.clearDisplay();
   display.setTextSize(1);
 
   display.setTextColor(COLOR_ORANGE);
-  display.setCursor(1, 0);
+  display.setCursor(1, 7);
   display.print("Config");
 
   display.setTextColor(COLOR_WHITE);
-  display.setCursor(1, 11);
+  display.setCursor(1, 17);
   display.print("WiFi");
 
   drawWifiIcon(WIFI_ICON_FRAMES - 1);
