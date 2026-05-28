@@ -5,26 +5,23 @@
 
 #define FIRMWARE_VERSION "0.3.1"
 
-// ── Compile-time sensor master switches ────────────────────────────────────
-// Each flag is a build-time master switch: set to 0 to completely remove
-// a sensor from the system. When a sensor is COMPILED-OUT (= 0):
-//   - Its hardware is not initialised at boot (UART not opened, I2C not
-//     probed, library .begin() never called) — pins stay free, no startup
-//     latency for that sensor.
-//   - settingsGetSensors() forces its runtime-enabled flag to false even
-//     if NVS holds true (a previous build flipped it on, or user toggled).
-//   - The web-UI toggle row appears greyed-out with an "(off en code)"
-//     hint so the user understands it's a build choice, not a fault.
-//   - sensorsRead() skips it, data_sender.cpp drops its JSON fields,
-//     display.cpp drops its rotation screens — all driven by the same
-//     forced-false runtime flag, no per-consumer #ifdef needed.
-// Set to 1 to compile the sensor in (default — fully working sensor that
-// the user can then enable/disable at runtime from the web UI).
-#define SENSOR_NPM_COMPILED    1
-#define SENSOR_MHZ19_COMPILED  1
-#define SENSOR_BME280_COMPILED 1
-#define SENSOR_CCS811_COMPILED 1
-#define SENSOR_SFA40_COMPILED  1
+// ── Default sensor enable state ─────────────────────────────────────────────
+// These are the FACTORY DEFAULTS for each sensor's enabled flag — the value
+// used the very first time the device boots (when NVS has no stored toggle
+// yet). They are NOT permanent locks:
+//   - true  -> sensor starts enabled
+//   - false -> sensor starts disabled, exactly as if the user had toggled it
+//              off in the web UI. The hardware is still initialised at boot,
+//              so the user can go into "Capteurs actifs" and toggle it back
+//              on at runtime and it starts working on the next measurement
+//              cycle (no reboot needed).
+// Once the user touches a toggle in the UI, that choice is persisted to NVS
+// and wins over these defaults on subsequent boots.
+#define SENSOR_NPM_DEFAULT     true
+#define SENSOR_MHZ19_DEFAULT   true
+#define SENSOR_BME280_DEFAULT  true
+#define SENSOR_CCS811_DEFAULT  true
+#define SENSOR_SFA40_DEFAULT   true
 
 // WiFi AP
 // The hotspot is intentionally open (no password). The first-time-config

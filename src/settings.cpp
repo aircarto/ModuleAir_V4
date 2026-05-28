@@ -8,39 +8,20 @@ static SensorSettings sensors;
 static ScreenSettings screens;
 static ThresholdsCO2 thCO2;
 
-// Force a sensor's runtime-enabled flag to false when its compile-time
-// master switch is 0. Called from settingsInit() AND settingsGetSensors()
-// (the latter is defensive — even if NVS gets out of sync somehow, the
-// effective flag reflects the build choice).
-static inline void applyCompileTimeMask() {
-#if !SENSOR_NPM_COMPILED
-  sensors.npm_enabled = false;
-#endif
-#if !SENSOR_MHZ19_COMPILED
-  sensors.mhz19_enabled = false;
-#endif
-#if !SENSOR_BME280_COMPILED
-  sensors.bme280_enabled = false;
-#endif
-#if !SENSOR_CCS811_COMPILED
-  sensors.ccs811_enabled = false;
-#endif
-#if !SENSOR_SFA40_COMPILED
-  sensors.sfa40_enabled = false;
-#endif
-}
-
 void settingsInit() {
   Preferences prefs;
 
+  // The SENSOR_*_DEFAULT macros (config.h) are only the first-boot defaults
+  // for getBool(): once a value is stored in NVS (user toggled it in the UI),
+  // that stored value wins. So disabling a sensor in code just makes it start
+  // off — the user can still re-enable it at runtime.
   prefs.begin("sensors", true);
-  sensors.npm_enabled    = prefs.getBool("npm", true);
-  sensors.mhz19_enabled  = prefs.getBool("mhz19", true);
-  sensors.bme280_enabled = prefs.getBool("bme280", true);
-  sensors.ccs811_enabled = prefs.getBool("ccs811", true);
-  sensors.sfa40_enabled  = prefs.getBool("sfa40", true);
+  sensors.npm_enabled    = prefs.getBool("npm",    SENSOR_NPM_DEFAULT);
+  sensors.mhz19_enabled  = prefs.getBool("mhz19",  SENSOR_MHZ19_DEFAULT);
+  sensors.bme280_enabled = prefs.getBool("bme280", SENSOR_BME280_DEFAULT);
+  sensors.ccs811_enabled = prefs.getBool("ccs811", SENSOR_CCS811_DEFAULT);
+  sensors.sfa40_enabled  = prefs.getBool("sfa40",  SENSOR_SFA40_DEFAULT);
   prefs.end();
-  applyCompileTimeMask();
 
   prefs.begin("screens", true);
   screens.pm1  = prefs.getBool("pm1", true);
@@ -69,35 +50,10 @@ void settingsInit() {
     screens.logo_moduleair, screens.logo_aircarto, screens.logo_atmosud);
 }
 
-SensorSettings& settingsGetSensors() {
-  applyCompileTimeMask();   // defensive: stay consistent if NVS is stale
-  return sensors;
-}
+SensorSettings& settingsGetSensors() { return sensors; }
 ScreenSettings& settingsGetScreens() { return screens; }
 
-// Hard-block re-enabling a sensor that's been compiled out. Three layers
-// of defense for this case: the web UI greys the toggle and adds
-// `disabled` so the browser refuses the click; this setter refuses to
-// write NVS if a curl request gets through; settingsGetSensors() masks
-// the runtime flag to false regardless of what NVS holds. The user's
-// build-time choice is authoritative end-to-end.
-static bool isSensorCompiledIn(const char* key) {
-  if (!key) return true;
-  if (strcmp(key, "npm")    == 0) return SENSOR_NPM_COMPILED    != 0;
-  if (strcmp(key, "mhz19")  == 0) return SENSOR_MHZ19_COMPILED  != 0;
-  if (strcmp(key, "bme280") == 0) return SENSOR_BME280_COMPILED != 0;
-  if (strcmp(key, "ccs811") == 0) return SENSOR_CCS811_COMPILED != 0;
-  if (strcmp(key, "sfa40")  == 0) return SENSOR_SFA40_COMPILED  != 0;
-  return true;   // unknown keys: let through (forward-compat with future sensors)
-}
-
 void settingsSetSensorEnabled(const char* key, bool enabled) {
-  if (enabled && !isSensorCompiledIn(key)) {
-    Logger.printf("[Settings] Refused to enable '%s': disabled in code (SENSOR_%s_COMPILED=0)\n",
-                  key, key);
-    return;
-  }
-
   Preferences prefs;
   prefs.begin("sensors", false);
   prefs.putBool(key, enabled);
@@ -105,13 +61,12 @@ void settingsSetSensorEnabled(const char* key, bool enabled) {
 
   // Reload
   prefs.begin("sensors", true);
-  sensors.npm_enabled    = prefs.getBool("npm", true);
-  sensors.mhz19_enabled  = prefs.getBool("mhz19", true);
-  sensors.bme280_enabled = prefs.getBool("bme280", true);
-  sensors.ccs811_enabled = prefs.getBool("ccs811", true);
-  sensors.sfa40_enabled  = prefs.getBool("sfa40", true);
+  sensors.npm_enabled    = prefs.getBool("npm",    SENSOR_NPM_DEFAULT);
+  sensors.mhz19_enabled  = prefs.getBool("mhz19",  SENSOR_MHZ19_DEFAULT);
+  sensors.bme280_enabled = prefs.getBool("bme280", SENSOR_BME280_DEFAULT);
+  sensors.ccs811_enabled = prefs.getBool("ccs811", SENSOR_CCS811_DEFAULT);
+  sensors.sfa40_enabled  = prefs.getBool("sfa40",  SENSOR_SFA40_DEFAULT);
   prefs.end();
-  applyCompileTimeMask();
 }
 
 void settingsSetScreenEnabled(const char* key, bool enabled) {

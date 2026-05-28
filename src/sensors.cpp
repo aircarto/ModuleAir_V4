@@ -442,38 +442,29 @@ static void readSFA40() {
 void sensorsInit() {
   const SensorSettings& cfg = settingsGetSensors();
 
-  // UART sensors: always open the port at boot regardless of the user toggle.
-  // The toggle gates the *read*, not the hardware lifecycle. This means a
-  // user re-enabling NPM or MH-Z19 from the web UI gets a working sensor on
-  // the next cycle without needing a reboot, and we never call
-  // HardwareSerial::end() (which has a long bug history on ESP32).
-  // Compile-time master switches (see config.h) skip the hardware setup
-  // entirely so disabled sensors don't even claim their UART pins.
-#if SENSOR_NPM_COMPILED
+  // UART sensors: always open the port at boot regardless of the toggle's
+  // default state. The toggle gates the *read*, not the hardware lifecycle.
+  // This is what lets a user re-enable a sensor that started disabled (via
+  // its SENSOR_*_DEFAULT or a previous UI toggle-off) and get it working on
+  // the next cycle without a reboot — the lazy re-arm in sensorsRead() just
+  // drains the RX buffer and re-binds the library. We never call
+  // HardwareSerial::end() (long bug history on ESP32).
   nextpmSerial.begin(NEXTPM_BAUD, SERIAL_8E1, NEXTPM_RX, NEXTPM_TX);
   nextpm.begin(NEXTPM_ADDR, nextpmSerial);
   Logger.println(cfg.npm_enabled ? "NextPM init OK (Modbus RTU)"
-                                 : "NextPM init OK (Modbus RTU, disabled by user)");
+                                 : "NextPM init OK (Modbus RTU, disabled — toggle in UI to enable)");
   prevNpmEnabled = cfg.npm_enabled;
-#else
-  Logger.println("NextPM not compiled in (SENSOR_NPM_COMPILED=0)");
-#endif
 
-#if SENSOR_MHZ19_COMPILED
   mhzSerial.begin(MHZ19_BAUD, SERIAL_8N1, MHZ19_RX, MHZ19_TX);
   mhz19.begin(mhzSerial);
   mhz19.autoCalibration(false);
   Logger.println(cfg.mhz19_enabled ? "MH-Z19 init OK"
-                                   : "MH-Z19 init OK (disabled by user)");
+                                   : "MH-Z19 init OK (disabled — toggle in UI to enable)");
   prevMhzEnabled = cfg.mhz19_enabled;
-#else
-  Logger.println("MH-Z19 not compiled in (SENSOR_MHZ19_COMPILED=0)");
-#endif
 
   Wire.begin(I2C_SDA, I2C_SCL);
   Wire.setClock(100000);
 
-#if SENSOR_BME280_COMPILED
   if (cfg.bme280_enabled) {
     // Tentative de detection au boot — sera reverifiee a chaque cycle de read
     if (bme.begin(0x76)) {
@@ -500,11 +491,7 @@ void sensorsInit() {
   } else {
     Logger.println("BME280 disabled");
   }
-#else
-  Logger.println("BME280 not compiled in (SENSOR_BME280_COMPILED=0)");
-#endif
 
-#if SENSOR_CCS811_COMPILED
   if (cfg.ccs811_enabled) {
     if (ccs.begin()) {
       ccsFound = true;
@@ -516,11 +503,7 @@ void sensorsInit() {
   } else {
     Logger.println("CCS811 disabled");
   }
-#else
-  Logger.println("CCS811 not compiled in (SENSOR_CCS811_COMPILED=0)");
-#endif
 
-#if SENSOR_SFA40_COMPILED
   if (cfg.sfa40_enabled) {
     if (i2cProbe(SFA40_ADDR)) {
       sfa40Found = true;
@@ -535,9 +518,6 @@ void sensorsInit() {
   } else {
     Logger.println("SFA40 disabled");
   }
-#else
-  Logger.println("SFA40 not compiled in (SENSOR_SFA40_COMPILED=0)");
-#endif
 }
 
 // On a disabled->enabled UART transition, the sensor has been streaming or

@@ -675,35 +675,20 @@ static void handleRootConnected() {
   chunk += "</div>";
   server.sendContent(chunk);
 
-  // Capteurs actifs. A sensor disabled at compile time (SENSOR_X_COMPILED=0
-  // in config.h) shows its row greyed out with a "(off en code)" hint so
-  // the user knows it's a build choice and not a hardware fault, and the
-  // input is disabled to prevent toggling it on (which wouldn't take
-  // effect anyway — settingsGetSensors() masks it back to false).
+  // Capteurs actifs. The SENSOR_*_DEFAULT macros only set the first-boot
+  // state; at runtime every toggle is fully functional, including
+  // re-enabling a sensor that started disabled in code.
   {
     const SensorSettings& sc = settingsGetSensors();
     chunk = "<div class='card'><h2>Capteurs actifs</h2>"
             "<p style='color:#888;font-size:0.8em;margin:0 0 8px'>Effet immediat (au prochain cycle de mesure)</p>";
-    const char* sensorNames[]   = { "NextPM (PM)", "MH-Z19 (CO2)", "BME280 (T/H/P)", "CCS811 (COV)", "SFA40 (HCHO)" };
-    const char* sensorKeys[]    = { "npm", "mhz19", "bme280", "ccs811", "sfa40" };
-    bool sensorVals[]           = { sc.npm_enabled, sc.mhz19_enabled, sc.bme280_enabled, sc.ccs811_enabled, sc.sfa40_enabled };
-    bool sensorCompiled[]       = {
-      (bool)SENSOR_NPM_COMPILED,
-      (bool)SENSOR_MHZ19_COMPILED,
-      (bool)SENSOR_BME280_COMPILED,
-      (bool)SENSOR_CCS811_COMPILED,
-      (bool)SENSOR_SFA40_COMPILED,
-    };
+    const char* sensorNames[] = { "NextPM (PM)", "MH-Z19 (CO2)", "BME280 (T/H/P)", "CCS811 (COV)", "SFA40 (HCHO)" };
+    const char* sensorKeys[]  = { "npm", "mhz19", "bme280", "ccs811", "sfa40" };
+    bool sensorVals[]         = { sc.npm_enabled, sc.mhz19_enabled, sc.bme280_enabled, sc.ccs811_enabled, sc.sfa40_enabled };
     for (int i = 0; i < 5; i++) {
-      bool hardOff = !sensorCompiled[i];
-      chunk += "<div class='toggle-row";
-      if (hardOff) chunk += " locked";
-      chunk += "'><span>" + String(sensorNames[i]);
-      if (hardOff) chunk += "<span class='toggle-hint'>(off en code)</span>";
-      chunk += "</span>";
+      chunk += "<div class='toggle-row'><span>" + String(sensorNames[i]) + "</span>";
       chunk += "<label class='switch'><input type='checkbox'";
-      if (sensorVals[i] && !hardOff) chunk += " checked";
-      if (hardOff) chunk += " disabled";
+      if (sensorVals[i]) chunk += " checked";
       chunk += " onchange=\"fetch('/set-sensor',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'key=" + String(sensorKeys[i]) + "&val='+(this.checked?'1':'0')}).then(refreshUI)\">";
       chunk += "<span class='slider'></span></label></div>";
     }
