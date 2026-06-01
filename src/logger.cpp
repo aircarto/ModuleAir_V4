@@ -1,5 +1,8 @@
 #include "logger.h"
 
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
+
 extern "C" {
   #include "esp_log.h"
 }
@@ -16,6 +19,28 @@ static int logHead = 0;       // prochaine ligne à écrire
 static int logCount = 0;      // nombre de lignes stockées
 static int logLinePos = 0;    // position dans la ligne courante
 static uint32_t logSeq = 0;   // compteur monotone (incremente a chaque ligne)
+
+// Mutex RECURSIF protegeant tout l'etat ci-dessus. Trois contextes ecrivent
+// dans le logger en parallele :
+//   1. la boucle Arduino principale (display, data_sender, wifi...)
+//   2. la tache networkMonitorTask (core 1, logs [NetMon] toutes les 15s)
+//   3. la pile WiFi/lwIP via le hook esp_log_set_vprintf (customVprintf)
+// Sans verrou, deux ecritures simultanees se melangent dans le meme slot
+// logBuffer[logHead] : lignes corrompues ("[Disps) Screen...") et perdues.
+// Le symptome le plus visible etait la disparition du bloc [Data] POST, qui
+// s'imprime exactement quand la pile TLS/WiFi est la plus bavarde.
+//
+// Recursif car write(buffer,size) appelle write(uint8_t) en boucle, et les
+// methodes haut niveau (println = print + "\r\n") s'imbriquent : le meme
+// thread doit pouvoir reprendre le verrou qu'il detient deja.
+//
+// Granularite = la LIGNE, pas le caractere. On prend une reference
+// supplementaire sur le 1er octet d'une ligne et on ne la rend qu'au '\n'
+// final. Tant qu'une tache n'a pas termine sa ligne, les autres taches
+// bloquent a l'entree de write() : impossible d'inserer "[NetMon]..." entre
+// le texte d'une ligne et son '\n'.
+static SemaphoreHandle_t logMutex = nullptr;
+static bool lineOpen = false;  // une ligne est en cours (verrou ligne detenu)
 
 LoggerPrint Logger;
 
@@ -40,25 +65,38 @@ static int customVprintf(const char* fmt, va_list args) {
 }
 
 void loggerInit() {
+  // Creer le mutex AVANT d'armer le hook esp_log : un log framework pourrait
+  // sinon arriver alors que logMutex est encore null.
+  if (!logMutex) logMutex = xSemaphoreCreateRecursiveMutex();
+
   memset(logBuffer, 0, sizeof(logBuffer));
   memset(logSeqs, 0, sizeof(logSeqs));
   logHead = 0;
   logCount = 0;
   logLinePos = 0;
   logSeq = 0;
+  lineOpen = false;
 
   // Redirect ESP-IDF logs through our Logger so they appear in /logs.
   esp_log_set_vprintf(customVprintf);
 }
 
+// Lectures (cote serveur web). Verrouillees aussi : une ecriture concurrente
+// depuis netmon/lwIP pendant l'iteration ferait avancer logHead/logCount en
+// plein milieu de la boucle (lignes sautees ou dupliquees dans le tail).
+// Le verrou est recursif et detenu par la tache loop() : si sendContent()
+// declenche un log framework sur CETTE meme tache, il reprend le verrou sans
+// blocage.
 void loggerForEachLine(void (*cb)(const char* line)) {
   if (!cb) return;
+  if (logMutex) xSemaphoreTakeRecursive(logMutex, portMAX_DELAY);
   int start = (logCount < LOG_MAX_LINES) ? 0 : logHead;
   int total = (logCount < LOG_MAX_LINES) ? logCount : LOG_MAX_LINES;
   for (int i = 0; i < total; i++) {
     int idx = (start + i) % LOG_MAX_LINES;
     cb(logBuffer[idx]);
   }
+  if (logMutex) xSemaphoreGiveRecursive(logMutex);
 }
 
 uint32_t loggerCurrentSeq() {
@@ -67,15 +105,29 @@ uint32_t loggerCurrentSeq() {
 
 void loggerForEachLineSince(uint32_t sinceSeq, void (*cb)(uint32_t seq, const char* line)) {
   if (!cb) return;
+  if (logMutex) xSemaphoreTakeRecursive(logMutex, portMAX_DELAY);
   int start = (logCount < LOG_MAX_LINES) ? 0 : logHead;
   int total = (logCount < LOG_MAX_LINES) ? logCount : LOG_MAX_LINES;
   for (int i = 0; i < total; i++) {
     int idx = (start + i) % LOG_MAX_LINES;
     if (logSeqs[idx] > sinceSeq) cb(logSeqs[idx], logBuffer[idx]);
   }
+  if (logMutex) xSemaphoreGiveRecursive(logMutex);
 }
 
 size_t LoggerPrint::write(uint8_t c) {
+  // Avant loggerInit() (Serial.begin -> premiers logs), pas de mutex : on
+  // ecrit directement, mono-thread a ce stade.
+  if (logMutex) xSemaphoreTakeRecursive(logMutex, portMAX_DELAY);
+
+  // Ouvrir le "verrou ligne" sur le 1er octet stocke d'une ligne fraiche :
+  // une reference recursive supplementaire, rendue seulement au '\n'. Tant
+  // qu'elle est detenue, les autres taches bloquent a l'entree de write().
+  if (logMutex && !lineOpen && logLinePos == 0 && c != '\n' && c != '\r') {
+    xSemaphoreTakeRecursive(logMutex, portMAX_DELAY);
+    lineOpen = true;
+  }
+
   // Toujours écrire sur Serial
   Serial.write(c);
 
@@ -87,16 +139,26 @@ size_t LoggerPrint::write(uint8_t c) {
     logHead = (logHead + 1) % LOG_MAX_LINES;
     logCount++;
     logLinePos = 0;
+    // Fin de ligne : relacher le verrou ligne pris a l'ouverture.
+    if (logMutex && lineOpen) {
+      lineOpen = false;
+      xSemaphoreGiveRecursive(logMutex);
+    }
   } else if (c != '\r' && logLinePos < LOG_MAX_LINE_LEN - 1) {
     logBuffer[logHead][logLinePos++] = (char)c;
   }
 
+  if (logMutex) xSemaphoreGiveRecursive(logMutex);
   return 1;
 }
 
 size_t LoggerPrint::write(const uint8_t *buffer, size_t size) {
+  // Prendre le verrou pour tout le buffer : les write(uint8_t) imbriques le
+  // reprennent en recursif, donc le chunk entier reste atomique.
+  if (logMutex) xSemaphoreTakeRecursive(logMutex, portMAX_DELAY);
   for (size_t i = 0; i < size; i++) {
     write(buffer[i]);
   }
+  if (logMutex) xSemaphoreGiveRecursive(logMutex);
   return size;
 }

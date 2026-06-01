@@ -19,9 +19,9 @@
 // and wins over these defaults on subsequent boots.
 #define SENSOR_NPM_DEFAULT     true
 #define SENSOR_MHZ19_DEFAULT   true
-#define SENSOR_BME280_DEFAULT  true
-#define SENSOR_CCS811_DEFAULT  true
-#define SENSOR_SFA40_DEFAULT   true
+#define SENSOR_BME280_DEFAULT  false
+#define SENSOR_CCS811_DEFAULT  false
+#define SENSOR_SFA40_DEFAULT   false
 
 // ── Default matrix screen / logo state ──────────────────────────────────────
 // First-boot defaults for the matrix rotation — same semantics as the sensor

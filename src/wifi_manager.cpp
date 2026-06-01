@@ -351,7 +351,9 @@ function checkUpdate(){
       b.onclick=function(){doUpdate()};
       b.style.display='block';
     }else if(j.error){
-      d.innerHTML="<span class='data-value bad'>Erreur : "+j.error+"</span>";
+      var h="<span class='data-value bad'>Echec : "+j.error+"</span>";
+      if(j.detail)h+="<br><span style='font-size:0.8em;color:#888'>"+j.detail+"</span>";
+      d.innerHTML=h;
     }else{
       d.innerHTML="<span class='data-value good'>Firmware a jour (v"+j.current+")</span>";
     }
@@ -1099,26 +1101,90 @@ static int compareVersions(const String& a, const String& b) {
   return aPat - bPat;
 }
 
+// Traduit un code d'echec HTTPClient en explication lisible (FR) pour l'UI et
+// les logs. Les codes <= 0 sont des erreurs de la lib (connexion jamais
+// etablie) ; les codes > 0 sont des reponses HTTP du serveur.
+static String otaFailureReason(int code) {
+  switch (code) {
+    case -1:  return "Connexion TLS impossible (handshake echoue). Cause la plus frequente : manque de memoire (heap fragmente) au moment du check, ou serveur TLS qui n'a pas repondu.";
+    case -2:  return "Envoi de l'en-tete HTTP echoue.";
+    case -3:  return "Envoi de la requete echoue.";
+    case -4:  return "Pas connecte au serveur (connexion perdue avant la requete).";
+    case -5:  return "Connexion perdue pendant l'echange.";
+    case -7:  return "Pas de serveur HTTP a l'autre bout.";
+    case -8:  return "Memoire insuffisante (RAM) pour la requete.";
+    case -11: return "Timeout de lecture : le serveur a mis trop de temps a repondre.";
+    default:
+      if (code > 0) return "Le serveur a repondu HTTP " + String(code) + " (attendu : 200).";
+      return "Erreur reseau (code " + String(code) + ").";
+  }
+}
+
 static void handleCheckUpdate() {
   Logger.println("[OTA] Checking for update...");
-  WiFiClientSecure secClient;
-  secClient.setInsecure();  // Skip certificate validation (simplifies deployment)
-  HTTPClient http;
-  String versionUrl = String(OTA_UPDATE_URL) + "/version.txt?sensor=" + deviceId + "&current_version=" + FIRMWARE_VERSION;
-  http.begin(secClient, versionUrl);
-  http.setTimeout(10000);
-  int httpCode = http.GET();
 
-  if (httpCode != 200) {
-    Logger.printf("[OTA] Version check failed (HTTP %d)\n", httpCode);
+  String versionUrl = String(OTA_UPDATE_URL) + "/version.txt?sensor=" + deviceId + "&current_version=" + FIRMWARE_VERSION;
+
+  int httpCode = 0;
+  String remoteVersion;
+  uint32_t lastHeap = 0, lastMaxBlock = 0;  // etat du tas au dernier echec
+
+  // Le handshake TLS (mbedTLS) reclame un gros bloc de heap CONTIGU (~40 Ko).
+  // Sur ESP32 il echoue parfois au 1er essai avec HTTP -1
+  // (HTTPC_ERROR_CONNECTION_REFUSED = connexion jamais etablie) a cause de la
+  // fragmentation du tas ou d'un alea reseau, puis passe au 2e essai. On
+  // reessaie donc jusqu'a 3 fois. En cas d'echec on logue l'erreur exacte ET
+  // l'etat du tas (heap libre + plus gros bloc allouable) : si maxBlock tombe
+  // sous ~35 Ko, c'est la penurie memoire qui tue le handshake, pas le reseau.
+  const int MAX_ATTEMPTS = 3;
+  for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    WiFiClientSecure secClient;
+    secClient.setInsecure();          // Skip cert validation (simplifies deployment)
+    secClient.setHandshakeTimeout(15); // s — borne le handshake TLS
+
+    HTTPClient http;
+    http.begin(secClient, versionUrl);
+    http.setConnectTimeout(10000);
+    http.setTimeout(10000);
+    http.setReuse(false);
+
+    httpCode = http.GET();
+
+    if (httpCode == 200) {
+      remoteVersion = http.getString();
+      remoteVersion.trim();
+      http.end();
+      break;
+    }
+
+    lastHeap = ESP.getFreeHeap();
+    lastMaxBlock = ESP.getMaxAllocHeap();
+    Logger.printf("[OTA] Tentative %d/%d echouee: HTTP %d (%s) | heap=%u o, maxBloc=%u o\n",
+                  attempt, MAX_ATTEMPTS, httpCode,
+                  http.errorToString(httpCode).c_str(),
+                  lastHeap, lastMaxBlock);
     http.end();
-    server.send(200, "application/json", "{\"error\":\"Serveur inaccessible (HTTP " + String(httpCode) + ")\"}");
-    return;
+
+    if (attempt < MAX_ATTEMPTS) delay(400);  // laisse le heap/reseau respirer
   }
 
-  String remoteVersion = http.getString();
-  remoteVersion.trim();
-  http.end();
+  if (httpCode != 200) {
+    String reason = otaFailureReason(httpCode);
+    String detail = "Code " + String(httpCode) + " | RAM libre " + String(lastHeap / 1024)
+                  + " Ko, plus gros bloc " + String(lastMaxBlock / 1024) + " Ko";
+    // Trace complete cote logs (UI /logs + serial) pour qu'on sache pourquoi.
+    Logger.printf("[OTA] Version check failed apres %d tentatives — %s\n", MAX_ATTEMPTS, reason.c_str());
+    Logger.println("[OTA] Detail: " + detail);
+    if (lastMaxBlock > 0 && lastMaxBlock < 35000) {
+      Logger.println("[OTA] -> plus gros bloc < 35 Ko : le handshake TLS manque de memoire (heap fragmente).");
+    }
+    // Echappe les guillemets eventuels avant injection JSON.
+    reason.replace("\"", "'");
+    detail.replace("\"", "'");
+    server.send(200, "application/json",
+      "{\"error\":\"" + reason + "\",\"detail\":\"" + detail + "\",\"code\":" + String(httpCode) + "}");
+    return;
+  }
 
   Logger.printf("[OTA] Current: %s, Remote: %s\n", FIRMWARE_VERSION, remoteVersion.c_str());
 
