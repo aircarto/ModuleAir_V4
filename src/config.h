@@ -43,7 +43,13 @@
 #define SCREEN_HCHO_DEFAULT     true
 #define LOGO_MODULEAIR_DEFAULT  true
 #define LOGO_AIRCARTO_DEFAULT   true
-#define LOGO_ATMOSUD_DEFAULT    false
+// Le logo AtmoSud suit la variante de build (cf. platformio.ini) :
+//   build atmosud  -> ON par défaut    |   build classique -> OFF par défaut
+#ifdef BUILD_ATMOSUD
+  #define LOGO_ATMOSUD_DEFAULT  true
+#else
+  #define LOGO_ATMOSUD_DEFAULT  false
+#endif
 
 // WiFi AP
 // The hotspot is intentionally open (no password). The first-time-config
@@ -66,9 +72,17 @@
 #define DEFAULT_WIFI_SSID      "AirLab"
 #define DEFAULT_WIFI_PASSWORD  "123plouf"
 
-// Data server
+// Data server (AirCarto — toujours actif)
 #define DATA_SERVER_URL "https://data.moduleair.fr/wifi_newDriver2026.php?device_type=ModuleAir"
 #define DATA_SEND_INTERVAL 60000  // 60 secondes
+
+// ── Serveur AtmoSud (MicroSpot) — uniquement sur la build atmosud ────────────
+// Activé par -DBUILD_ATMOSUD (env:atmosud). Reproduit la cible et le format
+// de ModuleAir-Next-Gen : envoi HTTPS du payload "sensordatavalues".
+#ifdef BUILD_ATMOSUD
+  #define ATMOSUD_SERVER_URL       "https://api-prod.uspot.probesys.net/moduleair?token=2AFF6dQk68daFZ"
+  #define ATMOSUD_SOFTWARE_VERSION "ModuleAirV4-V" FIRMWARE_VERSION
+#endif
 
 // OTA Update
 #define OTA_UPDATE_URL "https://gestion.aircarto.fr/api/ota/ModuleAir"

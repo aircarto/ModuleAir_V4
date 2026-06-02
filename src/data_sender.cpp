@@ -19,6 +19,92 @@ static bool checkInternetAccess() {
   return false;
 }
 
+#ifdef BUILD_ATMOSUD
+// ── Envoi AtmoSud (MicroSpot) ───────────────────────────────────────────────
+// Reproduit trait pour trait le comportement de ModuleAir-Next-Gen :
+//   - identifiant "moduleairid" = chip id court (16 bits hauts de l'eFuse MAC,
+//     en hexa) — exactement comme esp_chipid dans Next-Gen
+//   - payload au format "sensordatavalues" (paires value_type / value)
+//   - mêmes value_type que ceux attendus par l'API AtmoSud
+//   - headers Content-Type + X-Sensor + User-Agent identiques
+// N'est compilé QUE sur la build atmosud (-DBUILD_ATMOSUD). La build classique
+// ignore totalement ce bloc.
+static void atmosudSend(const SensorData& d) {
+  // chip id court, identique à esp_chipid de Next-Gen
+  String chipid = String((uint16_t)(ESP.getEfuseMac() >> 32), HEX);
+
+  String payload = "{\"moduleairid\": \"";
+  payload += chipid;
+  payload += "\", \"software_version\": \"" ATMOSUD_SOFTWARE_VERSION "\", \"sensordatavalues\":[";
+
+  bool first = true;
+  auto add = [&](const char* type, const String& val) {
+    if (!first) payload += ",";
+    payload += "{\"value_type\":\"";
+    payload += type;
+    payload += "\",\"value\":\"";
+    payload += val;
+    payload += "\"}";
+    first = false;
+  };
+
+  // Particules fines (NextPM) — mêmes clés que Next-Gen
+  if (d.pm_ok) {
+    add("NPM_P0", String(d.pm1, 2));   // PM1
+    add("NPM_P1", String(d.pm10, 2));  // PM10
+    add("NPM_P2", String(d.pm25, 2));  // PM2.5
+  }
+  // BME280 — pression en Pa (×100) comme l'envoyait Next-Gen
+  if (d.bme_ok) {
+    add("BME280_temperature", String(d.temperature, 2));
+    add("BME280_pressure",    String(d.pressure * 100.0, 2));
+    add("BME280_humidity",    String(d.humidity, 2));
+  }
+  // CO2 (MH-Z19) — la clé reste "MHZ16_CO2", comme dans Next-Gen
+  if (d.co2_ok) {
+    add("MHZ16_CO2", String(d.co2));
+  }
+  // COV (CCS811)
+  if (d.ccs_ok) {
+    add("CCS811_VOC", String(d.tvoc));
+  }
+  // Qualité du signal WiFi (footer Next-Gen)
+  add("signal", String(WiFi.RSSI()));
+
+  payload += "]}";
+
+  Logger.println("[AtmoSud] POST " + String(ATMOSUD_SERVER_URL));
+  Logger.println("[AtmoSud] " + payload);
+
+  WiFiClientSecure secClient;
+  secClient.setInsecure();
+  HTTPClient https;
+  https.setTimeout(20000);
+  https.setUserAgent(String(ATMOSUD_SOFTWARE_VERSION) + "/" + chipid);
+  https.setReuse(false);
+  https.begin(secClient, ATMOSUD_SERVER_URL);
+  https.addHeader("Content-Type", "application/json");
+  https.addHeader("X-Sensor", String("esp32-") + chipid);
+
+  unsigned long t0 = millis();
+  int httpCode = https.POST(payload);
+  float duration = (millis() - t0) / 1000.0;
+
+  if (httpCode > 0) {
+    Logger.printf("[AtmoSud] HTTP %d (%.1fs) - %s\n", httpCode, duration, https.getString().c_str());
+    if (httpCode >= 200 && httpCode < 300) {
+      Logger.println("[AtmoSud] Envoi reussi");
+    } else {
+      Logger.println("[AtmoSud] Reponse serveur non-OK");
+    }
+  } else {
+    Logger.printf("[AtmoSud] Echec (%.1fs): %s\n", duration, https.errorToString(httpCode).c_str());
+  }
+
+  https.end();
+}
+#endif  // BUILD_ATMOSUD
+
 SendResult dataSenderSend() {
   const SensorData& d = sensorsGetData();
 
@@ -153,6 +239,12 @@ SendResult dataSenderSend() {
   } else {
     Logger.println("[Data] Echec envoi - serveur data.moduleair.fr injoignable");
   }
+
+#ifdef BUILD_ATMOSUD
+  // Build atmosud : on envoie aussi à AtmoSud (indépendamment du résultat
+  // AirCarto — l'accès internet a déjà été vérifié plus haut).
+  atmosudSend(d);
+#endif
 
   Logger.println();
   Logger.println("════════════════════════════════════════");

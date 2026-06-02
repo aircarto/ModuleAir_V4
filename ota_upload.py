@@ -21,7 +21,9 @@ try:
 except:
     is_pio = False
 
-FIRMWARE_PATH = os.path.join(".pio", "build", "esp32dev", "firmware.bin")
+# Build classique (AirCarto) par défaut pour l'OTA.
+# Pour pousser la build atmosud : passer -f .pio/build/atmosud/firmware.bin
+FIRMWARE_PATH = os.path.join(".pio", "build", "moduleair", "firmware.bin")
 CONFIG_FILE = "ota_config.ini"
 DEFAULT_SERVER = "https://gestion.aircarto.fr/api"
 DEFAULT_DEVICE = "ModuleAir"
