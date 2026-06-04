@@ -18,6 +18,10 @@ Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versi
 - Architecture i18n : nouveau module `src/i18n.{h,cpp}` exposant deux tables `I18nStrings` (FR/EN) et un accesseur `TR()`. `display.cpp` (textes ecran) et `wifi_manager.cpp` (interface web) referencent ces chaines au lieu de litteraux codes en dur. Le JS client recoit un petit dictionnaire `L` injecte par langue (`jsLangDict()`), pour rester independant de la langue. Les accents FR sur la matrice sont preserves via les octets de police (glcdfont_mod).
 - Les messages d'echec OTA (`otaFailureReason`) et l'attribut `<html lang>` suivent egalement la langue active.
 
+### Corrigé
+
+- Check OTA qui echouait en `HTTP -1` (handshake TLS impossible). Cause racine : **manque de heap contigu**. Le handshake mbedTLS reclame ~45-50 Ko d'un seul bloc, or le device plafonnait a ~40-47 Ko de plus gros bloc libre. Les bitmaps de logos/ecrans de `logos.h` etaient declares `uint16_t static` (**non-`const`**) donc residaient en **RAM** (.data) au lieu de la flash. Les passer tous en `static const` les deplace en flash (`.rodata`, mappee en lecture sur ESP32, `drawImage()` prend deja un pointeur const) : **~16 Ko de RAM liberes** (les images reellement utilisees ; les autres etaient deja eliminees par le linker). RAM globale 37,6 % -> 32,6 %, le plus gros bloc libre repasse largement au-dessus du besoin TLS, le check OTA redevient fiable. (Note : ce probleme etait pre-existant et sans rapport avec l'i18n — la RAM statique n'a pas bouge avec les tables de traduction, qui sont en flash.)
+
 ### Note de deploiement (OTA)
 
 - Les deux langues etant compilees dans chaque binaire, le suffixe `_en` ne concerne que le **flash usine** d'un lot. Pour l'OTA, un seul binaire par variante (ex. `moduleair`) peut etre pousse a tous les capteurs classiques : chacun conserve sa langue lue en NVS. Aucun canal OTA separe par langue n'est necessaire.
