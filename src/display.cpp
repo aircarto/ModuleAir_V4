@@ -286,9 +286,25 @@ static void drawUnit(UnitType unit) {
   display.setTextColor(COLOR_GRAY);
   switch (unit) {
     case UNIT_UGM3:
-      display.write(181);  // µ
-      display.print("g/m");
-      display.write(179);  // ³
+      display.write(181);   // µ  (police etroite)
+      display.print("g/");  // g/ (police etroite)
+      // Le 'm' est dessine avec la police INTEGREE 5x7 : c'est le meme 'm'
+      // minuscule propre que celui de "ppm"/"ppb". Le 'm' de la police etroite
+      // (4 px) est un bloc plein illisible, et on ne peut pas l'elargir sans
+      // decaler tous les offsets de glyphes suivants. La police integree utilise
+      // une origine coin-haut-gauche (≠ baseline de la police GFX), donc on la
+      // pose a y=0 pour que le corps du 'm' (lignes 2-6) tombe pile sur les
+      // memes lignes que le µ et le g etroits. Cout : +1 px de large.
+      {
+        int xm = display.getCursorX();
+        display.setFont(NULL);
+        display.setCursor(xm, 0);
+        display.print("m");
+        int xc = display.getCursorX();
+        display.setFont(&Font4x7Fixed);
+        display.setCursor(xc, 7);  // retour a la baseline pour le ³
+      }
+      display.write(179);   // ³
       break;
     case UNIT_PPM:
       display.setFont(NULL);
