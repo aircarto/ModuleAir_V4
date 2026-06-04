@@ -3,6 +3,7 @@
 #include <esp_ota_ops.h>
 #include "config.h"
 #include "logger.h"
+#include "i18n.h"
 #include "display.h"
 #include "logo_storage.h"
 #include "wifi_manager.h"
@@ -31,6 +32,7 @@ void setup() {
   Logger.println();
 
   configInit();
+  i18nInit();          // load language from NVS (survives OTA) before any UI/screen text
   settingsInit();
   logoStorageInit();
   displayInit();

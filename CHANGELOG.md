@@ -4,6 +4,24 @@ Toutes les modifications notables du firmware ModuleAir V4 sont documentées ici
 
 Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versioning [Semantic Versioning](https://semver.org/).
 
+## [0.3.2] - 2026-06-04
+
+### Ajouté
+
+- Support multilingue FR / EN (i18n) en **runtime** : tous les textes des ecrans matrice ET de l'interface web sont traduits. Un seul firmware contient les deux langues. Selecteur de langue dans l'UI web (carte "Langue / Language", disponible en mode connecte ET dans le portail AP) avec effet immediat (reload de la page ; les ecrans suivent au cycle suivant).
+- Persistance de la langue en **NVS** (namespace `i18n`, cle `lang`), au meme titre que les toggles capteurs/ecrans/seuils. Consequence : la langue reste changeable a la volee et **survit a l'OTA** — la mise a jour ne reecrit que la partition applicative, jamais la NVS. Un capteur configure en anglais reste donc en anglais apres chaque MAJ, sans aucune machinerie de sauvegarde/restauration.
+- 4 environnements PlatformIO selectionnables au flash : `moduleair` (classique FR), `moduleair_en` (classique EN), `atmosud` (AtmoSud FR), `atmosud_en` (AtmoSud EN). Le flag de build `-DDEFAULT_LANG_EN` ne fixe que la langue de **premier boot** (quand la NVS est vierge).
+- Ecran matrice "mesure air interieur" en anglais : ce splash est une image (texte grave dans les pixels, pas du texte rendu par police), donc une version anglaise du bitmap `interieur_no_connection_en` (importee de ModuleAir-Next-Gen) est selectionnee quand la langue active est EN. Le bitmap est `const` (reside en flash, pas en DRAM) pour ne pas alourdir la RAM.
+
+### Modifié
+
+- Architecture i18n : nouveau module `src/i18n.{h,cpp}` exposant deux tables `I18nStrings` (FR/EN) et un accesseur `TR()`. `display.cpp` (textes ecran) et `wifi_manager.cpp` (interface web) referencent ces chaines au lieu de litteraux codes en dur. Le JS client recoit un petit dictionnaire `L` injecte par langue (`jsLangDict()`), pour rester independant de la langue. Les accents FR sur la matrice sont preserves via les octets de police (glcdfont_mod).
+- Les messages d'echec OTA (`otaFailureReason`) et l'attribut `<html lang>` suivent egalement la langue active.
+
+### Note de deploiement (OTA)
+
+- Les deux langues etant compilees dans chaque binaire, le suffixe `_en` ne concerne que le **flash usine** d'un lot. Pour l'OTA, un seul binaire par variante (ex. `moduleair`) peut etre pousse a tous les capteurs classiques : chacun conserve sa langue lue en NVS. Aucun canal OTA separe par langue n'est necessaire.
+
 ## [0.3.1] - 2026-05-26
 
 ### Corrigé

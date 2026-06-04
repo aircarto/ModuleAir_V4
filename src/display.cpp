@@ -8,6 +8,7 @@
 #include "logos.h"
 #include "logo_storage.h"
 #include "logger.h"
+#include "i18n.h"
 #include "fonts/Font4x7Fixed.h"
 #include "wifi_icon.h"
 #include "wifi_manager.h"
@@ -195,10 +196,10 @@ static uint16_t colorPM(float val, float s1, float s2, float s3) {
 // of the matrix on the lower text rows (e.g. the 'y' in "Moyen", 'g' in
 // "Degrade"). Uppercase has no descenders, so nothing overflows.
 static const char* msgPM(float val, float s1, float s2, float s3) {
-  if (val < s1) return "BON";
-  if (val < s2) return "MOYEN";
-  if (val < s3) return "DEGRADE";
-  return "MAUVAIS";
+  if (val < s1) return TR().lvl_good;
+  if (val < s2) return TR().lvl_medium;
+  if (val < s3) return TR().lvl_degraded;
+  return TR().lvl_bad;
 }
 
 // CO2: 3 levels (thresholds from settings)
@@ -211,9 +212,9 @@ static uint16_t colorCO2(int val) {
 
 static const char* msgCO2(int val) {
   const ThresholdsCO2& th = settingsGetThresholdsCO2();
-  if (val < th.good) return "BON";
-  if (val < th.bad)  return "AERER SVP";
-  return "MAUVAIS";
+  if (val < th.good) return TR().lvl_good;
+  if (val < th.bad)  return TR().co2_ventilate;
+  return TR().lvl_bad;
 }
 
 // Temperature: comfort zone
@@ -224,9 +225,9 @@ static uint16_t colorTemp(float val) {
 }
 
 static const char* msgTemp(float val) {
-  if (val < 19) return "FROID";
-  if (val < 28) return "OK";
-  return "CHAUD";
+  if (val < 19) return TR().temp_cold;
+  if (val < 28) return TR().temp_ok;
+  return TR().temp_hot;
 }
 
 // Humidity: comfort zone
@@ -237,9 +238,9 @@ static uint16_t colorHumi(float val) {
 }
 
 static const char* msgHumi(float val) {
-  if (val < 40) return "SEC";
-  if (val < 60) return "IDEAL";
-  return "HUMIDE";
+  if (val < 40) return TR().humi_dry;
+  if (val < 60) return TR().humi_ideal;
+  return TR().humi_wet;
 }
 
 // COV (TVOC): based on CCS811 ranges
@@ -251,10 +252,10 @@ static uint16_t colorCOV(int val) {
 }
 
 static const char* msgCOV(int val) {
-  if (val < 220)  return "BON";
-  if (val < 660)  return "MOYEN";
-  if (val < 2200) return "DEGRADE";
-  return "MAUVAIS";
+  if (val < 220)  return TR().lvl_good;
+  if (val < 660)  return TR().lvl_medium;
+  if (val < 2200) return TR().lvl_degraded;
+  return TR().lvl_bad;
 }
 
 static uint16_t colorHCHO(float val) {
@@ -265,10 +266,10 @@ static uint16_t colorHCHO(float val) {
 }
 
 static const char* msgHCHO(float val) {
-  if (val < 10)  return "BON";
-  if (val < 30)  return "MOYEN";
-  if (val < 100) return "DEGRADE";
-  return "MAUVAIS";
+  if (val < 10)  return TR().lvl_good;
+  if (val < 30)  return TR().lvl_medium;
+  if (val < 100) return TR().lvl_degraded;
+  return TR().lvl_bad;
 }
 
 // ── Generic measurement screen ──
@@ -381,7 +382,7 @@ static void drawErrorScreen(const String& sensorName) {
   display.setTextSize(1);
   display.setTextColor(COLOR_CYAN);
   display.setCursor(1, 0);
-  display.print("Capteur");
+  display.print(TR().scr_sensor);
 
   // Triangle d'attention à la place du carré couleur (mêmes coordonnées)
   drawWarningIcon(50, 9);
@@ -395,7 +396,7 @@ static void drawErrorScreen(const String& sensorName) {
   // "Erreur" en rouge tout en bas, centré
   display.setTextSize(1);
   display.setTextColor(COLOR_RED);
-  drawCentreString(String("Erreur"), 25);
+  drawCentreString(String(TR().scr_error), 25);
 
   drawNetStatusBadge();
 }
@@ -472,10 +473,10 @@ static void drawScreenConfigWifi() {
   display.setTextSize(1);
   display.setTextColor(COLOR_ORANGE);
   display.setCursor(1, 7);
-  display.print("Config");
+  display.print(TR().scr_config);
   display.setTextColor(COLOR_WHITE);
   display.setCursor(1, 17);
-  display.print("WiFi");
+  display.print(TR().scr_wifi);
   drawWifiIcon(WIFI_ICON_FRAMES - 1);
 }
 
@@ -617,7 +618,12 @@ void displayShowLogo() {
 void displayShowInterieur() {
   Logger.println("[Display] Mesure Air Interieur");
   display.clearDisplay();
-  drawImage(0, 0, MATRIX_HEIGHT, MATRIX_WIDTH, interieur_no_connection);
+  // The "indoor air" splash is a pre-rendered bitmap (text baked into pixels),
+  // so it needs a separate English image rather than a font swap.
+  const uint16_t* img = (i18nGetLang() == LANG_EN)
+                          ? interieur_no_connection_en
+                          : interieur_no_connection;
+  drawImage(0, 0, MATRIX_HEIGHT, MATRIX_WIDTH, img);
 }
 
 static void displayShowLogoAirCarto() {
@@ -662,7 +668,7 @@ void displayShowWifiConnecting(const char* ssid) {
   display.setTextSize(1);
   display.setTextColor(COLOR_CYAN);
   display.setCursor(1, 0);
-  display.print("Connexion");
+  display.print(TR().scr_connecting);
   display.setTextColor(COLOR_WHITE);
   display.setCursor(1, 11);
   display.print(truncSSID(ssid, 7));
@@ -695,8 +701,7 @@ void displayShowWifiConnected(const char* ssid, int rssi) {
 
   display.setTextColor(COLOR_GREEN);
   display.setCursor(1, 0);
-  display.print("Connect");
-  display.write(130);  // é
+  display.print(TR().scr_connected);
 
   int quality = constrain(2 * (rssi + 100), 0, 100);
   display.setTextColor(COLOR_WHITE);
@@ -728,11 +733,11 @@ void displayShowAPMode(const char* apName, const char* apIP) {
 
   display.setTextColor(COLOR_ORANGE);
   display.setCursor(1, 7);
-  display.print("Config");
+  display.print(TR().scr_config);
 
   display.setTextColor(COLOR_WHITE);
   display.setCursor(1, 17);
-  display.print("WiFi");
+  display.print(TR().scr_wifi);
 
   drawWifiIcon(WIFI_ICON_FRAMES - 1);
 }
@@ -743,11 +748,10 @@ void displayShowWifiLost() {
   display.setTextSize(1);
   display.setTextColor(COLOR_RED);
   display.setCursor(10, 4);
-  display.print("WiFi");
+  display.print(TR().scr_wifi);
   display.setTextColor(COLOR_ORANGE);
   display.setCursor(4, 16);
-  display.print("Deconnect");
-  display.write(130);
+  display.print(TR().scr_disconnected);
 
   // Hold for 2 s, then resume normal rotation (with the badge already
   // showing NET_OFFLINE since the WiFi event handler updated it).
@@ -874,8 +878,7 @@ void displayShowBleConnected() {
   display.print("BLE");
   display.setTextColor(COLOR_WHITE);
   display.setCursor(4, 18);
-  display.print("Connect");
-  display.write(130);
+  display.print(TR().ble_connected);
   manualRefresh(100);
 }
 
@@ -885,12 +888,10 @@ void displayShowBleCredentials(const char* ssid) {
   display.setTextSize(1);
   display.setTextColor(COLOR_CYAN);
   display.setCursor(1, 0);
-  display.print("Identifiant");
+  display.print(TR().ble_creds_l1);
   display.setTextColor(COLOR_ORANGE);
   display.setCursor(7, 10);
-  display.print("re");
-  display.write(131);
-  display.print("us");
+  display.print(TR().ble_creds_l2);
   display.setTextColor(COLOR_WHITE);
   display.setCursor(4, 22);
   display.print(truncSSID(ssid));
@@ -903,7 +904,7 @@ void displayShowBleWifiTrying(const char* ssid) {
   display.setTextSize(1);
   display.setTextColor(COLOR_BLUE);
   display.setCursor(4, 2);
-  display.print("Connexion");
+  display.print(TR().ble_connecting);
   display.setTextColor(COLOR_WHITE);
   display.setCursor(4, 14);
   display.print(truncSSID(ssid));
@@ -919,7 +920,7 @@ void displayShowBleWifiOk(const char* ssid) {
   display.setTextSize(1);
   display.setTextColor(COLOR_GREEN);
   display.setCursor(7, 4);
-  display.print("WiFi OK!");
+  display.print(TR().ble_wifi_ok);
   display.setTextColor(COLOR_WHITE);
   display.setCursor(4, 18);
   display.print(truncSSID(ssid));
@@ -932,10 +933,10 @@ void displayShowBleWifiFail() {
   display.setTextSize(1);
   display.setTextColor(COLOR_RED);
   display.setCursor(10, 4);
-  display.print("WiFi");
+  display.print(TR().scr_wifi);
   display.setTextColor(COLOR_ORANGE);
   display.setCursor(7, 18);
-  display.print("Echec!");
+  display.print(TR().ble_fail);
   manualRefresh(100);
 }
 
@@ -945,10 +946,10 @@ void displayShowBleReboot() {
   display.setTextSize(1);
   display.setTextColor(COLOR_GREEN);
   display.setCursor(7, 4);
-  display.print("Config OK");
+  display.print(TR().ble_config_ok);
   display.setTextColor(COLOR_WHITE);
   display.setCursor(7, 18);
-  display.print("Reboot...");
+  display.print(TR().ble_reboot);
   manualRefresh(100);
 }
 
@@ -983,8 +984,8 @@ void displayShowOtaUpdate() {
   display.clearDisplay();
   display.setTextSize(1);
   display.setTextColor(COLOR_ORANGE);
-  printCentered("Mise a", 2);   // 6 chars -> x=14
-  printCentered("jour",   12);  // 4 chars -> x=20
+  printCentered(TR().ota_upd_l1, 2);
+  printCentered(TR().ota_upd_l2, 12);
   display.setTextColor(COLOR_WHITE);
   printCentered("--%", 22);
 }
@@ -1057,12 +1058,11 @@ void displayShowOtaDone() {
   // of wrapping the letter down to the next row.
   display.setTextWrap(false);
   display.setTextColor(COLOR_WHITE);
-  display.setCursor(0, 13);
-  display.print("Mise a jour");
+  printCentered(TR().ota_done_l1, 13);
   display.setTextWrap(true);
 
   display.setTextColor(COLOR_GREEN);
-  printCentered("reussi !", 23);  // 8 chars -> x=8
+  printCentered(TR().ota_done_l2, 23);
 }
 
 void displayShowOtaFailed() {
@@ -1073,8 +1073,8 @@ void displayShowOtaFailed() {
 
   display.setTextSize(1);
   display.setTextColor(COLOR_RED);
-  printCentered("Erreur", 13);  // 6 chars -> x=14
-  printCentered("MAJ",    23);  // 3 chars -> x=23
+  printCentered(TR().ota_fail_l1, 13);
+  printCentered(TR().ota_fail_l2, 23);
 }
 
 // ── Preferences ──

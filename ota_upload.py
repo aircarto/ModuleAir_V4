@@ -67,7 +67,7 @@ def upload_firmware(server, api_key, device, version, firmware_path):
         return False
 
 
-def main():
+def main(firmware_override=None):
     # Determine config source
     config = configparser.ConfigParser()
     server = DEFAULT_SERVER
@@ -112,7 +112,11 @@ def main():
     if not device:
         device = DEFAULT_DEVICE
 
-    firmware_path = args.firmware
+    # When called from the PlatformIO post-build hook we pass the path of the
+    # firmware that was actually built for THIS env (.pio/build/<env>/firmware.bin).
+    # It takes priority over the hardcoded default so building moduleair_en /
+    # atmosud / atmosud_en uploads the right binary, not always the moduleair one.
+    firmware_path = firmware_override if firmware_override else args.firmware
 
     # Validate
     if not api_key:
@@ -131,7 +135,9 @@ def main():
 # PlatformIO post-build hook
 if is_pio:
     def ota_post_build(source, target, env):
-        main()
+        # target[0] is .pio/build/<current-env>/firmware.bin — upload exactly
+        # the binary that was just built, whichever env it is.
+        main(str(target[0]))
 
     env.AddPostAction("$BUILD_DIR/firmware.bin", ota_post_build)
 else:

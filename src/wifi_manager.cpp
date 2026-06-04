@@ -15,6 +15,7 @@
 #include "display.h"
 #include "settings.h"
 #include "logger.h"
+#include "i18n.h"
 
 static WebServer server(80);
 static DNSServer dnsServer;
@@ -318,9 +319,9 @@ function selectWifi(el,ssid){
 function scanWifi(){
   var b=document.getElementById('scan-btn');
   var c=document.getElementById('wifi-list');
-  b.disabled=true;b.textContent='Recherche...';
+  b.disabled=true;b.textContent=L.searching;
   fetch('/scan').then(r=>r.json()).then(function(nets){
-    var h='<div class="scan-info">'+nets.length+' reseau(x) trouve(s)</div>';
+    var h='<div class="scan-info">'+nets.length+L.networksFound+'</div>';
     nets.forEach(function(w){
       var sig=w.rssi>-50?'&#9679;&#9679;&#9679;&#9679;':w.rssi>-60?'&#9679;&#9679;&#9679;&#9675;':w.rssi>-70?'&#9679;&#9679;&#9675;&#9675;':'&#9679;&#9675;&#9675;&#9675;';
       h+="<div class='wifi-item' onclick=\"selectWifi(this,'"+w.ssid+"')\">";
@@ -329,53 +330,53 @@ function scanWifi(){
       h+="</span><span class='wifi-rssi'>"+sig+" "+w.rssi+"dBm</span></div>";
       h+="<div class='wifi-form'><form action='/save' method='POST'>";
       h+="<input type='hidden' name='ssid' value='"+w.ssid+"'>";
-      if(w.encrypted)h+="<div class='pw-wrap'><input type='password' name='password' placeholder='Mot de passe'><button type='button' class='pw-toggle' onclick='togglePw(this)'>&#128065;</button></div>";
+      if(w.encrypted)h+="<div class='pw-wrap'><input type='password' name='password' placeholder='"+L.password+"'><button type='button' class='pw-toggle' onclick='togglePw(this)'>&#128065;</button></div>";
       else h+="<input type='hidden' name='password' value=''>";
-      h+="<button type='submit'>Connecter</button></form></div>";
+      h+="<button type='submit'>"+L.connect+"</button></form></div>";
     });
-    if(nets.length==0)h='<div class="scan-info">Aucun reseau trouve</div>';
+    if(nets.length==0)h='<div class="scan-info">'+L.noNetwork+'</div>';
     c.innerHTML=h;
-    b.disabled=false;b.textContent='Actualiser les reseaux';
+    b.disabled=false;b.textContent=L.refreshNetworks;
   }).catch(function(){
-    b.disabled=false;b.textContent='Actualiser les reseaux';
+    b.disabled=false;b.textContent=L.refreshNetworks;
   });
 }
 function checkUpdate(){
   var d=document.getElementById('ota-status');
   var b=document.getElementById('ota-btn');
-  d.innerHTML="<span class='data-label'>Verification en cours...</span>";
+  d.innerHTML="<span class='data-label'>"+L.checking+"</span>";
   fetch('/check-update').then(r=>r.json()).then(function(j){
     if(j.update){
-      d.innerHTML="<span class='data-value warn'>Nouvelle version disponible : v"+j.remote+"</span>";
-      b.textContent="Mettre a jour vers v"+j.remote;
+      d.innerHTML="<span class='data-value warn'>"+L.newVersion+j.remote+"</span>";
+      b.textContent=L.updateTo+j.remote;
       b.onclick=function(){doUpdate()};
       b.style.display='block';
     }else if(j.error){
-      var h="<span class='data-value bad'>Echec : "+j.error+"</span>";
+      var h="<span class='data-value bad'>"+L.failed+j.error+"</span>";
       if(j.detail)h+="<br><span style='font-size:0.8em;color:#888'>"+j.detail+"</span>";
       d.innerHTML=h;
     }else{
-      d.innerHTML="<span class='data-value good'>Firmware a jour (v"+j.current+")</span>";
+      d.innerHTML="<span class='data-value good'>"+L.upToDate+j.current+")</span>";
     }
   }).catch(function(){
-    d.innerHTML="<span class='data-value bad'>Erreur de connexion</span>";
+    d.innerHTML="<span class='data-value bad'>"+L.connError+"</span>";
   });
 }
 function doUpdate(){
-  if(!confirm('Lancer la mise a jour ? Le capteur va redemarrer.'))return;
+  if(!confirm(L.confirmUpdate))return;
   var d=document.getElementById('ota-status');
   var b=document.getElementById('ota-btn');
   b.style.display='none';
-  d.innerHTML="<span class='data-label'>Telechargement et installation en cours...<br>Ne pas eteindre le capteur !</span>";
+  d.innerHTML="<span class='data-label'>"+L.downloading+"</span>";
   fetch('/do-update').then(r=>r.json()).then(function(j){
     if(j.ok){
-      d.innerHTML="<span class='data-value good'>Mise a jour reussie ! Redemarrage...</span>";
+      d.innerHTML="<span class='data-value good'>"+L.updateOk+"</span>";
     }else{
-      d.innerHTML="<span class='data-value bad'>Echec : "+j.error+"</span>";
+      d.innerHTML="<span class='data-value bad'>"+L.failed+j.error+"</span>";
       b.style.display='block';
     }
   }).catch(function(){
-    d.innerHTML="<span class='data-value good'>Mise a jour en cours, le capteur redémarre...</span>";
+    d.innerHTML="<span class='data-value good'>"+L.updateRunning+"</span>";
   });
 }
 // Live dashboard updates without a full page reload. We refetch /, parse
@@ -426,12 +427,17 @@ static void sendHeader() {
   server.setContentLength(CONTENT_LENGTH_UNKNOWN);
   server.send(200, "text/html", "");
 
-  server.sendContent("<!DOCTYPE html><html><head>"
+  server.sendContent(i18nGetLang() == LANG_EN
+    ? "<!DOCTYPE html><html lang='en'><head>"
+    : "<!DOCTYPE html><html lang='fr'><head>");
+  server.sendContent(
     "<meta charset='UTF-8'>"
     "<meta name='viewport' content='width=device-width,initial-scale=1'>"
     "<title>ModuleAir</title><style>");
   server.sendContent(CSS);
-  server.sendContent("</style><script>");
+  server.sendContent("</style>");
+  server.sendContent(jsLangDict());   // <script>var L={...};</script> for the static JS
+  server.sendContent("<script>");
   server.sendContent(JS);
   server.sendContent("</script></head><body>");
 }
@@ -456,7 +462,7 @@ static String formatUptime(unsigned long ms) {
   unsigned long days = hrs / 24;
   sec %= 60; min %= 60; hrs %= 24;
   char buf[32];
-  if (days > 0) snprintf(buf, sizeof(buf), "%luj %02luh%02lu", days, hrs, min);
+  if (days > 0) snprintf(buf, sizeof(buf), "%lu%s %02luh%02lu", days, TR().uptime_day, hrs, min);
   else if (hrs > 0) snprintf(buf, sizeof(buf), "%luh%02lum%02lu", hrs, min, sec);
   else snprintf(buf, sizeof(buf), "%lum%02lus", min, sec);
   return String(buf);
@@ -469,7 +475,7 @@ static void handleRootConnected() {
     "<div class='header'>"
     "<h1>ModuleAir</h1>"
     "<div class='version'>Firmware v" FIRMWARE_VERSION "</div>"
-    "<button class='refresh-btn' onclick='location.reload()'>&#8635; Rafraichir</button>"
+    "<button class='refresh-btn' onclick='location.reload()'>&#8635; " + String(TR().web_refresh) + "</button>"
     "</div>");
 
   const SensorData& d = sensorsGetData();
@@ -497,26 +503,26 @@ static void handleRootConnected() {
     if (hasAlerts) {
       String alerts = "<div class='card wide' style='background:#3e1a1a;border-left:4px solid #ef5350'>"
                       "<h2 style='color:#ef9a9a;display:flex;align-items:center;gap:10px;margin-bottom:8px'>"
-                      "<span style='font-size:1.4em'>&#9888;</span> Alertes capteurs"
+                      "<span style='font-size:1.4em'>&#9888;</span> " + String(TR().alert_title) +
                       "</h2>";
 
       // NextPM — on decode npm_status pour donner la cause precise
       if (!d.pm_ok && sc.npm_enabled) {
         String detail;
         if (d.npmStatus == 0xFF) {
-          detail = "Communication impossible (capteur muet)";
+          detail = TR().npm_mute;
         } else if (d.npmStatus == 0) {
-          detail = "Valeur aberrante ou lecture echouee";
+          detail = TR().npm_aberrant;
         } else {
           const char* sep = "";
-          if (d.npmStatus & 0x80) { detail += sep; detail += "laser HS";        sep = ", "; }
-          if (d.npmStatus & 0x40) { detail += sep; detail += "memoire KO";      sep = ", "; }
-          if (d.npmStatus & 0x20) { detail += sep; detail += "ventilateur HS";  sep = ", "; }
-          if (d.npmStatus & 0x10) { detail += sep; detail += "T/H interne KO";  sep = ", "; }
-          if (d.npmStatus & 0x08) { detail += sep; detail += "humidite excessive"; sep = ", "; }
-          if (d.npmStatus & 0x04) { detail += sep; detail += "pas pret";        sep = ", "; }
-          if (d.npmStatus & 0x02) { detail += sep; detail += "mode degrade";    sep = ", "; }
-          if (d.npmStatus & 0x01) { detail += sep; detail += "en veille";       sep = ", "; }
+          if (d.npmStatus & 0x80) { detail += sep; detail += TR().npm_laser;    sep = ", "; }
+          if (d.npmStatus & 0x40) { detail += sep; detail += TR().npm_mem;      sep = ", "; }
+          if (d.npmStatus & 0x20) { detail += sep; detail += TR().npm_fan;      sep = ", "; }
+          if (d.npmStatus & 0x10) { detail += sep; detail += TR().npm_th;       sep = ", "; }
+          if (d.npmStatus & 0x08) { detail += sep; detail += TR().npm_humid;    sep = ", "; }
+          if (d.npmStatus & 0x04) { detail += sep; detail += TR().npm_notready; sep = ", "; }
+          if (d.npmStatus & 0x02) { detail += sep; detail += TR().npm_degraded; sep = ", "; }
+          if (d.npmStatus & 0x01) { detail += sep; detail += TR().npm_sleep;    sep = ", "; }
           if (detail.length() == 0) detail = "status 0x" + String(d.npmStatus, HEX);
         }
         alerts += "<div class='data-row'><span class='data-label'>NextPM (PM)</span>"
@@ -525,19 +531,19 @@ static void handleRootConnected() {
 
       if (!d.co2_ok && sc.mhz19_enabled) {
         alerts += "<div class='data-row'><span class='data-label'>MH-Z19 (CO2)</span>"
-                  "<span class='data-value bad' style='text-align:right'>Erreur de lecture (voir logs)</span></div>";
+                  "<span class='data-value bad' style='text-align:right'>" + String(TR().co2_read_err) + "</span></div>";
       }
       if (!d.bme_ok && sc.bme280_enabled) {
         alerts += "<div class='data-row'><span class='data-label'>BME280 (T/H/P)</span>"
-                  "<span class='data-value bad' style='text-align:right'>Capteur introuvable</span></div>";
+                  "<span class='data-value bad' style='text-align:right'>" + String(TR().sensor_not_found) + "</span></div>";
       }
       if (!d.ccs_ok && sc.ccs811_enabled) {
-        alerts += "<div class='data-row'><span class='data-label'>CCS811 (COV)</span>"
-                  "<span class='data-value bad' style='text-align:right'>Capteur introuvable</span></div>";
+        alerts += "<div class='data-row'><span class='data-label'>" + String(TR().sensor_cov_name) + "</span>"
+                  "<span class='data-value bad' style='text-align:right'>" + String(TR().sensor_not_found) + "</span></div>";
       }
       if (!d.sfa40_ok && sc.sfa40_enabled) {
         alerts += "<div class='data-row'><span class='data-label'>SFA40 (HCHO)</span>"
-                  "<span class='data-value bad' style='text-align:right'>Capteur introuvable</span></div>";
+                  "<span class='data-value bad' style='text-align:right'>" + String(TR().sensor_not_found) + "</span></div>";
       }
 
       alerts += "</div>";
@@ -546,13 +552,13 @@ static void handleRootConnected() {
   }
 
   // Status WiFi
-  String chunk = "<div class='card span2'><h2>Connexion</h2>";
-  chunk += "<div class='data-row'><span class='data-label'>Reseau</span><span class='data-value'>" + WiFi.SSID() + "</span></div>";
+  String chunk = "<div class='card span2'><h2>" + String(TR().card_connection) + "</h2>";
+  chunk += "<div class='data-row'><span class='data-label'>" + String(TR().web_network) + "</span><span class='data-value'>" + WiFi.SSID() + "</span></div>";
   chunk += "<div class='data-row'><span class='data-label'>IP</span><span class='data-value'>" + WiFi.localIP().toString() + "</span></div>";
   {
     int rssi = WiFi.RSSI();
     int bars = rssi > -50 ? 4 : rssi > -60 ? 3 : rssi > -70 ? 2 : 1;
-    const char* label = bars == 4 ? "Excellent" : bars == 3 ? "Bon" : bars == 2 ? "Moyen" : "Faible";
+    const char* label = bars == 4 ? TR().sig_excellent : bars == 3 ? TR().sig_good : bars == 2 ? TR().sig_medium : TR().sig_weak;
     const char* color = bars >= 3 ? "#a5d6a7" : bars == 2 ? "#ffcc80" : "#ef9a9a";
     String svg = "<svg width='24' height='18' viewBox='0 0 24 18' style='vertical-align:middle;margin-right:6px;'>";
     for (int i = 0; i < 4; i++) {
@@ -562,78 +568,78 @@ static void handleRootConnected() {
       svg += "<rect x='" + String(i * 6) + "' y='" + String(y) + "' width='5' height='" + String(h) + "' rx='1' fill='" + fill + "'/>";
     }
     svg += "</svg>";
-    chunk += "<div class='data-row'><span class='data-label'>Signal</span><span class='data-value' style='color:" + String(color) + "'>" + svg + label + " <span class='data-unit'>(" + String(rssi) + " dBm)</span></span></div>";
+    chunk += "<div class='data-row'><span class='data-label'>" + String(TR().web_signal) + "</span><span class='data-value' style='color:" + String(color) + "'>" + svg + label + " <span class='data-unit'>(" + String(rssi) + " dBm)</span></span></div>";
   }
-  chunk += "<div class='data-row'><span class='data-label'>Uptime</span><span class='data-value'>" + formatUptime(millis()) + "</span></div>";
+  chunk += "<div class='data-row'><span class='data-label'>" + String(TR().web_uptime) + "</span><span class='data-value'>" + formatUptime(millis()) + "</span></div>";
   chunk += "</div>";
   server.sendContent(chunk);
 
   // Particules fines
-  chunk = "<div class='card'><h2>Particules fines (NextPM)</h2>";
+  chunk = "<div class='card'><h2>" + String(TR().card_pm) + "</h2>";
   if (d.pm_ok) {
     chunk += "<div class='data-row'><span class='data-label'>PM1.0</span><span class='data-value'>" + String(d.pm1, 1) + " <span class='data-unit'>ug/m3</span></span></div>";
     chunk += "<div class='data-row'><span class='data-label'>PM2.5</span><span class='data-value " + String(d.pm25 < 15 ? "good" : d.pm25 < 35 ? "warn" : "bad") + "'>" + String(d.pm25, 1) + " <span class='data-unit'>ug/m3</span></span></div>";
     chunk += "<div class='data-row'><span class='data-label'>PM10</span><span class='data-value " + String(d.pm10 < 45 ? "good" : d.pm10 < 80 ? "warn" : "bad") + "'>" + String(d.pm10, 1) + " <span class='data-unit'>ug/m3</span></span></div>";
   } else {
-    chunk += "<div class='scan-info'>En attente de donnees...</div>";
+    chunk += "<div class='scan-info'>" + String(TR().web_waiting) + "</div>";
   }
   chunk += "</div>";
   server.sendContent(chunk);
 
   // CO2
-  chunk = "<div class='card'><h2>CO2 (MH-Z19)</h2>";
+  chunk = "<div class='card'><h2>" + String(TR().card_co2) + "</h2>";
   if (d.co2_ok) {
     String co2class = d.co2 < 800 ? "good" : d.co2 < 1200 ? "warn" : "bad";
     chunk += "<div class='data-row'><span class='data-label'>CO2</span><span class='data-value " + co2class + "'>" + String(d.co2) + " <span class='data-unit'>ppm</span></span></div>";
   } else {
-    chunk += "<div class='scan-info'>En attente de donnees...</div>";
+    chunk += "<div class='scan-info'>" + String(TR().web_waiting) + "</div>";
   }
   chunk += "</div>";
   server.sendContent(chunk);
 
   // COV (CCS811)
-  chunk = "<div class='card'><h2>COV (CCS811)</h2>";
+  chunk = "<div class='card'><h2>" + String(TR().card_cov) + "</h2>";
   if (d.ccs_ok) {
     String tvocClass = d.tvoc < 220 ? "good" : d.tvoc < 660 ? "warn" : "bad";
     String eco2Class = d.eco2 < 800 ? "good" : d.eco2 < 1200 ? "warn" : "bad";
     chunk += "<div class='data-row'><span class='data-label'>TVOC</span><span class='data-value " + tvocClass + "'>" + String(d.tvoc) + " <span class='data-unit'>ppb</span></span></div>";
     chunk += "<div class='data-row'><span class='data-label'>eCO2</span><span class='data-value " + eco2Class + "'>" + String(d.eco2) + " <span class='data-unit'>ppm</span></span></div>";
   } else {
-    chunk += "<div class='scan-info'>En attente de donnees...</div>";
+    chunk += "<div class='scan-info'>" + String(TR().web_waiting) + "</div>";
   }
   chunk += "</div>";
   server.sendContent(chunk);
 
   // Formaldéhyde (SFA40)
-  chunk = "<div class='card'><h2>Formaldehyde (SFA40)</h2>";
+  chunk = "<div class='card'><h2>" + String(TR().card_hcho) + "</h2>";
   if (d.sfa40_ok) {
     String hchoClass = d.hcho < 30 ? "good" : d.hcho < 100 ? "warn" : "bad";
     chunk += "<div class='data-row'><span class='data-label'>HCHO</span><span class='data-value " + hchoClass + "'>" + String(d.hcho, 1) + " <span class='data-unit'>ppb</span></span></div>";
   } else {
-    chunk += "<div class='scan-info'>En attente de donnees...</div>";
+    chunk += "<div class='scan-info'>" + String(TR().web_waiting) + "</div>";
   }
   chunk += "</div>";
   server.sendContent(chunk);
 
   // Température / Humidité / Pression
-  chunk = "<div class='card'><h2>Environnement (BME280)</h2>";
+  chunk = "<div class='card'><h2>" + String(TR().card_env) + "</h2>";
   if (d.bme_ok) {
-    chunk += "<div class='data-row'><span class='data-label'>Temperature</span><span class='data-value'>" + String(d.temperature, 1) + " <span class='data-unit'>°C</span></span></div>";
-    chunk += "<div class='data-row'><span class='data-label'>Humidite</span><span class='data-value'>" + String(d.humidity, 1) + " <span class='data-unit'>%</span></span></div>";
-    chunk += "<div class='data-row'><span class='data-label'>Pression</span><span class='data-value'>" + String(d.pressure, 1) + " <span class='data-unit'>hPa</span></span></div>";
+    chunk += "<div class='data-row'><span class='data-label'>" + String(TR().web_temperature) + "</span><span class='data-value'>" + String(d.temperature, 1) + " <span class='data-unit'>°C</span></span></div>";
+    chunk += "<div class='data-row'><span class='data-label'>" + String(TR().web_humidity) + "</span><span class='data-value'>" + String(d.humidity, 1) + " <span class='data-unit'>%</span></span></div>";
+    chunk += "<div class='data-row'><span class='data-label'>" + String(TR().web_pressure) + "</span><span class='data-value'>" + String(d.pressure, 1) + " <span class='data-unit'>hPa</span></span></div>";
   } else {
-    chunk += "<div class='scan-info'>En attente de donnees...</div>";
+    chunk += "<div class='scan-info'>" + String(TR().web_waiting) + "</div>";
   }
   chunk += "</div>";
   server.sendContent(chunk);
 
   // Infos système
-  chunk = "<div class='card'><h2>Systeme</h2>";
+  chunk = "<div class='card'><h2>" + String(TR().card_system) + "</h2>";
   chunk += "<div class='data-row'><span class='data-label'>Device ID</span><span class='data-value'>" + deviceId + "</span></div>";
   chunk += "<div class='data-row'><span class='data-label'>Firmware</span><span class='data-value'>v" FIRMWARE_VERSION "</span></div>";
   chunk += "<div class='data-row'><span class='data-label'>ESP32</span><span class='data-value'>" + String(ESP.getChipModel()) + " rev" + String(ESP.getChipRevision()) + "</span></div>";
   chunk += "<div class='data-row'><span class='data-label'>CPU</span><span class='data-value'>" + String(ESP.getCpuFreqMHz()) + " <span class='data-unit'>MHz</span></span></div>";
-  chunk += "<div class='data-row'><span class='data-label'>RAM libre</span><span class='data-value'>" + String(ESP.getFreeHeap() / 1024) + " <span class='data-unit'>KB</span></span></div>";
+  chunk += "<div class='data-row'><span class='data-label'>" + String(TR().web_free_ram) + "</span><span class='data-value'>" + String(ESP.getFreeHeap() / 1024) + " <span class='data-unit'>KB</span></span></div>";
   chunk += "<div class='data-row'><span class='data-label'>MAC</span><span class='data-value'>" + WiFi.macAddress() + "</span></div>";
   // Quad-state badge: ok / err / off / warm.
   //  - off  : capteur desactive par l'utilisateur (gris barre)
@@ -650,7 +656,7 @@ static void handleRootConnected() {
       if (warmingUp) return "warm";
       return ok ? "ok" : "err";
     };
-    chunk += "<div class='data-row'><span class='data-label'>Capteurs</span><span class='data-value'>";
+    chunk += "<div class='data-row'><span class='data-label'>" + String(TR().web_sensors) + "</span><span class='data-value'>";
     chunk += "<span class='sensor-badge " + String(badgeClass(sc.npm_enabled,    d.pm_ok))    + "'>NextPM</span>";
     chunk += "<span class='sensor-badge " + String(badgeClass(sc.mhz19_enabled,  d.co2_ok))   + "'>MH-Z19</span>";
     chunk += "<span class='sensor-badge " + String(badgeClass(sc.bme280_enabled, d.bme_ok))   + "'>BME280</span>";
@@ -659,21 +665,21 @@ static void handleRootConnected() {
     chunk += "</span></div>";
   }
   if (d.lastReadTime > 0) {
-    chunk += "<div class='data-row'><span class='data-label'>Derniere mesure</span><span class='data-value'>il y a " + String(ago) + " <span class='data-unit'>s</span></span></div>";
+    chunk += "<div class='data-row'><span class='data-label'>" + String(TR().web_last_measure) + "</span><span class='data-value'>" + String(TR().web_ago_pre) + String(ago) + String(TR().web_ago_post) + "</span></div>";
   }
-  chunk += "<div class='data-row'><span class='data-label'>Luminosite ecran</span><span class='data-value'>"
+  chunk += "<div class='data-row'><span class='data-label'>" + String(TR().web_brightness) + "</span><span class='data-value'>"
            "<span id='bri-val'>" + String(displayGetBrightness()) + "</span>/255"
            "<input type='range' min='0' max='255' value='" + String(displayGetBrightness()) + "' style='width:80px;margin-left:8px;vertical-align:middle;'"
            " oninput=\"document.getElementById('bri-val').textContent=this.value;document.getElementById('bri-warn').style.display=this.value==='0'?'block':'none'\""
            " onchange=\"fetch('/set-brightness',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'val='+this.value})\">"
            "</span></div>"
            "<div id='bri-warn' style='display:" + String(displayGetBrightness() == 0 ? "block" : "none") + ";color:#ffcc80;font-size:0.8em;padding:4px 0 8px;'>"
-           "&#9888; Ecran eteint. Pour le rallumer, revenir sur cette page et ajuster le curseur.</div>";
-  chunk += "<div class='data-row'><span class='data-label'>Ecran debug au demarrage</span><span class='data-value'>"
+           + String(TR().web_screen_off) + "</div>";
+  chunk += "<div class='data-row'><span class='data-label'>" + String(TR().web_debug_splash) + "</span><span class='data-value'>"
            "<label style='cursor:pointer'><input type='checkbox' id='dbg-splash' "
            + String(displayGetDebugSplash() ? "checked" : "") +
-           " onchange=\"fetch('/debug-splash',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'enabled='+(this.checked?'1':'0')})\">"
-           " Actif</label></span></div>";
+           " onchange=\"fetch('/debug-splash',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'enabled='+(this.checked?'1':'0')})\"> "
+           + String(TR().web_active) + "</label></span></div>";
   chunk += "</div>";
   server.sendContent(chunk);
 
@@ -682,9 +688,9 @@ static void handleRootConnected() {
   // re-enabling a sensor that started disabled in code.
   {
     const SensorSettings& sc = settingsGetSensors();
-    chunk = "<div class='card'><h2>Capteurs actifs</h2>"
-            "<p style='color:#888;font-size:0.8em;margin:0 0 8px'>Effet immediat (au prochain cycle de mesure)</p>";
-    const char* sensorNames[] = { "NextPM (PM)", "MH-Z19 (CO2)", "BME280 (T/H/P)", "CCS811 (COV)", "SFA40 (HCHO)" };
+    chunk = "<div class='card'><h2>" + String(TR().card_active_sensors) + "</h2>"
+            "<p style='color:#888;font-size:0.8em;margin:0 0 8px'>" + String(TR().web_immediate) + "</p>";
+    const char* sensorNames[] = { "NextPM (PM)", "MH-Z19 (CO2)", "BME280 (T/H/P)", TR().sensor_cov_name, "SFA40 (HCHO)" };
     const char* sensorKeys[]  = { "npm", "mhz19", "bme280", "ccs811", "sfa40" };
     bool sensorVals[]         = { sc.npm_enabled, sc.mhz19_enabled, sc.bme280_enabled, sc.ccs811_enabled, sc.sfa40_enabled };
     for (int i = 0; i < 5; i++) {
@@ -702,14 +708,14 @@ static void handleRootConnected() {
   {
     const ScreenSettings& ss = settingsGetScreens();
     const SensorSettings& sc = settingsGetSensors();
-    chunk = "<div class='card'><h2>Ecrans matrice</h2>";
+    chunk = "<div class='card'><h2>" + String(TR().card_matrix_screens) + "</h2>";
 
     // Polluants. Each pollutant screen is locked when its parent sensor is
     // disabled — we keep the user's saved preference (it'll come back when
     // they re-enable the sensor) but the toggle is greyed out and not
     // clickable to avoid the "screen toggle is on but nothing shows" trap.
-    chunk += "<p style='color:#4fc3f7;font-size:0.85em;margin:0 0 6px;font-weight:bold'>Polluants</p>";
-    const char* pollNames[]  = { "PM1", "PM2.5", "PM10", "CO2", "Temperature", "Humidite", "COV (TVOC)", "Formaldehyde" };
+    chunk += "<p style='color:#4fc3f7;font-size:0.85em;margin:0 0 6px;font-weight:bold'>" + String(TR().web_pollutants) + "</p>";
+    const char* pollNames[]  = { "PM1", "PM2.5", "PM10", "CO2", "Temperature", TR().poll_humi_name, TR().poll_cov_name, "Formaldehyde" };
     const char* pollKeys[]   = { "pm1", "pm25", "pm10", "co2", "temp", "humi", "tvoc", "hcho" };
     bool pollVals[]          = { ss.pm1, ss.pm25, ss.pm10, ss.co2, ss.temp, ss.humi, ss.tvoc, ss.hcho };
     bool pollParentOn[]      = { sc.npm_enabled, sc.npm_enabled, sc.npm_enabled,
@@ -722,7 +728,7 @@ static void handleRootConnected() {
       chunk += "<div class='toggle-row";
       if (locked) chunk += " locked";
       chunk += "'><span>" + String(pollNames[i]);
-      if (locked) chunk += "<span class='toggle-hint'>(capteur off)</span>";
+      if (locked) chunk += "<span class='toggle-hint'>" + String(TR().web_sensor_off) + "</span>";
       chunk += "</span>";
       chunk += "<label class='switch'><input type='checkbox'";
       if (pollVals[i]) chunk += " checked";
@@ -751,16 +757,16 @@ static void handleRootConnected() {
   // Seuils
   {
     const ThresholdsCO2& co2th = settingsGetThresholdsCO2();
-    chunk = "<div class='card'><h2>Seuils d'alerte</h2>";
+    chunk = "<div class='card'><h2>" + String(TR().card_thresholds) + "</h2>";
     chunk += "<p style='color:#4fc3f7;font-size:0.85em;margin:0 0 6px;font-weight:bold'>CO2 (ppm)</p>";
-    chunk += "<div class='data-row'><span class='data-label' style='color:#a5d6a7'>Bon &lt;</span>";
+    chunk += "<div class='data-row'><span class='data-label' style='color:#a5d6a7'>" + String(TR().web_th_good) + "</span>";
     chunk += "<span class='data-value'><input type='number' id='co2-good' value='" + String(co2th.good) + "' style='width:60px;background:#0f3460;color:#fff;border:1px solid #333;border-radius:4px;padding:4px;text-align:center;'></span></div>";
-    chunk += "<div class='data-row'><span class='data-label' style='color:#ef9a9a'>Mauvais &ge;</span>";
+    chunk += "<div class='data-row'><span class='data-label' style='color:#ef9a9a'>" + String(TR().web_th_bad) + "</span>";
     chunk += "<span class='data-value'><input type='number' id='co2-bad' value='" + String(co2th.bad) + "' style='width:60px;background:#0f3460;color:#fff;border:1px solid #333;border-radius:4px;padding:4px;text-align:center;'></span></div>";
-    chunk += "<div style='color:#888;font-size:0.8em;padding:4px 0;'>Entre les deux = orange (Aerer SVP)</div>";
+    chunk += "<div style='color:#888;font-size:0.8em;padding:4px 0;'>" + String(TR().web_th_between) + "</div>";
     chunk += "<div style='display:flex;gap:8px;margin-top:4px;'>"
-             "<button style='width:auto;padding:8px 20px;' onclick=\"fetch('/set-thresholds-co2',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'good='+document.getElementById('co2-good').value+'&bad='+document.getElementById('co2-bad').value}).then(()=>{this.textContent='OK !';setTimeout(()=>this.textContent='Appliquer',1500)})\">Appliquer</button>"
-             "<button style='width:auto;padding:8px 12px;background:#333;color:#aaa;' onclick=\"document.getElementById('co2-good').value='800';document.getElementById('co2-bad').value='1500';fetch('/set-thresholds-co2',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'good=800&bad=1500'}).then(()=>{this.textContent='Restaure !';setTimeout(()=>this.textContent='Par defaut',1500)})\">Par defaut</button>"
+             "<button style='width:auto;padding:8px 20px;' onclick=\"fetch('/set-thresholds-co2',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'good='+document.getElementById('co2-good').value+'&bad='+document.getElementById('co2-bad').value}).then(()=>{this.textContent='" + String(TR().web_ok_excl) + "';setTimeout(()=>this.textContent='" + String(TR().web_apply) + "',1500)})\">" + String(TR().web_apply) + "</button>"
+             "<button style='width:auto;padding:8px 12px;background:#333;color:#aaa;' onclick=\"document.getElementById('co2-good').value='800';document.getElementById('co2-bad').value='1500';fetch('/set-thresholds-co2',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'good=800&bad=1500'}).then(()=>{this.textContent='" + String(TR().web_restored) + "';setTimeout(()=>this.textContent='" + String(TR().web_default) + "',1500)})\">" + String(TR().web_default) + "</button>"
              "</div>";
     chunk += "</div>";
     server.sendContent(chunk);
@@ -772,15 +778,24 @@ static void handleRootConnected() {
   // tailLogs() setInterval survive across dashboard refreshes.
   server.sendContent(
     "<div class='card wide' data-keep='logs'><h2 style='display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px'>"
-    "<span>Logs en temps reel</span>"
+    "<span>");
+  server.sendContent(TR().card_logs);
+  server.sendContent(
+    "</span>"
     "<span style='font-size:0.75em;font-weight:normal;color:#888'>"
     "<span id='log-status' style='margin-right:10px'>&#9679; live</span>"
     "<button id='log-pause' style='width:auto;padding:4px 10px;font-size:0.9em' onclick='toggleLogPause()'>Pause</button> "
-    "<button style='width:auto;padding:4px 10px;font-size:0.9em;background:#333;color:#aaa' onclick='clearLogs()'>Vider</button>"
+    "<button style='width:auto;padding:4px 10px;font-size:0.9em;background:#333;color:#aaa' onclick='clearLogs()'>");
+  server.sendContent(TR().web_clear);
+  server.sendContent(
+    "</button>"
     "</span></h2>"
     "<pre id='log-box' style='background:#0a0a1a;padding:10px;border-radius:8px;"
     "height:50vh;min-height:300px;overflow-y:auto;font-size:0.8em;color:#aaa;"
-    "white-space:pre-wrap;word-break:break-all;margin:0'>Chargement...</pre>"
+    "white-space:pre-wrap;word-break:break-all;margin:0'>");
+  server.sendContent(TR().web_loading);
+  server.sendContent(
+    "</pre>"
     "<script>"
     "var logSeq=0,logPaused=false,logFirst=true;"
     "var logBox=document.getElementById('log-box');"
@@ -788,7 +803,10 @@ static void handleRootConnected() {
     "function clearLogs(){logBox.textContent='';}"
     "function toggleLogPause(){"
     "logPaused=!logPaused;"
-    "document.getElementById('log-pause').textContent=logPaused?'Reprendre':'Pause';"
+    "document.getElementById('log-pause').textContent=logPaused?'");
+  server.sendContent(TR().web_resume);
+  server.sendContent(
+    "':'Pause';"
     "logStatus.innerHTML=logPaused?'&#9679; pause':'&#9679; live';"
     "logStatus.style.color=logPaused?'#ffcc80':'#a5d6a7';"
     "}"
@@ -799,7 +817,10 @@ static void handleRootConnected() {
     "if(!isNaN(s))logSeq=s;"
     "return r.text();"
     "}).then(function(t){"
-    "if(logFirst){logBox.textContent=t||'(aucun log)';logFirst=false;logBox.scrollTop=logBox.scrollHeight;return;}"
+    "if(logFirst){logBox.textContent=t||'");
+  server.sendContent(TR().web_no_logs);
+  server.sendContent(
+    "';logFirst=false;logBox.scrollTop=logBox.scrollHeight;return;}"
     "if(!t)return;"
     "var atBottom=logBox.scrollHeight-logBox.scrollTop-logBox.clientHeight<60;"
     "logBox.textContent+=t;"
@@ -814,20 +835,42 @@ static void handleRootConnected() {
   // a refresh while an OTA check or update is in progress (otherwise the
   // user would see the status reset to empty while their click is in flight).
   server.sendContent(
-    "<div class='card wide' data-keep='ota'><h2>Mise a jour</h2>"
+    "<div class='card wide' data-keep='ota'><h2>");
+  server.sendContent(TR().card_update);
+  server.sendContent(
+    "</h2>"
     "<div id='ota-status'></div>"
-    "<button class='update' onclick='checkUpdate()'>Verifier les mises a jour</button>"
+    "<button class='update' onclick='checkUpdate()'>");
+  server.sendContent(TR().web_check_update);
+  server.sendContent(
+    "</button>"
     "<button id='ota-btn' class='update'></button>"
     "</div>");
+
+  // Langue / Language — switches at runtime, persists in NVS (survives OTA).
+  {
+    String langCard = "<div class='card'><h2>" + String(TR().card_language) + "</h2>";
+    langCard += "<select onchange=\"fetch('/set-lang',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'lang='+this.value}).then(()=>location.reload())\" style='width:100%;padding:10px;border-radius:8px;background:#0f3460;color:#fff;border:1px solid #333;font-size:1em;box-sizing:border-box;'>";
+    langCard += String("<option value='FR'") + (i18nGetLang() == LANG_FR ? " selected" : "") + ">Francais (FR)</option>";
+    langCard += String("<option value='EN'") + (i18nGetLang() == LANG_EN ? " selected" : "") + ">English (EN)</option>";
+    langCard += "</select></div>";
+    server.sendContent(langCard);
+  }
 
   // Boutons oublier WiFi + redémarrer
   server.sendContent(
     "<div class='card wide'>"
     "<form action='/reset' method='POST'>"
-    "<button type='submit' class='danger'>Oublier le WiFi</button>"
+    "<button type='submit' class='danger'>");
+  server.sendContent(TR().web_forget_wifi);
+  server.sendContent(
+    "</button>"
     "</form>"
     "<form action='/reboot' method='POST'>"
-    "<button type='submit' class='danger'>Redemarrer le capteur</button>"
+    "<button type='submit' class='danger'>");
+  server.sendContent(TR().web_reboot);
+  server.sendContent(
+    "</button>"
     "</form></div>");
 
   server.sendContent("</div>");  // Fin grid
@@ -853,18 +896,18 @@ static void handleRootAP() {
     "<div class='version'>Firmware v" FIRMWARE_VERSION "</div>");
 
   // Status AP
-  String apStatus = "<div class='card'><h2>Statut</h2>"
-    "<div class='status ap'>Mode point d'acces<br>"
+  String apStatus = "<div class='card'><h2>" + String(TR().ap_status) + "</h2>"
+    "<div class='status ap'>" + String(TR().ap_mode) + "<br>"
     "SSID: " + apSSID + "</div></div>";
   server.sendContent(apStatus);
 
   // Réseaux WiFi
-  String chunk = "<div class='card'><h2>Reseaux WiFi</h2>";
+  String chunk = "<div class='card'><h2>" + String(TR().ap_networks) + "</h2>";
   chunk += "<div id='wifi-list'>";
   if (n <= 0) {
-    chunk += "<div class='scan-info'>Aucun reseau trouve</div>";
+    chunk += "<div class='scan-info'>" + String(TR().ap_no_network) + "</div>";
   } else {
-    chunk += "<div class='scan-info'>" + String(n) + " reseau(x) trouve(s)</div>";
+    chunk += "<div class='scan-info'>" + String(n) + String(TR().ap_networks_found_suffix) + "</div>";
   }
   server.sendContent(chunk);
 
@@ -890,18 +933,29 @@ static void handleRootAP() {
     chunk += "<form action='/save' method='POST'>";
     chunk += "<input type='hidden' name='ssid' value='" + ssid + "'>";
     if (encrypted) {
-      chunk += "<div class='pw-wrap'><input type='password' name='password' placeholder='Mot de passe'><button type='button' class='pw-toggle' onclick='togglePw(this)'>&#128065;</button></div>";
+      chunk += "<div class='pw-wrap'><input type='password' name='password' placeholder='" + String(TR().ap_password) + "'><button type='button' class='pw-toggle' onclick='togglePw(this)'>&#128065;</button></div>";
     } else {
       chunk += "<input type='hidden' name='password' value=''>";
     }
-    chunk += "<button type='submit'>Connecter</button>";
+    chunk += "<button type='submit'>" + String(TR().ap_connect) + "</button>";
     chunk += "</form></div>";
 
     server.sendContent(chunk);
   }
   server.sendContent("</div>");  // fin wifi-list
-  server.sendContent("<button id='scan-btn' onclick='scanWifi()'>Actualiser les reseaux</button>");
+  server.sendContent("<button id='scan-btn' onclick='scanWifi()'>" + String(TR().ap_refresh) + "</button>");
   server.sendContent("</div>");  // fin card
+
+  // Langue / Language — selectable from the captive portal too (handy for an
+  // export device that boots into AP config before any WiFi is set).
+  {
+    String langCard = "<div class='card'><h2>" + String(TR().card_language) + "</h2>";
+    langCard += "<select onchange=\"fetch('/set-lang',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'lang='+this.value}).then(()=>location.reload())\" style='width:100%;padding:10px;border-radius:8px;background:#0f3460;color:#fff;border:1px solid #333;font-size:1em;box-sizing:border-box;'>";
+    langCard += String("<option value='FR'") + (i18nGetLang() == LANG_FR ? " selected" : "") + ">Francais (FR)</option>";
+    langCard += String("<option value='EN'") + (i18nGetLang() == LANG_EN ? " selected" : "") + ">English (EN)</option>";
+    langCard += "</select></div>";
+    server.sendContent(langCard);
+  }
 
   sendFooter();
 
@@ -952,8 +1006,8 @@ static void handleSave() {
     Logger.println("[Web] Save rejected: empty SSID");
     sendHeader();
     server.sendContent(
-      "<div class='card'><div class='status ap'>SSID requis</div>"
-      "<br><a href='/'><button>Retour</button></a></div>");
+      "<div class='card'><div class='status ap'>" + String(TR().ap_ssid_required) + "</div>"
+      "<br><a href='/'><button>" + String(TR().web_back) + "</button></a></div>");
     sendFooter();
     return;
   }
@@ -968,9 +1022,9 @@ static void handleSave() {
 
   sendHeader();
   server.sendContent(
-    "<div class='card'><div class='status ok'>Configuration enregistree !<br><br>"
+    "<div class='card'><div class='status ok'>" + String(TR().ap_saved_title) + "<br><br>"
     "SSID: <strong>" + ssid + "</strong><br><br>"
-    "Le capteur va redemarrer et tenter de se connecter.</div></div>");
+    + String(TR().ap_saved_body) + "</div></div>");
   sendFooter();
 
   delay(3000);
@@ -992,9 +1046,9 @@ static void handleReset() {
     "<style>body{font-family:system-ui;background:#1a1a2e;color:#e0e0e0;"
     "display:flex;justify-content:center;align-items:center;height:100vh;margin:0;}"
     ".msg{text-align:center;}</style></head><body>"
-    "<div class='msg'><h2>WiFi oublie !</h2>"
-    "<p>Redemarrage en mode point d'acces...</p>"
-    "<p>Connectez-vous au reseau <strong>" + apSSID + "</strong></p></div>"
+    "<div class='msg'><h2>" + String(TR().ap_forgotten) + "</h2>"
+    "<p>" + String(TR().ap_restart_ap) + "</p>"
+    "<p>" + String(TR().ap_connect_to) + "<strong>" + apSSID + "</strong></p></div>"
     "</body></html>");
   server.sendContent("");
 
@@ -1013,8 +1067,8 @@ static void handleReboot() {
     "<style>body{font-family:system-ui;background:#1a1a2e;color:#e0e0e0;"
     "display:flex;justify-content:center;align-items:center;height:100vh;margin:0;}"
     ".msg{text-align:center;}</style></head><body>"
-    "<div class='msg'><h2>Redemarrage en cours...</h2>"
-    "<p>Retour automatique dans 10 secondes</p></div>"
+    "<div class='msg'><h2>" + String(TR().reboot_title) + "</h2>"
+    "<p>" + String(TR().reboot_body) + "</p></div>"
     "</body></html>");
   server.sendContent("");
 
@@ -1037,6 +1091,15 @@ static void handleSetScreen() {
   bool val = server.arg("val") == "1";
   settingsSetScreenEnabled(key.c_str(), val);
   Logger.printf("[Web] Screen %s = %s\n", key.c_str(), val ? "on" : "off");
+  server.send(200, "text/plain", "ok");
+}
+
+static void handleSetLang() {
+  String lang = server.arg("lang");
+  if (lang == "EN")      i18nSetLang(LANG_EN);
+  else if (lang == "FR") i18nSetLang(LANG_FR);
+  else { server.send(400, "text/plain", "invalid lang"); return; }
+  Logger.printf("[Web] Language set to %s\n", lang.c_str());
   server.send(200, "text/plain", "ok");
 }
 
@@ -1105,18 +1168,21 @@ static int compareVersions(const String& a, const String& b) {
 // les logs. Les codes <= 0 sont des erreurs de la lib (connexion jamais
 // etablie) ; les codes > 0 sont des reponses HTTP du serveur.
 static String otaFailureReason(int code) {
+  bool en = (i18nGetLang() == LANG_EN);
   switch (code) {
-    case -1:  return "Connexion TLS impossible (handshake echoue). Cause la plus frequente : manque de memoire (heap fragmente) au moment du check, ou serveur TLS qui n'a pas repondu.";
-    case -2:  return "Envoi de l'en-tete HTTP echoue.";
-    case -3:  return "Envoi de la requete echoue.";
-    case -4:  return "Pas connecte au serveur (connexion perdue avant la requete).";
-    case -5:  return "Connexion perdue pendant l'echange.";
-    case -7:  return "Pas de serveur HTTP a l'autre bout.";
-    case -8:  return "Memoire insuffisante (RAM) pour la requete.";
-    case -11: return "Timeout de lecture : le serveur a mis trop de temps a repondre.";
+    case -1:  return en ? "TLS connection failed (handshake error). Most common cause: low memory (fragmented heap) at check time, or a TLS server that didn't respond."
+                        : "Connexion TLS impossible (handshake echoue). Cause la plus frequente : manque de memoire (heap fragmente) au moment du check, ou serveur TLS qui n'a pas repondu.";
+    case -2:  return en ? "Failed to send the HTTP header." : "Envoi de l'en-tete HTTP echoue.";
+    case -3:  return en ? "Failed to send the request." : "Envoi de la requete echoue.";
+    case -4:  return en ? "Not connected to the server (connection lost before the request)." : "Pas connecte au serveur (connexion perdue avant la requete).";
+    case -5:  return en ? "Connection lost during the exchange." : "Connexion perdue pendant l'echange.";
+    case -7:  return en ? "No HTTP server at the other end." : "Pas de serveur HTTP a l'autre bout.";
+    case -8:  return en ? "Not enough memory (RAM) for the request." : "Memoire insuffisante (RAM) pour la requete.";
+    case -11: return en ? "Read timeout: the server took too long to respond." : "Timeout de lecture : le serveur a mis trop de temps a repondre.";
     default:
-      if (code > 0) return "Le serveur a repondu HTTP " + String(code) + " (attendu : 200).";
-      return "Erreur reseau (code " + String(code) + ").";
+      if (code > 0) return en ? "The server replied HTTP " + String(code) + " (expected: 200)."
+                              : "Le serveur a repondu HTTP " + String(code) + " (attendu : 200).";
+      return en ? "Network error (code " + String(code) + ")." : "Erreur reseau (code " + String(code) + ").";
   }
 }
 
@@ -1379,6 +1445,7 @@ void wifiManagerInit() {
   server.on("/set-thresholds-co2", HTTP_POST, handleSetThresholdsCO2);
   server.on("/set-sensor", HTTP_POST, handleSetSensor);
   server.on("/set-screen", HTTP_POST, handleSetScreen);
+  server.on("/set-lang", HTTP_POST, handleSetLang);
   server.on("/check-update", handleCheckUpdate);
   server.on("/do-update", handleDoUpdate);
 
