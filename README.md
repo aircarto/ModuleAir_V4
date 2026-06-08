@@ -30,8 +30,6 @@ Schematic, PCB, pinout ESP32, connecteurs et BOM : **[docs/HARDWARE.md](docs/HAR
 
 <p align="center">
   <img src="docs/images/boitier_3d.png" alt="Modèle 3D du corps du boîtier ModuleAir WiFi" width="45%">
-  &nbsp;&nbsp;
-  <img src="docs/images/moduleair_wifi.jpg" alt="ModuleAir WiFi assemblé et en fonctionnement" width="45%">
 </p>
 
 Le boîtier est composé d'éléments imprimés en 3D, conçus sur mesure pour accueillir le PCB et les capteurs. Il intègre des ouvertures pour la circulation de l'air (nécessaire aux mesures de particules et de gaz), le passage du câble USB et l'antenne WiFi externe. Le logo AirCarto est directement intégré au design.
