@@ -12,14 +12,13 @@
 static bool checkInternetAccess() {
   IPAddress ip;
   if (WiFi.hostByName("clients3.google.com", ip)) {
-    Logger.printf("[Data] Internet OK (DNS resolved: %s)\n", ip.toString().c_str());
+    Logger.printf("[Net] Internet OK (DNS resolved: %s)\n", ip.toString().c_str());
     return true;
   }
-  Logger.println("[Data] WiFi connecte mais pas d'acces internet (DNS failed)");
+  Logger.println("[Net] WiFi connecte mais pas d'acces internet (DNS failed)");
   return false;
 }
 
-#ifdef BUILD_ATMOSUD
 // ── Envoi AtmoSud (MicroSpot) ───────────────────────────────────────────────
 // Reproduit trait pour trait le comportement de ModuleAir-Next-Gen :
 //   - identifiant "moduleairid" = chip id court (16 bits hauts de l'eFuse MAC,
@@ -27,8 +26,10 @@ static bool checkInternetAccess() {
 //   - payload au format "sensordatavalues" (paires value_type / value)
 //   - mêmes value_type que ceux attendus par l'API AtmoSud
 //   - headers Content-Type + X-Sensor + User-Agent identiques
-// N'est compilé QUE sur la build atmosud (-DBUILD_ATMOSUD). La build classique
-// ignore totalement ce bloc.
+// Compilé dans TOUTES les builds : l'appel est conditionné à l'exécution par le
+// flag NVS settingsGetAtmosudEnabled() (cf. dataSenderSend plus bas), pour que
+// le choix « envoyer à AtmoSud » persiste à travers l'OTA quelle que soit la
+// variante du binaire servi.
 static void atmosudSend(const SensorData& d) {
   // chip id court, identique à esp_chipid de Next-Gen
   String chipid = String((uint16_t)(ESP.getEfuseMac() >> 32), HEX);
@@ -103,14 +104,13 @@ static void atmosudSend(const SensorData& d) {
 
   https.end();
 }
-#endif  // BUILD_ATMOSUD
 
 SendResult dataSenderSend() {
   const SensorData& d = sensorsGetData();
 
   // Ne pas envoyer si aucune mesure n'a été faite
   if (d.lastReadTime == 0) {
-    Logger.println("[Data] Pas encore de donnees a envoyer");
+    Logger.println("[AirCarto] Pas encore de donnees a envoyer");
     return SEND_OK;
   }
 
@@ -201,8 +201,8 @@ SendResult dataSenderSend() {
 
   json += "}";
 
-  Logger.println("[Data] POST " + String(DATA_SERVER_URL));
-  Logger.println("[Data] " + json);
+  Logger.println("[AirCarto] POST " + String(DATA_SERVER_URL));
+  Logger.println("[AirCarto] " + json);
 
   WiFiClientSecure secClient;
   secClient.setInsecure();
@@ -220,31 +220,33 @@ SendResult dataSenderSend() {
   SendResult result = SEND_SERVER_DOWN;
 
   if (httpCode > 0) {
-    Logger.printf("[Data] HTTP %d (%.1fs) - %s\n", httpCode, duration, http.getString().c_str());
+    Logger.printf("[AirCarto] HTTP %d (%.1fs) - %s\n", httpCode, duration, http.getString().c_str());
     String serverDate = http.header("Date");
     if (serverDate.length() > 0) {
-      Logger.printf("[Data] Server time: %s\n", serverDate.c_str());
+      Logger.printf("[AirCarto] Server time: %s\n", serverDate.c_str());
     }
     if (httpCode >= 200 && httpCode < 300) {
       result = SEND_OK;
     }
   } else {
-    Logger.printf("[Data] Internet OK mais serveur indisponible (%.1fs): %s\n", duration, http.errorToString(httpCode).c_str());
+    Logger.printf("[AirCarto] Internet OK mais serveur indisponible (%.1fs): %s\n", duration, http.errorToString(httpCode).c_str());
   }
 
   http.end();
 
   if (result == SEND_OK) {
-    Logger.println("[Data] Envoi reussi");
+    Logger.println("[AirCarto] Envoi reussi");
   } else {
-    Logger.println("[Data] Echec envoi - serveur data.moduleair.fr injoignable");
+    Logger.println("[AirCarto] Echec envoi - serveur data.moduleair.fr injoignable");
   }
 
-#ifdef BUILD_ATMOSUD
-  // Build atmosud : on envoie aussi à AtmoSud (indépendamment du résultat
-  // AirCarto — l'accès internet a déjà été vérifié plus haut).
-  atmosudSend(d);
-#endif
+  // Envoi secondaire AtmoSud, si activé. C'est un réglage RUNTIME stocké en NVS
+  // (défaut de 1er boot = variante de build, cf. ATMOSUD_ENABLED_DEFAULT) qui
+  // survit à l'OTA — d'où le test à l'exécution plutôt qu'un #ifdef. Indépendant
+  // du résultat AirCarto ; l'accès internet a déjà été vérifié plus haut.
+  if (settingsGetAtmosudEnabled()) {
+    atmosudSend(d);
+  }
 
   Logger.println();
   Logger.println("════════════════════════════════════════");

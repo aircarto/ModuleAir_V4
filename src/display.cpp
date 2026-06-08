@@ -71,6 +71,9 @@ static unsigned long suppressUpdateUntil = 0;
 enum Screen { SCR_PM1, SCR_PM25, SCR_PM10, SCR_CO2, SCR_TEMP, SCR_HUMI, SCR_COV, SCR_HCHO,
               SCR_PM_ERR, SCR_CO2_ERR,
               SCR_LOGO_MA, SCR_LOGO_AC, SCR_LOGO_AS,
+#ifdef BUILD_LAIRETMOI
+              SCR_LOGO_LAM,
+#endif
               SCR_CONFIG_WIFI,
               SCR_COUNT };
 
@@ -422,6 +425,9 @@ static void drawErrorScreen(const String& sensorName) {
 // Forward declarations
 static void displayShowLogoAirCarto();
 static void displayShowLogoAtmoSud();
+#ifdef BUILD_LAIRETMOI
+static void displayShowLogoLairEtMoi();
+#endif
 
 static void drawScreenPM1() {
   uint16_t c = colorPM(sensorCache.pm1, 10, 20, 50);
@@ -576,12 +582,15 @@ void displayUpdate() {
   if (sensorCache.ccs_ok && scfg.tvoc) avail[count++] = SCR_COV;
   if (sensorCache.sfa40_ok && scfg.hcho) avail[count++] = SCR_HCHO;
 
-  // Active logos
-  Screen logos[3];
+  // Active logos (LOGO_SLOT_COUNT = 3, ou 4 sur la build lairetmoi)
+  Screen logos[LOGO_SLOT_COUNT];
   int logoCount = 0;
   if (scfg.logo_moduleair) logos[logoCount++] = SCR_LOGO_MA;
   if (scfg.logo_aircarto)  logos[logoCount++] = SCR_LOGO_AC;
   if (scfg.logo_atmosud)   logos[logoCount++] = SCR_LOGO_AS;
+#ifdef BUILD_LAIRETMOI
+  if (scfg.logo_lairetmoi) logos[logoCount++] = SCR_LOGO_LAM;
+#endif
 
   // Append one logo at the end (rotated across cycles)
   static int logoRotationIdx = 0;
@@ -600,6 +609,9 @@ void displayUpdate() {
   static const char* screenNames[] = { "PM1", "PM2.5", "PM10", "CO2", "Temp", "Humi", "COV", "HCHO",
                                        "PM ERR", "CO2 ERR",
                                        "Logo ModuleAir", "Logo AirCarto", "Logo AtmoSud",
+#ifdef BUILD_LAIRETMOI
+                                       "Logo L'Air et Moi",
+#endif
                                        "Config WiFi" };
 
   Screen scr = avail[currentScreen];
@@ -619,6 +631,9 @@ void displayUpdate() {
     case SCR_LOGO_MA: displayShowLogo();           break;
     case SCR_LOGO_AC: displayShowLogoAirCarto();   break;
     case SCR_LOGO_AS: displayShowLogoAtmoSud();    break;
+#ifdef BUILD_LAIRETMOI
+    case SCR_LOGO_LAM: displayShowLogoLairEtMoi(); break;
+#endif
     case SCR_CONFIG_WIFI: drawScreenConfigWifi();  break;
     default: break;
   }
@@ -651,6 +666,13 @@ static void displayShowLogoAtmoSud() {
   display.clearDisplay();
   drawImage(0, 0, MATRIX_HEIGHT, MATRIX_WIDTH, logoBufferGet(LOGO_SLOT_AS));
 }
+
+#ifdef BUILD_LAIRETMOI
+static void displayShowLogoLairEtMoi() {
+  display.clearDisplay();
+  drawImage(0, 0, MATRIX_HEIGHT, MATRIX_WIDTH, logoBufferGet(LOGO_SLOT_LAM));
+}
+#endif
 
 void displayShowDebugSplash() {
   Logger.println("[Display] Debug splash (5s)");

@@ -44,11 +44,16 @@
 #define LOGO_MODULEAIR_DEFAULT  true
 #define LOGO_AIRCARTO_DEFAULT   true
 // Le logo AtmoSud suit la variante de build (cf. platformio.ini) :
-//   build atmosud  -> ON par défaut    |   build classique -> OFF par défaut
-#ifdef BUILD_ATMOSUD
+//   build atmosud / lairetmoi -> ON par défaut  |  build classique -> OFF
+#if defined(BUILD_ATMOSUD) || defined(BUILD_LAIRETMOI)
   #define LOGO_ATMOSUD_DEFAULT  true
 #else
   #define LOGO_ATMOSUD_DEFAULT  false
+#endif
+// Le logo « L'Air et Moi » n'existe que sur la build lairetmoi
+// (-DBUILD_LAIRETMOI). ON par défaut sur cette build ; absent ailleurs.
+#ifdef BUILD_LAIRETMOI
+  #define LOGO_LAIRETMOI_DEFAULT  true
 #endif
 
 // WiFi AP
@@ -76,12 +81,25 @@
 #define DATA_SERVER_URL "https://data.moduleair.fr/wifi_newDriver2026.php?device_type=ModuleAir"
 #define DATA_SEND_INTERVAL 60000  // 60 secondes
 
-// ── Serveur AtmoSud (MicroSpot) — uniquement sur la build atmosud ────────────
-// Activé par -DBUILD_ATMOSUD (env:atmosud). Reproduit la cible et le format
-// de ModuleAir-Next-Gen : envoi HTTPS du payload "sensordatavalues".
+// ── Serveur AtmoSud (MicroSpot) ──────────────────────────────────────────────
+// Reproduit la cible et le format de ModuleAir-Next-Gen : envoi HTTPS du payload
+// "sensordatavalues". L'URL et le code d'envoi (data_sender.cpp) sont désormais
+// compilés dans TOUTES les builds : l'activation est un réglage RUNTIME stocké
+// en NVS (cf. settings.cpp, settingsGetAtmosudEnabled), exactement comme les
+// capteurs, les écrans ou la langue.
+//
+// Le flag de build -DBUILD_ATMOSUD ne fait plus QUE fixer le DÉFAUT de premier
+// boot (ATMOSUD_ENABLED_DEFAULT). Ce défaut est gravé en NVS au tout premier
+// démarrage et SURVIT donc à l'OTA : peu importe la variante du firmware.bin
+// servi (le code AtmoSud y est de toute façon présent), le choix d'envoyer ou
+// non à AtmoSud vit en NVS et n'est jamais écrasé par une mise à jour. Une carte
+// flashée "atmosud" continue d'alimenter AtmoSud après chaque OTA.
+#define ATMOSUD_SERVER_URL       "https://api-prod.uspot.probesys.net/moduleair?token=2AFF6dQk68daFZ"
+#define ATMOSUD_SOFTWARE_VERSION "ModuleAirV4-V" FIRMWARE_VERSION
 #ifdef BUILD_ATMOSUD
-  #define ATMOSUD_SERVER_URL       "https://api-prod.uspot.probesys.net/moduleair?token=2AFF6dQk68daFZ"
-  #define ATMOSUD_SOFTWARE_VERSION "ModuleAirV4-V" FIRMWARE_VERSION
+  #define ATMOSUD_ENABLED_DEFAULT true
+#else
+  #define ATMOSUD_ENABLED_DEFAULT false
 #endif
 
 // OTA Update

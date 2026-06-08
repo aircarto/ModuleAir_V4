@@ -4,6 +4,14 @@ Toutes les modifications notables du firmware ModuleAir V4 sont documentées ici
 
 Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versioning [Semantic Versioning](https://semver.org/).
 
+## [Non publié]
+
+### Ajouté
+
+- 2 nouveaux environnements PlatformIO « L'Air et Moi » : `lairetmoi` (FR) et `lairetmoi_en` (EN), selectionnables au flash. **Coté données, strictement identiques à la build classique** : envoi AirCarto SEUL, jamais AtmoSud (pas de `-DBUILD_ATMOSUD`, destiné à un déploiement AirCarto sans MicroSpot). La différence est un **4e logo « L'Air et Moi »** ajouté à la rotation matrice.
+- Logo « L'Air et Moi » (`logo_lairetmoi`, 64×32 RGB565, repris de `ModuleAir_V2.1/logos-custom.h` où il était commenté) : nouveau slot SPIFFS dédié `LOGO_SLOT_LAM` (`/logo_lam.bin`), éditable/réinitialisable depuis l'UI web au même titre que les 3 autres logos, avec son toggle « L'Air et Moi » dans la carte « Ecrans matrice ». Les 4 logos (ModuleAir / AirCarto / AtmoSud / L'Air et Moi) sont ON par défaut au 1er boot sur cette build.
+- Le 4e slot logo est **entièrement conditionné à `-DBUILD_LAIRETMOI`** (enum, buffers, struct `ScreenSettings`, rotation d'affichage, UI web) : les builds `moduleair`/`atmosud` restent inchangés (zéro octet de RAM/flash en plus), ce qui préserve la marge de heap contigu nécessaire au handshake TLS de l'OTA (cf. 0.3.2).
+
 ## [0.3.2] - 2026-06-04
 
 ### Ajouté

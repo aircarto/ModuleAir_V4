@@ -27,6 +27,9 @@ struct ScreenSettings {
   bool logo_moduleair;
   bool logo_aircarto;
   bool logo_atmosud;
+#ifdef BUILD_LAIRETMOI
+  bool logo_lairetmoi;  // build lairetmoi uniquement
+#endif
 };
 
 void settingsInit();
@@ -45,5 +48,13 @@ struct ThresholdsCO2 {
 
 ThresholdsCO2& settingsGetThresholdsCO2();
 void settingsSetThresholdsCO2(int good, int bad);
+
+// ── Serveurs de données ─────────────────────────────────────────────────────
+// AirCarto (DATA_SERVER_URL) est TOUJOURS actif. AtmoSud est un envoi secondaire
+// optionnel : flag runtime stocké en NVS, dont le défaut de premier boot suit la
+// variante de build (ATMOSUD_ENABLED_DEFAULT). Persiste à travers l'OTA, comme
+// tous les autres réglages.
+bool settingsGetAtmosudEnabled();
+void settingsSetAtmosudEnabled(bool enabled);
 
 #endif

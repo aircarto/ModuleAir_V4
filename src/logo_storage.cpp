@@ -10,6 +10,9 @@ static const char* slotPath(LogoSlot s) {
     case LOGO_SLOT_MA: return "/logo_ma.bin";
     case LOGO_SLOT_AC: return "/logo_ac.bin";
     case LOGO_SLOT_AS: return "/logo_as.bin";
+#ifdef BUILD_LAIRETMOI
+    case LOGO_SLOT_LAM: return "/logo_lam.bin";
+#endif
     default:           return nullptr;
   }
 }
@@ -19,6 +22,9 @@ static const uint16_t* compiledDefault(LogoSlot s) {
     case LOGO_SLOT_MA: return logo_moduleair;
     case LOGO_SLOT_AC: return logo_aircarto;
     case LOGO_SLOT_AS: return logo_atmo;
+#ifdef BUILD_LAIRETMOI
+    case LOGO_SLOT_LAM: return logo_lairetmoi;
+#endif
     default:           return nullptr;
   }
 }
@@ -28,12 +34,18 @@ static const uint16_t* compiledDefault(LogoSlot s) {
 static uint16_t buf_ma[LOGO_PIXELS];
 static uint16_t buf_ac[LOGO_PIXELS];
 static uint16_t buf_as[LOGO_PIXELS];
+#ifdef BUILD_LAIRETMOI
+static uint16_t buf_lam[LOGO_PIXELS];
+#endif
 
 static uint16_t* slotBuffer(LogoSlot s) {
   switch (s) {
     case LOGO_SLOT_MA: return buf_ma;
     case LOGO_SLOT_AC: return buf_ac;
     case LOGO_SLOT_AS: return buf_as;
+#ifdef BUILD_LAIRETMOI
+    case LOGO_SLOT_LAM: return buf_lam;
+#endif
     default:           return nullptr;
   }
 }

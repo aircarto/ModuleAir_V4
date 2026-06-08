@@ -1,6 +1,8 @@
 # ModuleAir V4
 
-![ModuleAir](https://aircarto.fr/images/moduleAir/ModuleAir_mini_carre.jpg)
+<p align="center">
+  <img src="docs/images/moduleair_wifi.jpg" alt="ModuleAir WiFi affichant le taux de CO2 en temps réel" width="70%">
+</p>
 
 Version 4 du firmware du **ModuleAir**, la station de mesure de qualité de l'air développée par [AirCarto](https://github.com/aircarto). Ce firmware succède aux versions précédentes ([V2.1](https://github.com/aircarto/ModuleAir_V2.1), [V3](https://github.com/aircarto/ModuleAir_V3)) avec une base de code entièrement réécrite, plus légère et modulaire.
 
@@ -26,7 +28,11 @@ Schematic, PCB, pinout ESP32, connecteurs et BOM : **[docs/HARDWARE.md](docs/HAR
 
 ### Boîtier
 
-![Boîtier imprimé en 3D](docs/images/sensor_3D.png)
+<p align="center">
+  <img src="docs/images/boitier_3d.png" alt="Modèle 3D du corps du boîtier ModuleAir WiFi" width="45%">
+  &nbsp;&nbsp;
+  <img src="docs/images/moduleair_wifi.jpg" alt="ModuleAir WiFi assemblé et en fonctionnement" width="45%">
+</p>
 
 Le boîtier est composé d'éléments imprimés en 3D, conçus sur mesure pour accueillir le PCB et les capteurs. Il intègre des ouvertures pour la circulation de l'air (nécessaire aux mesures de particules et de gaz), le passage du câble USB et l'antenne WiFi externe. Le logo AirCarto est directement intégré au design.
 
@@ -41,6 +47,35 @@ Toutes les 60 secondes (une fois connecté au WiFi), les capteurs sont lus et le
 - **Température** (°C), **humidité** (%), **pression** (hPa) — BME280
 - **TVOC** (ppb), **eCO2** (ppm) — CCS811
 - **HCHO** (ppb) — SFA40 (formaldéhyde)
+
+### Seuils par polluant
+
+Chaque mesure est associée à un **niveau de qualité** affiché sur la matrice LED (couleur + libellé). Les seuils sont définis dans `src/display.cpp`.
+
+**Particules & gaz** — 4 niveaux :
+
+| Polluant | Unité | 🟢 Bon | 🟡 Moyen | 🟠 Dégradé | 🔴 Mauvais |
+|:---|:---:|:---:|:---:|:---:|:---:|
+| **PM1.0** | µg/m³ | `< 10` | `10 – 20` | `20 – 50` | `≥ 50` |
+| **PM2.5** | µg/m³ | `< 10` | `10 – 20` | `20 – 50` | `≥ 50` |
+| **PM10** | µg/m³ | `< 15` | `15 – 30` | `30 – 75` | `≥ 75` |
+| **TVOC** | ppb | `< 220` | `220 – 660` | `660 – 2200` | `≥ 2200` |
+| **HCHO** | ppb | `< 10` | `10 – 30` | `30 – 100` | `≥ 100` |
+
+**CO2** — 3 niveaux, seuils **configurables** (défauts dans `src/settings.cpp`) :
+
+| Polluant | Unité | 🟢 Bon | 🟠 Aérer | 🔴 Mauvais |
+|:---|:---:|:---:|:---:|:---:|
+| **CO2** | ppm | `< 800` | `800 – 1500` | `≥ 1500` |
+
+**Température & humidité** — pas des polluants, mais une zone de confort est signalée à l'écran :
+
+| Mesure | Unité | 🔵 Bas | 🟢 Confort | 🔴 Haut |
+|:---|:---:|:---:|:---:|:---:|
+| **Température** | °C | `< 19` · Froid | `19 – 28` · OK | `≥ 28` · Chaud |
+| **Humidité** | % | `< 40` · Sec | `40 – 60` · Idéal | `≥ 60` · Humide |
+
+> 🔵 Pour l'humidité, « bas » comme « haut » sont signalés en rouge à l'écran (seule la zone idéale est verte).
 
 ### Envoi des données
 

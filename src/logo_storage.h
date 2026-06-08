@@ -17,6 +17,9 @@ enum LogoSlot {
   LOGO_SLOT_MA = 0,  // ModuleAir
   LOGO_SLOT_AC = 1,  // AirCarto
   LOGO_SLOT_AS = 2,  // AtmoSud
+#ifdef BUILD_LAIRETMOI
+  LOGO_SLOT_LAM,     // L'Air et Moi (build lairetmoi uniquement)
+#endif
   LOGO_SLOT_COUNT
 };
 

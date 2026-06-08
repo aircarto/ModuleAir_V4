@@ -356,11 +356,22 @@ static const I18nStrings* tableFor(Lang l) {
 
 void i18nInit() {
   Preferences prefs;
-  prefs.begin("i18n", true);
-  // First boot: NVS empty -> use the compile-time default. Once the user picks
-  // a language in the web UI it's stored here and wins on every later boot,
-  // surviving OTA (NVS is never touched by a firmware update).
-  uint8_t stored = prefs.getUChar("lang", (uint8_t)DEFAULT_LANG);
+  prefs.begin("i18n", false);   // read-write: we may bake in the default below
+  // First boot for THIS board (no "lang" key yet): persist the compile-time
+  // default into NVS so it becomes the device's *stored* choice — not just a
+  // RAM fallback. This is what makes a board flashed with a *_en env actually
+  // stay English across an OTA: the OTA server hosts a single firmware.bin (the
+  // classic FR build) whose own compile-time default is FR, so if we only kept
+  // the default in RAM the very first OTA would silently flip the device back
+  // to French (the new firmware would again find no "lang" key and fall back to
+  // its own FR default). Writing it to NVS once, here, makes the factory
+  // language genuinely survive updates. Once the user picks a language in the
+  // web UI, i18nSetLang() overwrites this and wins on every later boot.
+  uint8_t stored = prefs.getUChar("lang", 0xFF);   // 0xFF = key absent
+  if (stored != LANG_FR && stored != LANG_EN) {
+    stored = (uint8_t)DEFAULT_LANG;
+    prefs.putUChar("lang", stored);
+  }
   prefs.end();
 
   currentLang = (stored == LANG_EN) ? LANG_EN : LANG_FR;

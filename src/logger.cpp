@@ -27,7 +27,7 @@ static uint32_t logSeq = 0;   // compteur monotone (incremente a chaque ligne)
 //   3. la pile WiFi/lwIP via le hook esp_log_set_vprintf (customVprintf)
 // Sans verrou, deux ecritures simultanees se melangent dans le meme slot
 // logBuffer[logHead] : lignes corrompues ("[Disps) Screen...") et perdues.
-// Le symptome le plus visible etait la disparition du bloc [Data] POST, qui
+// Le symptome le plus visible etait la disparition du bloc [AirCarto] POST, qui
 // s'imprime exactement quand la pile TLS/WiFi est la plus bavarde.
 //
 // Recursif car write(buffer,size) appelle write(uint8_t) en boucle, et les

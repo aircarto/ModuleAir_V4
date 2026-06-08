@@ -739,10 +739,23 @@ static void handleRootConnected() {
 
     // Logos
     chunk += "<p style='color:#4fc3f7;font-size:0.85em;margin:12px 0 6px;font-weight:bold'>Logos</p>";
-    const char* logoNames[] = { "ModuleAir", "AirCarto", "AtmoSud" };
-    const char* logoKeys[] = { "logo_ma", "logo_ac", "logo_as" };
-    bool logoVals[] = { ss.logo_moduleair, ss.logo_aircarto, ss.logo_atmosud };
-    for (int i = 0; i < 3; i++) {
+    const char* logoNames[] = { "ModuleAir", "AirCarto", "AtmoSud"
+#ifdef BUILD_LAIRETMOI
+      , "L'Air et Moi"
+#endif
+    };
+    const char* logoKeys[] = { "logo_ma", "logo_ac", "logo_as"
+#ifdef BUILD_LAIRETMOI
+      , "logo_lam"
+#endif
+    };
+    bool logoVals[] = { ss.logo_moduleair, ss.logo_aircarto, ss.logo_atmosud
+#ifdef BUILD_LAIRETMOI
+      , ss.logo_lairetmoi
+#endif
+    };
+    const int logoN = sizeof(logoKeys) / sizeof(logoKeys[0]);
+    for (int i = 0; i < logoN; i++) {
       chunk += "<div class='toggle-row'><span>" + String(logoNames[i]) + "</span>";
       chunk += "<label class='switch'><input type='checkbox'";
       if (logoVals[i]) chunk += " checked";
