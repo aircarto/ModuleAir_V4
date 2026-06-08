@@ -209,15 +209,15 @@ static const char* msgPM(float val, float s1, float s2, float s3) {
 static uint16_t colorCO2(int val) {
   const ThresholdsCO2& th = settingsGetThresholdsCO2();
   if (val < th.good) return COLOR_GREEN;
-  if (val < th.bad)  return COLOR_ORANGE;
+  if (val < th.bad)  return COLOR_YELLOW;
   return COLOR_RED;
 }
 
 static const char* msgCO2(int val) {
   const ThresholdsCO2& th = settingsGetThresholdsCO2();
   if (val < th.good) return TR().lvl_good;
-  if (val < th.bad)  return TR().co2_ventilate;
-  return TR().lvl_bad;
+  // "Aérer" on both elevated levels — only the color escalates (yellow → red).
+  return TR().co2_ventilate;
 }
 
 // Temperature: comfort zone

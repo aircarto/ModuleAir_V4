@@ -52,7 +52,7 @@ Chaque mesure est associée à un **niveau de qualité** affiché sur la matrice
 
 **Particules & gaz** — 4 niveaux :
 
-| Polluant | Unité | 🟢 Bon | 🟡 Moyen | 🟠 Dégradé | 🔴 Mauvais |
+| Polluant | Unité | 🟢 BON | 🟡 MOYEN | 🟠 DÉGRADÉ | 🔴 MAUVAIS |
 |:---|:---:|:---:|:---:|:---:|:---:|
 | **PM1.0** | µg/m³ | `< 10` | `10 – 20` | `20 – 50` | `≥ 50` |
 | **PM2.5** | µg/m³ | `< 10` | `10 – 20` | `20 – 50` | `≥ 50` |
@@ -60,20 +60,20 @@ Chaque mesure est associée à un **niveau de qualité** affiché sur la matrice
 | **TVOC** | ppb | `< 220` | `220 – 660` | `660 – 2200` | `≥ 2200` |
 | **HCHO** | ppb | `< 10` | `10 – 30` | `30 – 100` | `≥ 100` |
 
-**CO2** — 3 niveaux, seuils **configurables** (défauts dans `src/settings.cpp`) :
+**CO2** — 3 niveaux, seuils **configurables** (défauts dans `src/settings.cpp`). Au-delà de 800 ppm le message est **« AÉRER »**, seule la couleur s'intensifie (jaune → rouge) :
 
-| Polluant | Unité | 🟢 Bon | 🟠 Aérer | 🔴 Mauvais |
+| Polluant | Unité | 🟢 BON | 🟡 AÉRER | 🔴 AÉRER |
 |:---|:---:|:---:|:---:|:---:|
 | **CO2** | ppm | `< 800` | `800 – 1500` | `≥ 1500` |
 
 **Température & humidité** — pas des polluants, mais une zone de confort est signalée à l'écran :
 
-| Mesure | Unité | 🔵 Bas | 🟢 Confort | 🔴 Haut |
+| Mesure | Unité | 🔵 BAS | 🟢 CONFORT | 🔴 HAUT |
 |:---|:---:|:---:|:---:|:---:|
-| **Température** | °C | `< 19` · Froid | `19 – 28` · OK | `≥ 28` · Chaud |
-| **Humidité** | % | `< 40` · Sec | `40 – 60` · Idéal | `≥ 60` · Humide |
+| **Température** | °C | `< 19` · FROID | `19 – 28` · OK | `≥ 28` · CHAUD |
+| **Humidité** | % | `< 40` · SEC | `40 – 60` · IDÉAL | `≥ 60` · HUMIDE |
 
-> 🔵 Pour l'humidité, « bas » comme « haut » sont signalés en rouge à l'écran (seule la zone idéale est verte).
+> 🔵 Pour l'humidité, « BAS » comme « HAUT » sont signalés en rouge à l'écran (seule la zone idéale est verte).
 
 ### Envoi des données
 
