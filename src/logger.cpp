@@ -144,7 +144,20 @@ size_t LoggerPrint::write(uint8_t c) {
       lineOpen = false;
       xSemaphoreGiveRecursive(logMutex);
     }
-  } else if (c != '\r' && logLinePos < LOG_MAX_LINE_LEN - 1) {
+  } else if (c != '\r') {
+    // Ligne plus longue que le slot : on REPLIE sur le slot suivant au lieu
+    // de jeter la suite. Les payloads JSON [AirCarto]/[AtmoSud] (~450 chars)
+    // etaient tronques a 119 chars sur /logs alors que le moniteur serie les
+    // montrait en entier. Le web affiche la ligne en segments de 119 chars :
+    // contenu integral, zero RAM en plus. Le verrou ligne reste detenu
+    // jusqu'au vrai '\n' : les segments d'une meme ligne restent contigus.
+    if (logLinePos >= LOG_MAX_LINE_LEN - 1) {
+      logBuffer[logHead][logLinePos] = '\0';
+      logSeqs[logHead] = ++logSeq;
+      logHead = (logHead + 1) % LOG_MAX_LINES;
+      logCount++;
+      logLinePos = 0;
+    }
     logBuffer[logHead][logLinePos++] = (char)c;
   }
 

@@ -7,7 +7,6 @@
 static SensorSettings sensors;
 static ScreenSettings screens;
 static ThresholdsCO2 thCO2;
-static bool atmosudEnabled;
 
 void settingsInit() {
   Preferences prefs;
@@ -46,28 +45,11 @@ void settingsInit() {
   thCO2.bad  = prefs.getInt("co2_bad", 1500);
   prefs.end();
 
-  // AtmoSud secondary server: runtime flag stored in NVS. Unlike the sensor
-  // defaults above, this default is BUILD-VARIANT-DEPENDENT (ATMOSUD_ENABLED_DEFAULT
-  // follows -DBUILD_ATMOSUD), so we must BAKE it into NVS on first boot — exactly
-  // like the language default in i18nInit. Otherwise an OTA to the classic binary
-  // (whose compile default is false) would silently stop AtmoSud sending on a
-  // board that was flashed as an AtmoSud unit. Once written, the stored value
-  // wins on every later boot (until the user toggles it in the web UI) and
-  // survives every OTA.
-  prefs.begin("server", false);
-  uint8_t as = prefs.getUChar("atmosud", 0xFF);   // 0xFF = key absent
-  if (as > 1) {
-    as = ATMOSUD_ENABLED_DEFAULT ? 1 : 0;
-    prefs.putUChar("atmosud", as);
-  }
-  atmosudEnabled = (as == 1);
-  prefs.end();
+  // NB : l'envoi secondaire AtmoSud n'est plus un reglage NVS togglable ici.
+  // C'est une propriete intrinseque du capteur (stamp NVS write-once),
+  // geree par data_sender.cpp (dataSenderInit / dataSenderIsAtmosudDevice).
 
   Logger.printf("[Settings] Thresholds CO2: good<%d, bad>=%d\n", thCO2.good, thCO2.bad);
-  Logger.println("[Settings] ── Envoi des donnees ──");
-  Logger.println("[Settings]   -> AirCarto (data.moduleair.fr) : OUI (toujours actif)");
-  Logger.printf ("[Settings]   -> AtmoSud  (uspot.probesys.net) : %s (defaut build : %s)\n",
-    atmosudEnabled ? "OUI" : "NON", ATMOSUD_ENABLED_DEFAULT ? "OUI" : "NON");
   Logger.printf("[Settings] Sensors: NPM=%d MHZ19=%d BME280=%d CCS811=%d SFA40=%d\n",
     sensors.npm_enabled, sensors.mhz19_enabled, sensors.bme280_enabled, sensors.ccs811_enabled, sensors.sfa40_enabled);
   Logger.printf("[Settings] Screens: PM1=%d PM2.5=%d PM10=%d CO2=%d Temp=%d Humi=%d COV=%d HCHO=%d Logo=%d AirCarto=%d AtmoSud=%d\n",
@@ -116,17 +98,6 @@ void settingsSetScreenEnabled(const char* key, bool enabled) {
   screens.logo_lairetmoi = prefs.getBool("logo_lam", LOGO_LAIRETMOI_DEFAULT);
 #endif
   prefs.end();
-}
-
-bool settingsGetAtmosudEnabled() { return atmosudEnabled; }
-
-void settingsSetAtmosudEnabled(bool enabled) {
-  atmosudEnabled = enabled;
-  Preferences prefs;
-  prefs.begin("server", false);
-  prefs.putUChar("atmosud", enabled ? 1 : 0);
-  prefs.end();
-  Logger.printf("[Settings] AtmoSud server %s\n", enabled ? "ENABLED" : "disabled");
 }
 
 ThresholdsCO2& settingsGetThresholdsCO2() { return thCO2; }

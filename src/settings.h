@@ -50,11 +50,9 @@ ThresholdsCO2& settingsGetThresholdsCO2();
 void settingsSetThresholdsCO2(int good, int bad);
 
 // ── Serveurs de données ─────────────────────────────────────────────────────
-// AirCarto (DATA_SERVER_URL) est TOUJOURS actif. AtmoSud est un envoi secondaire
-// optionnel : flag runtime stocké en NVS, dont le défaut de premier boot suit la
-// variante de build (ATMOSUD_ENABLED_DEFAULT). Persiste à travers l'OTA, comme
-// tous les autres réglages.
-bool settingsGetAtmosudEnabled();
-void settingsSetAtmosudEnabled(bool enabled);
+// AirCarto (DATA_SERVER_URL) est TOUJOURS actif. L'envoi secondaire AtmoSud
+// n'est PLUS un réglage : c'est une propriété intrinsèque du capteur (stamp NVS
+// write-once posé à l'usine) — voir data_sender.h (dataSenderIsAtmosudDevice)
+// et config.h pour l'architecture.
 
 #endif

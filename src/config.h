@@ -83,24 +83,23 @@
 
 // ── Serveur AtmoSud (MicroSpot) ──────────────────────────────────────────────
 // Reproduit la cible et le format de ModuleAir-Next-Gen : envoi HTTPS du payload
-// "sensordatavalues". L'URL et le code d'envoi (data_sender.cpp) sont désormais
-// compilés dans TOUTES les builds : l'activation est un réglage RUNTIME stocké
-// en NVS (cf. settings.cpp, settingsGetAtmosudEnabled), exactement comme les
-// capteurs, les écrans ou la langue.
+// "sensordatavalues".
 //
-// Le flag de build -DBUILD_ATMOSUD ne fait plus QUE fixer le DÉFAUT de premier
-// boot (ATMOSUD_ENABLED_DEFAULT). Ce défaut est gravé en NVS au tout premier
-// démarrage et SURVIT donc à l'OTA : peu importe la variante du firmware.bin
-// servi (le code AtmoSud y est de toute façon présent), le choix d'envoyer ou
-// non à AtmoSud vit en NVS et n'est jamais écrasé par une mise à jour. Une carte
-// flashée "atmosud" continue d'alimenter AtmoSud après chaque OTA.
-#define ATMOSUD_SERVER_URL       "https://api-prod.uspot.probesys.net/moduleair?token=2AFF6dQk68daFZ"
+// L'URL (token inclus) N'EST PLUS dans ce fichier : elle vit dans secrets.ini
+// (gitignore) et est injectée au build par secrets_inject.py sous forme de
+// -DATMOSUD_SERVER_URL. Sans secrets.ini, la branche AtmoSud est compile-out
+// (zéro trace de l'URL/token dans le binaire). Même architecture que NebuleAir.
+//
+// L'ACTIVATION est PAR CAPTEUR, write-once, jamais togglable :
+//   1. stamp NVS (namespace "atmosud", clé "stamped") écrit au 1er boot par le
+//      binaire de provisioning (env atmosud_provision, -DFACTORY_ATMOSUD=1).
+//      Survit aux OTA et au reset WiFi. SEULE voie pour un capteur neuf —
+//      basculer un capteur déjà déployé = reflash USB avec cet env.
+//   2. migration : l'ancien flag NVS "server/atmosud" == 1 (architecture
+//      pré-2026-06) est converti en stamp au boot — les capteurs AtmoSud déjà
+//      en service continuent d'envoyer après mise à jour. Cf. data_sender.cpp.
+// -DBUILD_ATMOSUD ne pilote plus que le défaut d'affichage du logo (ci-dessus).
 #define ATMOSUD_SOFTWARE_VERSION "ModuleAirV4-V" FIRMWARE_VERSION
-#ifdef BUILD_ATMOSUD
-  #define ATMOSUD_ENABLED_DEFAULT true
-#else
-  #define ATMOSUD_ENABLED_DEFAULT false
-#endif
 
 // OTA Update
 #define OTA_UPDATE_URL "https://gestion.aircarto.fr/api/ota/ModuleAir"

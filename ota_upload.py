@@ -135,6 +135,12 @@ def main(firmware_override=None):
 # PlatformIO post-build hook
 if is_pio:
     def ota_post_build(source, target, env):
+        # OTA_SKIP=1 pio run ... -> build sans pousser sur le serveur OTA
+        # (meme garde que le ota_upload.py de NebuleAir). Indispensable pour
+        # les builds de verification locale.
+        if os.environ.get("OTA_SKIP"):
+            print("[OTA] OTA_SKIP defini -> upload saute pour ce build")
+            return
         # target[0] is .pio/build/<current-env>/firmware.bin — upload exactly
         # the binary that was just built, whichever env it is.
         main(str(target[0]))

@@ -34,6 +34,7 @@ void setup() {
   configInit();
   i18nInit();          // load language from NVS (survives OTA) before any UI/screen text
   settingsInit();
+  dataSenderInit();    // stamp provisioning AtmoSud + migration ancien flag (cf. data_sender.h)
   logoStorageInit();
   displayInit();
   displayShowBootAnim();

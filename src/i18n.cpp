@@ -169,6 +169,15 @@ static const I18nStrings STR_FR = {
   /* js_downloading      */ "Telechargement et installation en cours...<br>Ne pas eteindre le capteur !",
   /* js_update_ok        */ "Mise a jour reussie ! Redemarrage...",
   /* js_update_running   */ "Mise a jour en cours, le capteur redemarre...",
+
+  // data-servers card
+  /* card_dataservers    */ "Envoi des donnees",
+  /* ds_always           */ "Actif (toujours)",
+  /* ds_active           */ "Actif (capteur provisionne)",
+  /* ds_inactive         */ "Inactif (capteur non concerne)",
+  /* ds_note             */ "L'envoi vers le serveur secondaire est provisionne en usine "
+                            "(firmware), selon le capteur. Non modifiable depuis cette "
+                            "interface ni par mise a jour.",
 };
 
 // ── English table ───────────────────────────────────────────────────────────
@@ -337,6 +346,15 @@ static const I18nStrings STR_EN = {
   /* js_downloading      */ "Downloading and installing...<br>Do not power off the sensor!",
   /* js_update_ok        */ "Update successful! Restarting...",
   /* js_update_running   */ "Update in progress, the sensor is restarting...",
+
+  // data-servers card
+  /* card_dataservers    */ "Data upload",
+  /* ds_always           */ "Active (always)",
+  /* ds_active           */ "Active (provisioned sensor)",
+  /* ds_inactive         */ "Inactive (not provisioned)",
+  /* ds_note             */ "Upload to the secondary server is factory-provisioned "
+                            "(firmware), per sensor. Not changeable from this interface "
+                            "nor by firmware updates.",
 };
 
 // ── State ───────────────────────────────────────────────────────────────────

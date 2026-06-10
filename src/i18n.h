@@ -202,6 +202,15 @@ struct I18nStrings {
   const char* js_downloading;      // "Telechargement ... Ne pas eteindre ..." / "Downloading ... Do not power off ..."
   const char* js_update_ok;        // "Mise a jour reussie ! Redemarrage..." / "Update successful! Restarting..."
   const char* js_update_running;   // "Mise a jour en cours, le capteur redemarre..." / "Update in progress, the sensor is restarting..."
+
+  // ── Web: data-servers card (declaratif, non modifiable) ──
+  // NB : champs ajoutes en FIN de struct (les tables i18n.cpp sont en init
+  // positionnelle - ne pas inserer au milieu).
+  const char* card_dataservers;    // "Envoi des donnees" / "Data upload"
+  const char* ds_always;           // "Actif (toujours)" / "Active (always)"
+  const char* ds_active;           // "Actif (capteur provisionne)" / "Active (provisioned sensor)"
+  const char* ds_inactive;         // "Inactif (capteur non concerne)" / "Inactive (not provisioned)"
+  const char* ds_note;             // explication : decide en usine, non modifiable ici
 };
 
 void i18nInit();

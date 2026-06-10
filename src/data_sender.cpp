@@ -2,6 +2,7 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
+#include <Preferences.h>
 #include "config.h"
 #include "sensors.h"
 #include "data_sender.h"
@@ -19,6 +20,71 @@ static bool checkInternetAccess() {
   return false;
 }
 
+// ── Activation AtmoSud : propriete intrinseque du capteur (write-once) ──────
+// Le stamp NVS (namespace "atmosud", cle "stamped") est ecrit UNIQUEMENT par :
+//   - le binaire de provisioning usine (-DFACTORY_ATMOSUD=1, env atmosud_provision)
+//   - la migration de l'ancien flag togglable "server/atmosud" == 1 (capteurs
+//     AtmoSud deployes avant l'architecture write-once)
+// Les binaires standards (y compris pousses en OTA) ne font que le LIRE :
+// impossible qu'une OTA transforme un capteur AirCarto-seul en capteur
+// AtmoSud (pas d'allowlist), et aucun toggle UI n'existe pour le modifier.
+// Basculer un capteur deja deploye = reflash USB avec atmosud_provision.
+
+static bool readAtmosudStamp() {
+  Preferences prefs;
+  prefs.begin("atmosud", true);
+  bool stamped = prefs.getBool("stamped", false);
+  prefs.end();
+  return stamped;
+}
+
+static void writeAtmosudStamp() {
+  Preferences prefs;
+  prefs.begin("atmosud", false);
+  prefs.putBool("stamped", true);
+  prefs.end();
+}
+
+void dataSenderInit() {
+#ifdef FACTORY_ATMOSUD
+  // Binaire de provisioning : stamp au 1er boot, idempotent ensuite.
+  if (!readAtmosudStamp()) {
+    writeAtmosudStamp();
+    Logger.println("[Data] provisioning AtmoSud -> NVS stamp ecrit");
+  } else {
+    Logger.println("[Data] provisioning AtmoSud -> NVS stamp deja present");
+  }
+#endif
+
+  // Migration de l'ancienne architecture (flag NVS togglable, defaut de build
+  // grave au 1er boot) : un capteur dont l'ancien flag dit "j'envoie a AtmoSud"
+  // recoit le stamp definitif. L'ancienne cle est laissee intacte (inoffensive,
+  // et garde le comportement correct en cas de rollback vers un vieux firmware).
+  if (!readAtmosudStamp()) {
+    Preferences prefs;
+    prefs.begin("server", true);
+    uint8_t legacy = prefs.getUChar("atmosud", 0xFF);  // 0xFF = cle absente
+    prefs.end();
+    if (legacy == 1) {
+      writeAtmosudStamp();
+      Logger.println("[Data] migration ancien flag AtmoSud -> NVS stamp ecrit");
+    }
+  }
+}
+
+#ifdef ATMOSUD_SERVER_URL
+
+bool dataSenderIsAtmosudDevice() {
+  // Cache : le stamp ne change pas en cours de vie.
+  static int cached = -1;
+  if (cached < 0) {
+    cached = readAtmosudStamp() ? 1 : 0;
+    Logger.printf("[Data] envoi AtmoSud : %s (stamp NVS)\n",
+                  cached ? "ACTIF" : "inactif");
+  }
+  return cached == 1;
+}
+
 // ── Envoi AtmoSud (MicroSpot) ───────────────────────────────────────────────
 // Reproduit trait pour trait le comportement de ModuleAir-Next-Gen :
 //   - identifiant "moduleairid" = chip id court (16 bits hauts de l'eFuse MAC,
@@ -26,10 +92,8 @@ static bool checkInternetAccess() {
 //   - payload au format "sensordatavalues" (paires value_type / value)
 //   - mêmes value_type que ceux attendus par l'API AtmoSud
 //   - headers Content-Type + X-Sensor + User-Agent identiques
-// Compilé dans TOUTES les builds : l'appel est conditionné à l'exécution par le
-// flag NVS settingsGetAtmosudEnabled() (cf. dataSenderSend plus bas), pour que
-// le choix « envoyer à AtmoSud » persiste à travers l'OTA quelle que soit la
-// variante du binaire servi.
+// Compile uniquement si secrets.ini fournit ATMOSUD_SERVER_URL ; gate par
+// capteur via dataSenderIsAtmosudDevice() (cf. dataSenderSend plus bas).
 static void atmosudSend(const SensorData& d) {
   // chip id court, identique à esp_chipid de Next-Gen
   String chipid = String((uint16_t)(ESP.getEfuseMac() >> 32), HEX);
@@ -104,6 +168,8 @@ static void atmosudSend(const SensorData& d) {
 
   https.end();
 }
+
+#endif  // ATMOSUD_SERVER_URL
 
 SendResult dataSenderSend() {
   const SensorData& d = sensorsGetData();
@@ -253,13 +319,15 @@ SendResult dataSenderSend() {
     Logger.println("[AirCarto] Echec envoi - serveur data.moduleair.fr injoignable");
   }
 
-  // Envoi secondaire AtmoSud, si activé. C'est un réglage RUNTIME stocké en NVS
-  // (défaut de 1er boot = variante de build, cf. ATMOSUD_ENABLED_DEFAULT) qui
-  // survit à l'OTA — d'où le test à l'exécution plutôt qu'un #ifdef. Indépendant
-  // du résultat AirCarto ; l'accès internet a déjà été vérifié plus haut.
-  if (settingsGetAtmosudEnabled()) {
+  // Envoi secondaire AtmoSud : compile uniquement si secrets.ini fournit
+  // l'URL (sinon zero trace du serveur dans le binaire), et gate PAR CAPTEUR
+  // via le stamp NVS pose a l'usine (jamais togglable). Independant du resultat
+  // AirCarto ; l'acces internet a deja ete verifie plus haut.
+#ifdef ATMOSUD_SERVER_URL
+  if (dataSenderIsAtmosudDevice()) {
     atmosudSend(d);
   }
+#endif
 
   Logger.println();
   Logger.println("════════════════════════════════════════");

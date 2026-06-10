@@ -14,6 +14,7 @@
 #include "sensors.h"
 #include "display.h"
 #include "settings.h"
+#include "data_sender.h"
 #include "logger.h"
 #include "i18n.h"
 
@@ -785,6 +786,28 @@ static void handleRootConnected() {
     server.sendContent(chunk);
   }
 
+  // Envoi des donnees — card purement DECLARATIVE (port NebuleAir) : montre ou
+  // partent les mesures. AirCarto toujours ; AtmoSud selon la decision firmware
+  // par capteur (stamp NVS pose a l'usine), jamais modifiable ici.
+  // La ligne AtmoSud n'existe que si le binaire embarque l'URL (secrets.ini).
+  {
+    chunk = "<div class='card wide'><h2>" + String(TR().card_dataservers) + "</h2>";
+    chunk += "<div class='data-row'><span class='data-label'>AirCarto (data.moduleair.fr)</span>"
+             "<span class='data-value good'>" + String(TR().ds_always) + "</span></div>";
+#ifdef ATMOSUD_SERVER_URL
+    if (dataSenderIsAtmosudDevice()) {
+      chunk += "<div class='data-row'><span class='data-label'>AtmoSud (MicroSpot)</span>"
+               "<span class='data-value good'>" + String(TR().ds_active) + "</span></div>";
+    } else {
+      chunk += "<div class='data-row'><span class='data-label'>AtmoSud (MicroSpot)</span>"
+               "<span class='data-value'>" + String(TR().ds_inactive) + "</span></div>";
+    }
+#endif
+    chunk += "<div style='color:#888;font-size:0.8em;padding:4px 0;'>" + String(TR().ds_note) + "</div>";
+    chunk += "</div>";
+    server.sendContent(chunk);
+  }
+
   // Logs — tail incremental avec curseur seq, smart scroll, pause/clear.
   // data-keep="logs" tells refreshUI() to leave this card alone during a
   // .grid swap so the log buffer, scroll position, pause state and the
@@ -1153,12 +1176,22 @@ static void handleLogs() {
   server.sendHeader("X-Log-Seq", String(currentSeq));
   server.sendHeader("Access-Control-Expose-Headers", "X-Log-Seq");
 
-  // Streaming chunked : evite de construire une grosse String en heap
+  // Streaming chunked : evite de construire une grosse String en heap.
+  // PIEGE chunked : sendContent("") emet un chunk de taille 0, qui signifie
+  // FIN DE REPONSE en HTTP chunked (c'est le terminateur volontaire plus bas).
+  // L'ancien code faisait sendContent(line) puis sendContent("\n") : a la
+  // premiere ligne VIDE du buffer (les Logger.println() entre les blocs), la
+  // reponse se terminait la. Symptomes : le tail web s'arretait avant les
+  // blocs [AirCarto]/[AtmoSud], et le module continuait d'ecrire dans un
+  // socket que le client venait de fermer -> flood "errno: 104 Connection
+  // reset by peer". D'ou UNE seule ecriture par ligne, '\n' inclus : une
+  // ligne vide part comme "\n" (chunk de 1 octet), jamais comme chunk vide.
   server.setContentLength(CONTENT_LENGTH_UNKNOWN);
   server.send(200, "text/plain", "");
   loggerForEachLineSince(since, [](uint32_t seq, const char* line) {
-    server.sendContent(line);
-    server.sendContent("\n");
+    String out(line);
+    out += '\n';
+    server.sendContent(out);
   });
   server.sendContent("");  // termine le transfert chunked
 }

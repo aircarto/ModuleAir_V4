@@ -6,14 +6,50 @@ Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versi
 
 ## [Non publié]
 
+### Sécurité
+
+- **L'URL AtmoSud (token inclus) n'est plus dans le code source** : sortie de
+  `config.h` (où elle était commitée sur le dépôt) vers `secrets.ini` (gitignore),
+  injectée au build par `secrets_inject.py` (pre-script PIO porté de NebuleAir,
+  cf. `secrets.example.ini`). Sans `secrets.ini`, la branche AtmoSud est
+  **compile-out** : zéro trace de l'URL/token dans le binaire (vérifié par
+  `strings` sur le .bin). ⚠️ L'ancien token reste dans l'historique git — à faire
+  tourner côté Probesys si le dépôt est partagé.
+- **La destination d'envoi n'est plus togglable** : suppression du flag NVS
+  `server/atmosud` et de son API (`settingsGet/SetAtmosudEnabled`). Remplacé par
+  un **stamp NVS write-once** (namespace `atmosud`, clé `stamped`), même
+  architecture que NebuleAir : écrit **uniquement** par le binaire de
+  provisioning usine (`pio run -e atmosud_provision -t upload`, jamais poussé
+  en OTA — son `extra_scripts` exclut `ota_upload.py`). Pas d'allowlist, pas
+  de toggle : un capteur AirCarto-seul **ne peut pas** être basculé sur AtmoSud
+  par une OTA (quel que soit le binaire poussé) ; un capteur AtmoSud ne peut
+  pas être désactivé depuis l'UI. Basculer un capteur déjà déployé = reflash
+  USB avec l'env de provisioning.
+
 ### Ajouté
 
+- Env PlatformIO `atmosud_provision` : provisioning usine des capteurs AtmoSud
+  (stamp NVS au 1er boot, idempotent, survit aux OTA et au reset WiFi).
+- **Migration automatique** des capteurs AtmoSud déjà déployés : au boot, si
+  l'ancien flag `server/atmosud == 1` est présent et le stamp absent, le stamp
+  est écrit (`dataSenderInit`). Les capteurs AtmoSud en service continuent
+  d'envoyer après la mise à jour, sans intervention. L'ancienne clé est laissée
+  intacte (comportement correct préservé en cas de rollback firmware).
+- Card web déclarative « Envoi des données » (FR/EN) : AirCarto « Actif
+  (toujours) » + statut AtmoSud du capteur (« Actif (capteur provisionné) » /
+  « Inactif (capteur non concerné) »). Lecture seule — permet de vérifier en
+  clientèle la destination effective, sans donner le moyen de la modifier. La
+  ligne AtmoSud n'apparaît que si le binaire embarque l'URL (`secrets.ini`
+  présent au build).
 - 2 nouveaux environnements PlatformIO « L'Air et Moi » : `lairetmoi` (FR) et `lairetmoi_en` (EN), selectionnables au flash. **Coté données, strictement identiques à la build classique** : envoi AirCarto SEUL, jamais AtmoSud (pas de `-DBUILD_ATMOSUD`, destiné à un déploiement AirCarto sans MicroSpot). La différence est un **4e logo « L'Air et Moi »** ajouté à la rotation matrice.
 - Logo « L'Air et Moi » (`logo_lairetmoi`, 64×32 RGB565, repris de `ModuleAir_V2.1/logos-custom.h` où il était commenté) : nouveau slot SPIFFS dédié `LOGO_SLOT_LAM` (`/logo_lam.bin`), éditable/réinitialisable depuis l'UI web au même titre que les 3 autres logos, avec son toggle « L'Air et Moi » dans la carte « Ecrans matrice ». Les 4 logos (ModuleAir / AirCarto / AtmoSud / L'Air et Moi) sont ON par défaut au 1er boot sur cette build.
 - Le 4e slot logo est **entièrement conditionné à `-DBUILD_LAIRETMOI`** (enum, buffers, struct `ScreenSettings`, rotation d'affichage, UI web) : les builds `moduleair`/`atmosud` restent inchangés (zéro octet de RAM/flash en plus), ce qui préserve la marge de heap contigu nécessaire au handshake TLS de l'OTA (cf. 0.3.2).
 
 ### Corrigé
 
+- **Logs web incomplets : le tail `/logs` s'arrêtait à la première ligne vide du buffer** — les blocs `[AirCarto]`/`[AtmoSud]` (envoi, HTTP 200, « Envoi reussi »…) n'apparaissaient quasiment jamais dans la card Logs alors que le moniteur série les montrait. Cause : `handleLogs` streamait chaque ligne en deux `sendContent` (`line` puis `"\n"`) ; or en transfert HTTP **chunked**, `sendContent("")` émet un chunk de taille 0 = **fin de réponse**. À la première ligne vide (les `Logger.println()` de respiration entre blocs), la réponse se terminait : le navigateur fermait la connexion et le module continuait d'écrire dedans → c'était aussi l'origine du **flood `[E][WiFiClient.cpp] write(): errno: 104 "Connection reset by peer"`**. Correctif : une seule écriture par ligne, `\n` inclus (une ligne vide part comme `"\n"`, jamais comme chunk vide). En bonus, deux fois moins d'écritures TCP par tail.
+- **Lignes de log tronquées à 119 caractères sur `/logs`** : les payloads JSON `[AirCarto]`/`[AtmoSud]` (~450 chars) étaient coupés dans l'UI web. Le logger **replie** désormais les lignes longues sur plusieurs slots du buffer circulaire au lieu de jeter l'excédent (segments de 119 chars, contenu intégral, zéro RAM en plus — le verrou ligne est conservé jusqu'au vrai `\n`, donc les segments restent contigus même avec les tasks concurrentes).
+- `ota_upload.py` : nouvelle garde `OTA_SKIP=1 pio run …` pour builder sans pousser le binaire sur le serveur OTA (même mécanisme que le script NebuleAir) — indispensable pour les builds de vérification locale maintenant que `extra_scripts` est actif par défaut.
 - **Échec systématique de l'envoi AtmoSud (`SSL - Memory allocation failed`) puis spirale mémoire (perte DNS, beacon timeout WiFi)** : `HTTPClient` a `_reuse=true` par défaut, donc après le POST AirCarto, `http.end()` gardait la session TLS **ouverte** en keep-alive (~45 Ko de buffers mbedtls retenus), et `secClient` (au scope de la fonction) n'était détruit qu'**après** `atmosudSend()`. Le handshake AtmoSud réclamait donc un 2e contexte TLS contigu pendant que le 1er vivait encore → allocation impossible sur ESP32, puis **fuite mbedtls à chaque handshake raté** ([arduino-esp32 #5781](https://github.com/espressif/arduino-esp32/issues/5781)) jusqu'à étrangler le DNS (`hostByName: DNS Failed` permanent après ~9 min) et la pile WiFi (déconnexions `reason=200 BEACON_TIMEOUT`). Correctif : le client AirCarto passe en `setReuse(false)` (comme le faisait Next-Gen, garde-fou perdu au portage) et vit dans son propre bloc `{}` — il est entièrement libéré avant l'envoi AtmoSud, plus jamais deux contextes TLS simultanés.
 - **Badge réseau menteur (« deux flèches rouges ») sur les réseaux filtrants** : la sonde internet unique du network monitor (`1.1.1.1:80`) échouait en permanence derrière les box/firewalls qui bloquent le port 80 sortant (ou 1.1.1.1 lui-même), affichant « connecté sans internet » alors que les POST HTTPS passaient très bien (constaté sur capteur en prod : badge figé pendant que `data.moduleair.fr` répondait HTTP 200). Deux changements dans `network_monitor.cpp` : la sonde **serveur** (`gestion.aircarto.fr:443`) passe en premier — s'il répond, internet est prouvé par la même occasion (`NET_OK` en une seule sonde au lieu de deux dans le cas nominal) ; et la classification ne conclut `NO_INTERNET` qu'après échec de `1.1.1.1:443` PUIS du fallback `8.8.8.8:53` (host ET port indépendants — il faudrait qu'un réseau filtre les deux pour produire un faux négatif).
 
