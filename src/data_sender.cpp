@@ -204,35 +204,48 @@ SendResult dataSenderSend() {
   Logger.println("[AirCarto] POST " + String(DATA_SERVER_URL));
   Logger.println("[AirCarto] " + json);
 
-  WiFiClientSecure secClient;
-  secClient.setInsecure();
-  HTTPClient http;
-  http.begin(secClient, DATA_SERVER_URL);
-  http.addHeader("Content-Type", "application/json");
-  const char* headerKeys[] = {"Date"};
-  http.collectHeaders(headerKeys, 1);
-  http.setTimeout(10000);
-
-  unsigned long t0 = millis();
-  int httpCode = http.POST(json);
-  float duration = (millis() - t0) / 1000.0;
-
   SendResult result = SEND_SERVER_DOWN;
 
-  if (httpCode > 0) {
-    Logger.printf("[AirCarto] HTTP %d (%.1fs) - %s\n", httpCode, duration, http.getString().c_str());
-    String serverDate = http.header("Date");
-    if (serverDate.length() > 0) {
-      Logger.printf("[AirCarto] Server time: %s\n", serverDate.c_str());
-    }
-    if (httpCode >= 200 && httpCode < 300) {
-      result = SEND_OK;
-    }
-  } else {
-    Logger.printf("[AirCarto] Internet OK mais serveur indisponible (%.1fs): %s\n", duration, http.errorToString(httpCode).c_str());
-  }
+  // Le client TLS AirCarto vit dans son propre bloc, avec setReuse(false) :
+  // il doit etre ENTIEREMENT libere avant l'envoi AtmoSud. Deux pieges sinon
+  // (perdus au portage depuis Next-Gen, qui faisait setReuse(false)) :
+  // HTTPClient a _reuse=true par defaut, donc end() garde la session TLS
+  // OUVERTE en keep-alive (~45 Ko de buffers mbedtls retenus par secClient) ;
+  // et secClient au scope de la fonction n'etait detruit qu'APRES
+  // atmosudSend(). Cumules, le handshake AtmoSud reclamait un 2e contexte TLS
+  // contigu pendant que le 1er vivait encore -> "SSL - Memory allocation
+  // failed", puis fuite mbedtls a chaque handshake rate (arduino-esp32 #5781)
+  // jusqu'a etrangler le DNS et le WiFi (beacon timeout).
+  {
+    WiFiClientSecure secClient;
+    secClient.setInsecure();
+    HTTPClient http;
+    http.setReuse(false);
+    http.begin(secClient, DATA_SERVER_URL);
+    http.addHeader("Content-Type", "application/json");
+    const char* headerKeys[] = {"Date"};
+    http.collectHeaders(headerKeys, 1);
+    http.setTimeout(10000);
 
-  http.end();
+    unsigned long t0 = millis();
+    int httpCode = http.POST(json);
+    float duration = (millis() - t0) / 1000.0;
+
+    if (httpCode > 0) {
+      Logger.printf("[AirCarto] HTTP %d (%.1fs) - %s\n", httpCode, duration, http.getString().c_str());
+      String serverDate = http.header("Date");
+      if (serverDate.length() > 0) {
+        Logger.printf("[AirCarto] Server time: %s\n", serverDate.c_str());
+      }
+      if (httpCode >= 200 && httpCode < 300) {
+        result = SEND_OK;
+      }
+    } else {
+      Logger.printf("[AirCarto] Internet OK mais serveur indisponible (%.1fs): %s\n", duration, http.errorToString(httpCode).c_str());
+    }
+
+    http.end();
+  }
 
   if (result == SEND_OK) {
     Logger.println("[AirCarto] Envoi reussi");

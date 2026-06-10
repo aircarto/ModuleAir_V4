@@ -5,12 +5,18 @@
 #include "display.h"
 #include "logger.h"
 
-// Probe target for "is the internet reachable?". We use 1.1.1.1 (Cloudflare)
-// because it's a literal IP — no DNS lookup needed, so we test purely the
-// IP-routing layer. Other public anycast options: 8.8.8.8 (Google),
-// 9.9.9.9 (Quad9).
+// Probe targets for "is the internet reachable?". Literal IPs — no DNS lookup
+// needed, so we test purely the IP-routing layer. Port choice matters: the
+// old single probe on 1.1.1.1:80 gave FALSE NEGATIVES on networks that filter
+// outbound port 80 or 1.1.1.1 itself (seen in the field: badge stuck on "no
+// internet" while the HTTPS POSTs went through fine). So we aim at 443
+// (Cloudflare answers there), with a fallback on 8.8.8.8:53 (Google DNS) — an
+// independent host AND port; a network would have to filter both to produce a
+// false negative.
 static const char* INTERNET_PROBE_HOST = "1.1.1.1";
-static const uint16_t INTERNET_PROBE_PORT = 80;
+static const uint16_t INTERNET_PROBE_PORT = 443;
+static const char* INTERNET_FALLBACK_HOST = "8.8.8.8";
+static const uint16_t INTERNET_FALLBACK_PORT = 53;
 
 // Probe target for "is our data server reachable?". A plain TCP connect on
 // :443 is enough — we don't speak TLS here, we just want SYN/ACK to confirm
@@ -25,8 +31,9 @@ static const uint16_t SERVER_PROBE_PORT = 443;
 static const uint32_t PROBE_INTERVAL_MS = 15000;
 
 // Per-probe TCP connect timeout. Keep it short so an unreachable host
-// doesn't block the whole task for too long. With both probes failing,
-// worst-case task tick is 2 * PROBE_TIMEOUT_MS.
+// doesn't block the whole task for too long. With every probe failing,
+// worst-case task tick is 3 * PROBE_TIMEOUT_MS (server + the two internet
+// probes) — still well under the 15 s cadence.
 static const uint16_t PROBE_TIMEOUT_MS = 2500;
 
 // Test reachability via TCP SYN/ACK. We open the connection, immediately
@@ -41,11 +48,16 @@ static bool tcpProbe(const char* host, uint16_t port, uint16_t timeoutMs) {
 static NetStatus probeNetworkOnce() {
   if (WiFi.status() != WL_CONNECTED) return NET_OFFLINE;
 
-  bool internet = tcpProbe(INTERNET_PROBE_HOST, INTERNET_PROBE_PORT, PROBE_TIMEOUT_MS);
-  if (!internet) return NET_NO_INTERNET;
+  // Server first: if it answers, internet is proven by the same probe — a
+  // reachable server is the safety net against a filtered internet probe.
+  // Bonus: the nominal case costs ONE probe instead of two.
+  if (tcpProbe(SERVER_PROBE_HOST, SERVER_PROBE_PORT, PROBE_TIMEOUT_MS)) return NET_OK;
 
-  bool server = tcpProbe(SERVER_PROBE_HOST, SERVER_PROBE_PORT, PROBE_TIMEOUT_MS);
-  return server ? NET_OK : NET_NO_SERVER;
+  // Server unreachable: classify "server down" vs "no internet" with the
+  // literal-IP probes (443 first, then the 8.8.8.8:53 fallback).
+  bool internet = tcpProbe(INTERNET_PROBE_HOST, INTERNET_PROBE_PORT, PROBE_TIMEOUT_MS)
+               || tcpProbe(INTERNET_FALLBACK_HOST, INTERNET_FALLBACK_PORT, PROBE_TIMEOUT_MS);
+  return internet ? NET_NO_SERVER : NET_NO_INTERNET;
 }
 
 static const char* statusLabel(NetStatus s) {
