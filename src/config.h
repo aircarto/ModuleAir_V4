@@ -3,7 +3,7 @@
 
 #include <Arduino.h>
 
-#define FIRMWARE_VERSION "0.3.4"
+#define FIRMWARE_VERSION "0.3.5"
 
 // ── Default sensor enable state ─────────────────────────────────────────────
 // These are the FACTORY DEFAULTS for each sensor's enabled flag — the value
