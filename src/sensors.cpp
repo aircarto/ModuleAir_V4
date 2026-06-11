@@ -16,7 +16,7 @@ static HardwareSerial mhzSerial(2);
 static MHZ19 mhz19;
 
 // Previous toggle state, used to detect disabled->enabled transitions in
-// sensorsRead() so we can drain the stale RX buffer and re-bind the library
+// sensorsSample()/sensorsFinalize() so we can drain the stale RX buffer and re-bind the library
 // to the (already opened) UART. We follow the ESPHome / Tasmota convention:
 // keep the UART permanently begun at boot regardless of the toggle, and gate
 // the actual read at poll time. This avoids HardwareSerial::end()/begin()
@@ -35,7 +35,33 @@ static bool ccsFound = false;
 static bool sfa40Found = false;
 static bool sfa40Started = false;
 
+// `data` = struct de TRAVAIL : chaque readXxx() y écrit sa dernière lecture
+// instantanée. Ce n'est PAS ce qui est publié au reste du firmware.
 static SensorData data = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xFF, false, false, false, false, false, 0};
+
+// `published` = snapshot PUBLIÉ (renvoyé par sensorsGetData(), lu par le
+// display, le data_sender et le dashboard web). Rempli uniquement par
+// sensorsFinalize() avec les moyennes de la fenêtre + l'état PM courant.
+static SensorData published = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xFF, false, false, false, false, false, 0};
+
+// Accumulateurs de la fenêtre d'envoi : somme + nombre d'échantillons VALIDES
+// par capteur "spot". À l'envoi, moyenne = somme / nombre (cf. sensorsFinalize).
+// Sommes en double pour éviter tout overflow et garder la précision.
+struct SensorAccum {
+  double co2;    uint16_t co2_n;
+  double temp;
+  double hum;
+  double press;  uint16_t bme_n;
+  double tvoc;
+  double eco2;   uint16_t ccs_n;
+  double hcho;   uint16_t sfa_n;
+};
+static SensorAccum accum;  // statique → initialisé à zéro au boot
+
+static void accumReset() { accum = SensorAccum{}; }
+
+// Moyenne entière arrondie d'une somme positive (CO2/COV/eCO2 sont tous >= 0).
+static int avgRoundI(double sum, uint16_t n) { return (int)(sum / n + 0.5); }
 
 // Registres NextPM
 #define REG_STATUS     0x13
@@ -446,8 +472,8 @@ void sensorsInit() {
   // default state. The toggle gates the *read*, not the hardware lifecycle.
   // This is what lets a user re-enable a sensor that started disabled (via
   // its SENSOR_*_DEFAULT or a previous UI toggle-off) and get it working on
-  // the next cycle without a reboot — the lazy re-arm in sensorsRead() just
-  // drains the RX buffer and re-binds the library. We never call
+  // the next cycle without a reboot — the lazy re-arm in sensorsSample()/
+  // sensorsFinalize() just drains the RX buffer and re-binds the library. We never call
   // HardwareSerial::end() (long bug history on ESP32).
   nextpmSerial.begin(NEXTPM_BAUD, SERIAL_8E1, NEXTPM_RX, NEXTPM_TX);
   nextpm.begin(NEXTPM_ADDR, nextpmSerial);
@@ -540,13 +566,60 @@ static void rearmMhzUart() {
   Logger.println("[MH-Z19] Re-enabled at runtime");
 }
 
-void sensorsRead() {
+// Lit les capteurs "spot" (CO2, T/H/P, COV/eCO2, HCHO) et accumule chaque
+// lecture valide dans `accum`. Appelé toutes les SENSOR_SAMPLE_INTERVAL.
+// Les PM (NextPM) ne sont PAS lus ici : leur moyenne 1 min vient du capteur et
+// est lue une fois par envoi dans sensorsFinalize().
+//
+// L'ordre BME280 -> CCS811 est conservé : readCCS811() utilise la temp/hum du
+// BME280 (data.bme_ok) pour la compensation environnementale.
+void sensorsSample() {
   const SensorSettings& cfg = settingsGetSensors();
 
-  // When a sensor is disabled by the user, force its _ok flag to false so
-  // downstream consumers (data_sender, display, web dashboard) stop treating
-  // the last cached reading as fresh data. Without this, toggling a sensor
-  // off only stops the read but leaves stale values being sent.
+  if (cfg.mhz19_enabled) {
+    if (!prevMhzEnabled) rearmMhzUart();
+    readMHZ19();
+    if (data.co2_ok) { accum.co2 += data.co2; accum.co2_n++; }
+  }
+  prevMhzEnabled = cfg.mhz19_enabled;
+
+  if (cfg.bme280_enabled) {
+    readBME280();
+    if (data.bme_ok) {
+      accum.temp  += data.temperature;
+      accum.hum   += data.humidity;
+      accum.press += data.pressure;
+      accum.bme_n++;
+    }
+  }
+
+  if (cfg.ccs811_enabled) {
+    readCCS811();
+    if (data.ccs_ok) {
+      accum.tvoc += data.tvoc;
+      accum.eco2 += data.eco2;
+      accum.ccs_n++;
+    }
+  }
+
+  if (cfg.sfa40_enabled) {
+    readSFA40();
+    if (data.sfa40_ok) { accum.hcho += data.hcho; accum.sfa_n++; }
+  }
+}
+
+// Lit les PM (registre 1 min du NextPM), calcule la moyenne des échantillons
+// "spot" accumulés depuis le dernier envoi, publie le snapshot dans `published`
+// puis remet les accumulateurs à zéro. Appelé à chaque DATA_SEND_INTERVAL.
+//
+// Politique d'erreur (plus robuste que ModuleAir-Next-Gen, qui exigeait un
+// nombre EXACT d'échantillons) : on publie la moyenne dès qu'AU MOINS UN
+// échantillon valide a été collecté ; si zéro (capteur absent, désactivé, ou
+// en warm-up toute la fenêtre), le flag _ok passe à false.
+void sensorsFinalize() {
+  const SensorSettings& cfg = settingsGetSensors();
+
+  // ── PM : lecture unique du NextPM (registre _1MIN = moyenne capteur) ──
   if (cfg.npm_enabled) {
     if (!prevNpmEnabled) rearmNpmUart();
     readNextPM();
@@ -555,20 +628,58 @@ void sensorsRead() {
   }
   prevNpmEnabled = cfg.npm_enabled;
 
-  if (cfg.mhz19_enabled) {
-    if (!prevMhzEnabled) rearmMhzUart();
-    readMHZ19();
-  } else {
-    data.co2_ok = false;
-  }
-  prevMhzEnabled = cfg.mhz19_enabled;
+  // Recopie l'état PM tel quel (aucune moyenne firmware sur les PM).
+  published.pm1       = data.pm1;
+  published.pm25      = data.pm25;
+  published.pm10      = data.pm10;
+  published.npmStatus = data.npmStatus;
+  published.pm_ok     = data.pm_ok;
 
-  if (cfg.bme280_enabled) readBME280();  else data.bme_ok   = false;
-  if (cfg.ccs811_enabled) readCCS811();  else data.ccs_ok   = false;
-  if (cfg.sfa40_enabled)  readSFA40();   else data.sfa40_ok = false;
-  data.lastReadTime = millis();
+  // ── CO2 (MH-Z19) ──
+  if (accum.co2_n > 0) {
+    published.co2 = avgRoundI(accum.co2, accum.co2_n);
+    published.co2_ok = true;
+  } else {
+    published.co2_ok = false;
+  }
+
+  // ── BME280 (température / humidité / pression) ──
+  if (accum.bme_n > 0) {
+    published.temperature = accum.temp  / accum.bme_n;
+    published.humidity    = accum.hum   / accum.bme_n;
+    published.pressure    = accum.press / accum.bme_n;
+    published.bme_ok = true;
+  } else {
+    published.bme_ok = false;
+  }
+
+  // ── COV / eCO2 (CCS811) ──
+  if (accum.ccs_n > 0) {
+    published.tvoc = avgRoundI(accum.tvoc, accum.ccs_n);
+    published.eco2 = avgRoundI(accum.eco2, accum.ccs_n);
+    published.ccs_ok = true;
+  } else {
+    published.ccs_ok = false;
+  }
+
+  // ── Formaldéhyde (SFA40) ──
+  if (accum.sfa_n > 0) {
+    published.hcho = accum.hcho / accum.sfa_n;
+    published.sfa40_ok = true;
+  } else {
+    published.sfa40_ok = false;
+  }
+
+  published.lastReadTime = millis();
+
+  Logger.printf("[Sensors] Snapshot publie (echantillons/fenetre): "
+                "CO2=%u BME=%u CCS=%u SFA=%u\n",
+                (unsigned)accum.co2_n, (unsigned)accum.bme_n,
+                (unsigned)accum.ccs_n, (unsigned)accum.sfa_n);
+
+  accumReset();
 }
 
 const SensorData& sensorsGetData() {
-  return data;
+  return published;
 }

@@ -13,6 +13,7 @@
 #include "network_monitor.h"
 
 unsigned long lastCycle = 0;
+unsigned long lastSample = 0;
 bool wasConnected = false;
 
 void setup() {
@@ -67,6 +68,11 @@ void setup() {
   // forward without touching the interval itself.
   static const unsigned long WARMUP_MS = 15000;
   lastCycle = millis() - (DATA_SEND_INTERVAL - WARMUP_MS);
+
+  // Pré-charge lastSample pour que le 1er échantillon "spot" parte dès la 1re
+  // boucle : ainsi le premier envoi (à ~15 s) dispose déjà d'un ou deux
+  // échantillons à moyenner au lieu d'attendre SENSOR_SAMPLE_INTERVAL.
+  lastSample = millis() - SENSOR_SAMPLE_INTERVAL;
 }
 
 void loop() {
@@ -88,9 +94,17 @@ void loop() {
   }
   wasConnected = connected;
 
+  // Sous-échantillonnage : on lit les capteurs "spot" (CO2, BME280, CCS811,
+  // SFA40) toutes les SENSOR_SAMPLE_INTERVAL (10 s) et on accumule. La moyenne
+  // de la fenêtre est calculée et publiée à l'envoi par sensorsFinalize().
+  if (millis() - lastSample >= SENSOR_SAMPLE_INTERVAL) {
+    lastSample = millis();
+    sensorsSample();
+  }
+
   if (millis() - lastCycle >= DATA_SEND_INTERVAL) {
     lastCycle = millis();
-    sensorsRead();
+    sensorsFinalize();
     displaySetSensorData(sensorsGetData());
     displayShowInterieur();
     if (connected) {

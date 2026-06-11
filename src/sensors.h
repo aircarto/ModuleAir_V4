@@ -24,7 +24,16 @@ struct SensorData {
 };
 
 void sensorsInit();
-void sensorsRead();
+
+// Lit les capteurs "spot" (CO2, BME280, CCS811, SFA40) et accumule chaque
+// lecture valide. À appeler toutes les SENSOR_SAMPLE_INTERVAL.
+void sensorsSample();
+
+// Lit les PM (moyenne 1 min du NextPM), calcule la moyenne des échantillons
+// accumulés depuis le dernier envoi, publie le snapshot puis remet les
+// accumulateurs à zéro. À appeler à chaque DATA_SEND_INTERVAL.
+void sensorsFinalize();
+
 const SensorData& sensorsGetData();
 
 #endif
