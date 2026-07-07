@@ -4,6 +4,20 @@ Toutes les modifications notables du firmware ModuleAir V4 sont documentées ici
 
 Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versioning [Semantic Versioning](https://semver.org/).
 
+## [0.4.1] - 2026-07-07
+
+### Ajouté
+
+- **Écran d'échec de connexion WiFi au démarrage** : quand la connexion STA
+  échoue au boot, le capteur affiche désormais un écran dédié pendant ~3 s
+  **avant** de basculer en mode AP, au lieu de sauter directement de
+  « Connexion » à « Config WiFi » sans feedback. L'écran indique le motif,
+  dérivé de la classification `reason` déjà présente dans le firmware :
+  **Mdp refuse** (auth refusée), **Absent** (SSID hors de portée) ou **Echec**
+  (autre / transitoire), avec le SSID visé. Traduit FR/EN. Nouvel enum public
+  `WifiFailReason` (`display.h`) pour découpler l'affichage de l'enum interne
+  `WifiFailGroup` du gestionnaire WiFi.
+
 ## [0.4.0] - 2026-07-07
 
 ### Sécurité

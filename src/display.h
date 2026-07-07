@@ -22,6 +22,9 @@ void displayShowWifiConnected(const char* ssid, int rssi);
 void displayShowAPMode(const char* apSSID, const char* apIP);
 void displayShowWifiLost();
 void displayShowWifiReconnected();
+// Boot STA connect failure: shown before falling back to AP mode.
+enum WifiFailReason { WIFI_FAIL_AUTH, WIFI_FAIL_NO_AP, WIFI_FAIL_OTHER };
+void displayShowWifiFailed(const char* ssid, WifiFailReason reason);
 
 // BLE provisioning screens
 void displayShowBleConnected();

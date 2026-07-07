@@ -1683,6 +1683,16 @@ void wifiManagerInit() {
       delay(3000);
       displayShowLogo();
     } else {
+      // Show WHY the connect failed before the AP-mode splash replaces it
+      // (previously the screen jumped straight from "Connexion" to "Config
+      // WiFi" with no failure feedback). lastDisconnectReason is still set by
+      // the event handler from the final attempt.
+      WifiFailGroup fg = classifyReason(lastDisconnectReason);
+      WifiFailReason fr = (fg == WFG_AUTH)         ? WIFI_FAIL_AUTH
+                        : (fg == WFG_AP_NOT_FOUND) ? WIFI_FAIL_NO_AP
+                                                   : WIFI_FAIL_OTHER;
+      displayShowWifiFailed(ssid.c_str(), fr);
+      delay(3000);
       Logger.println("[WiFi] Falling back to AP mode...");
     }
   } else {

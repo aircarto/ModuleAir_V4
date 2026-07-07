@@ -167,6 +167,8 @@ Au premier démarrage, le capteur crée un point d'accès WiFi :
 
 La page de configuration s'ouvre automatiquement à la connexion (captive portal). Une fois connecté au WiFi, la page devient un dashboard affichant les dernières mesures, l'état des capteurs et les infos système. Elle est accessible via l'IP locale ou `http://moduleair.local`.
 
+Si des identifiants sont déjà enregistrés (ou fournis par défaut à la compilation) mais que la connexion échoue au démarrage, l'écran matrice affiche brièvement le motif de l'échec — **Mdp refuse** (mot de passe refusé), **Absent** (SSID hors de portée) ou **Echec** (autre) — avant de basculer sur le point d'accès de configuration.
+
 ### Identification
 
 Chaque capteur possède un identifiant unique basé sur l'adresse MAC de l'ESP32 :

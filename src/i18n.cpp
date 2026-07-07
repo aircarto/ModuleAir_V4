@@ -24,6 +24,9 @@ static const I18nStrings STR_FR = {
   /* scr_connecting  */ "Connexion",
   /* scr_connected   */ "Connect\x82",      // Connecté
   /* scr_disconnected*/ "Deconnect\x82",    // Déconnecté (matrix)
+  /* scr_fail_auth   */ "Mdp refuse",
+  /* scr_fail_noap   */ "Absent",
+  /* scr_fail_other  */ "Echec",
   /* ble_connected   */ "Connect\x82",
   /* ble_creds_l1    */ "Identifiant",
   /* ble_creds_l2    */ "re\x83us",         // reçus
@@ -201,6 +204,9 @@ static const I18nStrings STR_EN = {
   /* scr_connecting  */ "Connecting",
   /* scr_connected   */ "Connected",
   /* scr_disconnected*/ "Disconnect",
+  /* scr_fail_auth   */ "Bad pass",
+  /* scr_fail_noap   */ "No AP",
+  /* scr_fail_other  */ "Failed",
   /* ble_connected   */ "Connected",
   /* ble_creds_l1    */ "WiFi creds",
   /* ble_creds_l2    */ "saved",

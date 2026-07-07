@@ -55,6 +55,10 @@ struct I18nStrings {
   const char* scr_connecting;  // "Connexion" / "Connecting"
   const char* scr_connected;   // "Connect\x82" (Connecté) / "Connected"
   const char* scr_disconnected;// "Deconnect\x82" / "Disconnect"
+  // ── Display: wifi connect-failure motif (boot STA fallback) ──
+  const char* scr_fail_auth;   // "Mdp refuse" / "Bad pass"
+  const char* scr_fail_noap;   // "Absent"     / "No AP"
+  const char* scr_fail_other;  // "Echec"      / "Failed"
   // ── Display: BLE provisioning ──
   const char* ble_connected;   // "Connect\x82" / "Connected"
   const char* ble_creds_l1;    // "Identifiant" / "WiFi creds"

@@ -822,6 +822,31 @@ void displayShowWifiLost() {
   suppressUpdateUntil = millis() + 2000;
 }
 
+// Boot STA connect failure splash. Same 3-line layout as displayShowWifiConnecting
+// (y=0/11/22) so it reads as the natural "next state" of the connecting screen:
+// WiFi (red) / motif (orange) / SSID (gray). Held ~3 s by the caller before the
+// AP-mode screen takes over.
+void displayShowWifiFailed(const char* ssid, WifiFailReason reason) {
+  const char* why = (reason == WIFI_FAIL_AUTH)  ? TR().scr_fail_auth
+                  : (reason == WIFI_FAIL_NO_AP) ? TR().scr_fail_noap
+                                                : TR().scr_fail_other;
+  Logger.printf("[Display] WiFi failed: %s (%s)\n", ssid, why);
+  display.clearDisplay();
+  display.setTextSize(1);
+
+  display.setTextColor(COLOR_RED);
+  display.setCursor(1, 0);
+  display.print(TR().scr_wifi);
+
+  display.setTextColor(COLOR_ORANGE);
+  display.setCursor(1, 11);
+  display.print(why);
+
+  display.setTextColor(COLOR_GRAY);
+  display.setCursor(1, 22);
+  display.print(truncSSID(ssid, 7));
+}
+
 void displayShowWifiReconnected() {
   // Kept as a public hook for compatibility, but it's now a soft reset:
   // we just restart the screen cycle from the first slot. We DO NOT
