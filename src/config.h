@@ -3,7 +3,7 @@
 
 #include <Arduino.h>
 
-#define FIRMWARE_VERSION "0.3.5"
+#define FIRMWARE_VERSION "0.4.0"
 
 // ── Default sensor enable state ─────────────────────────────────────────────
 // These are the FACTORY DEFAULTS for each sensor's enabled flag — the value
@@ -75,7 +75,7 @@
 // device drops into the normal AP-config flow. Set DEFAULT_WIFI_SSID to ""
 // to disable the default entirely and go straight to config mode.
 #define DEFAULT_WIFI_SSID      "AirLab"
-#define DEFAULT_WIFI_PASSWORD  "123plouf"
+#define DEFAULT_WIFI_PASSWORD  "123plou"
 
 // Data server (AirCarto — toujours actif)
 #define DATA_SERVER_URL "https://data.moduleair.fr/wifi_newDriver2026.php?device_type=ModuleAir"

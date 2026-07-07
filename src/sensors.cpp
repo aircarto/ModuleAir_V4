@@ -37,12 +37,12 @@ static bool sfa40Started = false;
 
 // `data` = struct de TRAVAIL : chaque readXxx() y écrit sa dernière lecture
 // instantanée. Ce n'est PAS ce qui est publié au reste du firmware.
-static SensorData data = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xFF, false, false, false, false, false, 0};
+static SensorData data = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xFF, false, false, false, false, false, 0, SENSOR_ABSENT};
 
 // `published` = snapshot PUBLIÉ (renvoyé par sensorsGetData(), lu par le
 // display, le data_sender et le dashboard web). Rempli uniquement par
 // sensorsFinalize() avec les moyennes de la fenêtre + l'état PM courant.
-static SensorData published = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xFF, false, false, false, false, false, 0};
+static SensorData published = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xFF, false, false, false, false, false, 0, SENSOR_ABSENT};
 
 // Accumulateurs de la fenêtre d'envoi : somme + nombre d'échantillons VALIDES
 // par capteur "spot". À l'envoi, moyenne = somme / nombre (cf. sensorsFinalize).
@@ -195,39 +195,109 @@ static void readNextPM() {
   Logger.println();
 }
 
-static void readMHZ19() {
-  Logger.println("[MH-Z19] Reading...");
+// ── CO2 : auto-détection MH-Z19 ↔ SenseAir S8/S88 ──────────────────────────
+// Les deux capteurs partagent le MÊME UART (mhzSerial, 9600 8N1) : un seul
+// connecteur CO2 sur la carte. On ne sait pas lequel est branché, donc on
+// sonde les deux protocoles et on mémorise le gagnant. Les en-têtes diffèrent
+// (MH-Z19 commence ses trames par 0xFF, la SenseAir répond en Modbus avec
+// l'adresse 0xFE) et on draine le RX avant chaque commande : aucune diaphonie.
+enum Co2Sensor { CO2_UNKNOWN, CO2_MHZ19, CO2_S88 };
+static Co2Sensor co2Sensor = CO2_UNKNOWN;
+static uint8_t co2FailStreak = 0;
+static const uint8_t CO2_REDETECT_AFTER = 3;  // échecs consécutifs avant re-détection (hot-swap)
 
+static const char* co2SensorName(Co2Sensor s) {
+  switch (s) {
+    case CO2_MHZ19: return "MH-Z19";
+    case CO2_S88:   return "SenseAir S8/S88";
+    default:        return "?";
+  }
+}
+
+// CRC-16 Modbus RTU (poly 0xA001), octets de poids faible en premier.
+static uint16_t modbusCrc16(const uint8_t* buf, uint8_t len) {
+  uint16_t crc = 0xFFFF;
+  for (uint8_t i = 0; i < len; i++) {
+    crc ^= buf[i];
+    for (uint8_t b = 0; b < 8; b++)
+      crc = (crc & 1) ? ((crc >> 1) ^ 0xA001) : (crc >> 1);
+  }
+  return crc;
+}
+
+// Tente une lecture MH-Z19 (lib WifWaf). Renvoie true + *out si valide.
+static bool mhz19TryRead(int* out) {
   int co2 = mhz19.getCO2();
-  uint8_t err = mhz19.errorCode;
+  if (mhz19.errorCode != RESULT_OK) return false;
+  if (co2 < MHZ_CO2_MIN || co2 > MHZ_CO2_MAX) return false;
+  *out = co2;
+  return true;
+}
 
-  // 1) Verifier l'errorCode de la lib WifWaf
-  if (err != RESULT_OK) {
+// Tente une lecture SenseAir S8/S88 (Modbus RTU brut sur mhzSerial).
+// Commande : lecture du registre d'entrée 0x0003 (CO2 ppm), 1 registre.
+// Réponse attendue : 7 octets [0xFE 0x04 0x02 hi lo crcLo crcHi].
+static bool s88TryRead(int* out) {
+  static const uint8_t cmd[8] = {0xFE, 0x04, 0x00, 0x03, 0x00, 0x01, 0xD5, 0xC5};
+
+  while (mhzSerial.available()) mhzSerial.read();   // draine le RX (vieilles trames)
+  mhzSerial.write(cmd, sizeof(cmd));
+  mhzSerial.flush();
+
+  uint8_t resp[7];
+  int n = 0;
+  unsigned long t0 = millis();
+  while (n < (int)sizeof(resp) && millis() - t0 < 250) {
+    if (mhzSerial.available()) resp[n++] = mhzSerial.read();
+  }
+  if (n < (int)sizeof(resp)) return false;                 // pas de réponse complète
+  if (resp[0] != 0xFE || resp[1] != 0x04 || resp[2] != 0x02) return false;  // en-tête
+
+  uint16_t crc = modbusCrc16(resp, 5);                     // CRC sur addr+func+len+data
+  if ((uint8_t)(crc & 0xFF) != resp[5] || (uint8_t)(crc >> 8) != resp[6]) return false;
+
+  int co2 = (resp[3] << 8) | resp[4];
+  if (co2 < MHZ_CO2_MIN || co2 > MHZ_CO2_MAX) return false;
+  *out = co2;
+  return true;
+}
+
+// Lit le CO2 du capteur détecté (ou sonde les deux si type inconnu) et écrit
+// data.co2 / data.co2_ok. Mémorise le type pour ne pas re-sonder à chaque fois ;
+// après CO2_REDETECT_AFTER échecs d'affilée, repasse en re-détection (hot-swap).
+static void readCO2() {
+  Logger.println("[CO2] Reading...");
+
+  int co2 = 0;
+  bool ok = false;
+
+  if (co2Sensor == CO2_MHZ19) {
+    ok = mhz19TryRead(&co2);
+  } else if (co2Sensor == CO2_S88) {
+    ok = s88TryRead(&co2);
+  } else {
+    // Type inconnu : on sonde le MH-Z19 d'abord (le plus courant), puis la SenseAir.
+    if (mhz19TryRead(&co2))      { co2Sensor = CO2_MHZ19; ok = true; }
+    else if (s88TryRead(&co2))   { co2Sensor = CO2_S88;   ok = true; }
+    if (ok) Logger.printf("  Capteur CO2 detecte: %s\n", co2SensorName(co2Sensor));
+  }
+
+  if (ok) {
+    data.co2 = co2;
+    data.co2_ok = true;
+    co2FailStreak = 0;
+    Logger.printf("  CO2 (%s): %d ppm\n", co2SensorName(co2Sensor), co2);
+  } else {
     data.co2_ok = false;
-    switch (err) {
-      case RESULT_NULL:    Logger.println("  Pas de reponse (NULL)"); break;
-      case RESULT_TIMEOUT: Logger.println("  Timeout UART — capteur deconnecte ?"); break;
-      case RESULT_MATCH:   Logger.println("  Header de trame invalide"); break;
-      case RESULT_CRC:     Logger.println("  Checksum invalide (bruit ligne ?)"); break;
-      case RESULT_FILTER:  Logger.println("  Valeur filtree par la lib (warm-up detecte)"); break;
-      default:             Logger.printf("  Erreur lib MHZ19: %u\n", err); break;
+    if (co2Sensor != CO2_UNKNOWN && ++co2FailStreak >= CO2_REDETECT_AFTER) {
+      Logger.printf("  %s muet x%u — re-detection au prochain cycle\n",
+                    co2SensorName(co2Sensor), co2FailStreak);
+      co2Sensor = CO2_UNKNOWN;
+      co2FailStreak = 0;
+    } else {
+      Logger.println("  Pas de mesure CO2 (capteur absent ou en warm-up)");
     }
-    Logger.println();
-    return;
   }
-
-  // 2) Filtrer les valeurs hors plage physique (400-5000 ppm)
-  if (co2 < MHZ_CO2_MIN || co2 > MHZ_CO2_MAX) {
-    data.co2_ok = false;
-    Logger.printf("  CO2 hors plage: %d ppm (attendu %d-%d)\n", co2, MHZ_CO2_MIN, MHZ_CO2_MAX);
-    Logger.println();
-    return;
-  }
-
-  data.co2 = co2;
-  data.co2_ok = true;
-  Logger.printf("  CO2:  %d ppm\n", co2);
-  Logger.printf("  Temp (MH-Z19): %d C\n", mhz19.getTemperature());
   Logger.println();
 }
 
@@ -295,14 +365,17 @@ static void readBME280() {
 static void readCCS811() {
   Logger.println("[CCS811] Reading...");
 
-  // 1) Ping I2C (CCS811 = adresse 0x5A par defaut, 0x5B en option)
+  // 1) Ping I2C (CCS811 = adresse 0x5A par defaut, 0x5B en option). C'est le
+  // "il est là ?" : si ça ACK, le capteur est PRÉSENT et l'UI ne dira jamais
+  // "non détecté" — au pire "préchauffage".
   bool present = i2cProbe(0x5A) || i2cProbe(0x5B);
 
   if (!present) {
     if (ccsFound) Logger.println("  Capteur perdu (etait present, debranche ?)");
-    else          Logger.println("  Capteur absent");
+    else          Logger.println("  Capteur absent (aucun ACK I2C 0x5A/0x5B)");
     ccsFound = false;
     data.ccs_ok = false;
+    data.ccs_state = SENSOR_ABSENT;
     Logger.println();
     return;
   }
@@ -315,17 +388,22 @@ static void readCCS811() {
       ccs.setDriveMode(CCS811_DRIVE_MODE_10SEC);
       Logger.println("  Init OK");
     } else {
-      Logger.println("  Init echoue malgre I2C present");
+      // Présent en I2C mais l'appli interne n'est pas prête (APP_VALID) :
+      // transitoire au boot, on traite en chauffe plutôt qu'en absence.
+      Logger.println("  Init echoue malgre I2C present (APP pas prete ?)");
       data.ccs_ok = false;
+      data.ccs_state = SENSOR_WARMING;
       Logger.println();
       return;
     }
   }
 
-  // 3) Lecture normale
+  // 3) Présent mais pas encore de mesure (DATA_READY non levé) → on attend
+  // le 1er échantillon. Présent en I2C, donc surtout PAS "non détecté".
   if (!ccs.available()) {
     data.ccs_ok = false;
-    Logger.println("  Donnees pas encore pretes (warm-up)");
+    data.ccs_state = SENSOR_WARMING;
+    Logger.println("  Present, donnees pas encore pretes (en attente)");
     Logger.println();
     return;
   }
@@ -339,11 +417,14 @@ static void readCCS811() {
     data.tvoc = ccs.getTVOC();
     data.eco2 = ccs.geteCO2();
     data.ccs_ok = true;
+    data.ccs_state = SENSOR_OK;   // détecté + mesure fraîche = OK direct
     Logger.printf("  TVOC:  %d ppb\n", data.tvoc);
     Logger.printf("  eCO2:  %d ppm\n", data.eco2);
   } else {
+    // Présent mais lecture KO transitoire : on reste en chauffe, pas en absence.
     data.ccs_ok = false;
-    Logger.println("  Erreur de lecture");
+    data.ccs_state = SENSOR_WARMING;
+    Logger.println("  Erreur de lecture (transitoire)");
   }
 
   Logger.println();
@@ -484,8 +565,8 @@ void sensorsInit() {
   mhzSerial.begin(MHZ19_BAUD, SERIAL_8N1, MHZ19_RX, MHZ19_TX);
   mhz19.begin(mhzSerial);
   mhz19.autoCalibration(false);
-  Logger.println(cfg.mhz19_enabled ? "MH-Z19 init OK"
-                                   : "MH-Z19 init OK (disabled — toggle in UI to enable)");
+  Logger.println(cfg.mhz19_enabled ? "CO2 init OK (auto MH-Z19/SenseAir S8/S88)"
+                                   : "CO2 init OK (disabled — toggle in UI to enable)");
   prevMhzEnabled = cfg.mhz19_enabled;
 
   Wire.begin(I2C_SDA, I2C_SCL);
@@ -563,7 +644,9 @@ static void rearmMhzUart() {
   delay(80);
   mhz19.begin(mhzSerial);
   mhz19.autoCalibration(false);
-  Logger.println("[MH-Z19] Re-enabled at runtime");
+  co2Sensor = CO2_UNKNOWN;   // force la re-détection MH-Z19/SenseAir après réactivation
+  co2FailStreak = 0;
+  Logger.println("[CO2] Re-enabled at runtime (auto MH-Z19/SenseAir)");
 }
 
 // Lit les capteurs "spot" (CO2, T/H/P, COV/eCO2, HCHO) et accumule chaque
@@ -578,7 +661,7 @@ void sensorsSample() {
 
   if (cfg.mhz19_enabled) {
     if (!prevMhzEnabled) rearmMhzUart();
-    readMHZ19();
+    readCO2();   // auto-détection MH-Z19 ↔ SenseAir S8/S88
     if (data.co2_ok) { accum.co2 += data.co2; accum.co2_n++; }
   }
   prevMhzEnabled = cfg.mhz19_enabled;
@@ -661,6 +744,10 @@ void sensorsFinalize() {
   } else {
     published.ccs_ok = false;
   }
+  // L'état présence/chauffe est INSTANTANÉ (dernière lecture), pas moyenné :
+  // l'UI veut savoir si le capteur répond MAINTENANT en I2C, pour ne pas crier
+  // "non détecté" pendant la chauffe ni après un débranchement en fin de fenêtre.
+  published.ccs_state = data.ccs_state;
 
   // ── Formaldéhyde (SFA40) ──
   if (accum.sfa_n > 0) {
