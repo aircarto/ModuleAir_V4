@@ -4,7 +4,7 @@ Toutes les modifications notables du firmware ModuleAir V4 sont documentées ici
 
 Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versioning [Semantic Versioning](https://semver.org/).
 
-## [Non publié]
+## [0.4.0] - 2026-07-07
 
 ### Sécurité
 
@@ -28,6 +28,13 @@ Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versi
 
 ### Ajouté
 
+- **Compatibilité capteur SensAir** : prise en charge matérielle du capteur
+  SensAir en plus des capteurs existants (détection/lecture au boot, intégration
+  affichage matrice et carte web). Ajustements associés BLE Improv, WiFi manager
+  et affichage.
+- **Sous-échantillonnage capteurs + moyennage des mesures** : les capteurs sont
+  lus plus fréquemment que le cycle d'envoi et les valeurs sont moyennées avant
+  publication, pour des lectures plus stables et moins de bruit ponctuel.
 - Env PlatformIO `atmosud_provision` : provisioning usine des capteurs AtmoSud
   (stamp NVS au 1er boot, idempotent, survit aux OTA et au reset WiFi).
 - **Migration automatique** des capteurs AtmoSud déjà déployés : au boot, si
