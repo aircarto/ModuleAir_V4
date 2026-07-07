@@ -469,6 +469,66 @@ static String formatUptime(unsigned long ms) {
   return String(buf);
 }
 
+
+static String jsonEscape(const String& s) {
+  String out;
+  out.reserve(s.length() + 8);
+  for (size_t i = 0; i < s.length(); i++) {
+    char c = s[i];
+    switch (c) {
+      case '"': out += "\\\""; break;
+      case '\\': out += "\\\\"; break;
+      case '\n': out += "\\n"; break;
+      case '\r': out += "\\r"; break;
+      case '\t': out += "\\t"; break;
+      default:
+        if ((uint8_t)c < 0x20) out += ' ';
+        else out += c;
+        break;
+    }
+  }
+  return out;
+}
+
+static inline const char* jsonBool(bool v) {
+  return v ? "true" : "false";
+}
+
+static const char* apiWifiStateName() {
+  switch (wifiState) {
+    case WS_STA_CONNECTED:    return "STA_MODE";
+    case WS_STA_RECONNECTING: return "RECONNECTING";
+    case WS_AP_CONFIG:
+    case WS_AP_DATA:          return "AP_MODE";
+    case WS_AP_RETRYING:      return "FALLBACK_AP";
+  }
+  return "DISCONNECTED";
+}
+
+static void jsonAddStringField(String& json, const char* key, const String& value, bool& first) {
+  if (!first) json += ',';
+  first = false;
+  json += '"'; json += key; json += "\":\""; json += jsonEscape(value); json += '"';
+}
+
+static void jsonAddBoolField(String& json, const char* key, bool value, bool& first) {
+  if (!first) json += ',';
+  first = false;
+  json += '"'; json += key; json += "\":"; json += jsonBool(value);
+}
+
+static void jsonAddIntField(String& json, const char* key, long value, bool& first) {
+  if (!first) json += ',';
+  first = false;
+  json += '"'; json += key; json += "\":"; json += String(value);
+}
+
+static void jsonAddFloatField(String& json, const char* key, float value, uint8_t decimals, bool& first) {
+  if (!first) json += ',';
+  first = false;
+  json += '"'; json += key; json += "\":"; json += String(value, (unsigned int)decimals);
+}
+
 static void handleRootConnected() {
   sendHeader();
 
@@ -498,7 +558,9 @@ static void handleRootConnected() {
         (!d.pm_ok    && sc.npm_enabled)    ||
         (!d.co2_ok   && sc.mhz19_enabled)  ||
         (!d.bme_ok   && sc.bme280_enabled) ||
-        (!d.ccs_ok   && sc.ccs811_enabled) ||
+        // CCS811 : alerte rouge UNIQUEMENT si vraiment absent (pas d'ACK I2C).
+        // En chauffe (présent mais pas de data) → pas d'alerte, c'est normal.
+        (d.ccs_state == SENSOR_ABSENT && sc.ccs811_enabled) ||
         (!d.sfa40_ok && sc.sfa40_enabled));
 
     if (hasAlerts) {
@@ -538,7 +600,7 @@ static void handleRootConnected() {
         alerts += "<div class='data-row'><span class='data-label'>BME280 (T/H/P)</span>"
                   "<span class='data-value bad' style='text-align:right'>" + String(TR().sensor_not_found) + "</span></div>";
       }
-      if (!d.ccs_ok && sc.ccs811_enabled) {
+      if (d.ccs_state == SENSOR_ABSENT && sc.ccs811_enabled) {
         alerts += "<div class='data-row'><span class='data-label'>" + String(TR().sensor_cov_name) + "</span>"
                   "<span class='data-value bad' style='text-align:right'>" + String(TR().sensor_not_found) + "</span></div>";
       }
@@ -598,7 +660,9 @@ static void handleRootConnected() {
   chunk += "</div>";
   server.sendContent(chunk);
 
-  // COV (CCS811)
+  // COV (CCS811) : la valeur dès qu'on en a une, sinon un simple "en attente"
+  // (neutre) tant que la 1ère mesure n'est pas tombée. Le rouge "non détecté"
+  // est géré ailleurs (bannière d'alerte) et UNIQUEMENT si l'I2C ne répond pas.
   chunk = "<div class='card'><h2>" + String(TR().card_cov) + "</h2>";
   if (d.ccs_ok) {
     String tvocClass = d.tvoc < 220 ? "good" : d.tvoc < 660 ? "warn" : "bad";
@@ -657,11 +721,19 @@ static void handleRootConnected() {
       if (warmingUp) return "warm";
       return ok ? "ok" : "err";
     };
+    // CCS811 : badge tri-état (présent-en-chauffe = orange "warm", pas rouge).
+    auto ccsBadgeClass = [&]() -> const char* {
+      if (!sc.ccs811_enabled) return "off";
+      if (warmingUp) return "warm";
+      if (d.ccs_state == SENSOR_ABSENT)  return "err";
+      if (d.ccs_state == SENSOR_WARMING) return "warm";
+      return "ok";
+    };
     chunk += "<div class='data-row'><span class='data-label'>" + String(TR().web_sensors) + "</span><span class='data-value'>";
     chunk += "<span class='sensor-badge " + String(badgeClass(sc.npm_enabled,    d.pm_ok))    + "'>NextPM</span>";
     chunk += "<span class='sensor-badge " + String(badgeClass(sc.mhz19_enabled,  d.co2_ok))   + "'>MH-Z19</span>";
     chunk += "<span class='sensor-badge " + String(badgeClass(sc.bme280_enabled, d.bme_ok))   + "'>BME280</span>";
-    chunk += "<span class='sensor-badge " + String(badgeClass(sc.ccs811_enabled, d.ccs_ok))   + "'>CCS811</span>";
+    chunk += "<span class='sensor-badge " + String(ccsBadgeClass())   + "'>CCS811</span>";
     chunk += "<span class='sensor-badge " + String(badgeClass(sc.sfa40_enabled,  d.sfa40_ok)) + "'>SFA40</span>";
     chunk += "</span></div>";
   }
@@ -1377,6 +1449,172 @@ static void handleDoUpdate() {
   }
 }
 
+
+static void handleApiInfo() {
+  const SensorSettings& sc = settingsGetSensors();
+  String ip = WiFi.status() == WL_CONNECTED ? WiFi.localIP().toString() : WiFi.softAPIP().toString();
+  String ssid = WiFi.status() == WL_CONNECTED ? WiFi.SSID() : apSSID;
+
+  String sensorsJson = "[";
+  bool firstSensor = true;
+  auto addSensor = [&](const char* name, bool enabled) {
+    if (!enabled) return;
+    if (!firstSensor) sensorsJson += ',';
+    firstSensor = false;
+    sensorsJson += '"'; sensorsJson += name; sensorsJson += '"';
+  };
+  addSensor("npm", sc.npm_enabled);
+  addSensor("mhz19", sc.mhz19_enabled);
+  addSensor("bme280", sc.bme280_enabled);
+  addSensor("ccs811", sc.ccs811_enabled);
+  addSensor("sfa40", sc.sfa40_enabled);
+  sensorsJson += ']';
+
+  String json = "{";
+  bool first = true;
+  jsonAddStringField(json, "chipId", deviceId, first);
+  jsonAddStringField(json, "version", FIRMWARE_VERSION, first);
+  jsonAddStringField(json, "wifiState", apiWifiStateName(), first);
+  jsonAddStringField(json, "ssid", ssid, first);
+  jsonAddStringField(json, "hostname", apSSID, first);
+  jsonAddStringField(json, "ip", ip, first);
+  jsonAddIntField(json, "rssi", WiFi.status() == WL_CONNECTED ? WiFi.RSSI() : 0, first);
+  jsonAddIntField(json, "uptime", millis() / 1000, first);
+  jsonAddStringField(json, "latitude", "", first);
+  jsonAddStringField(json, "longitude", "", first);
+  if (!first) json += ',';
+  json += "\"sensors\":" + sensorsJson;
+  json += '}';
+  server.send(200, "application/json", json);
+}
+
+static void handleApiConfig() {
+  const SensorSettings& sc = settingsGetSensors();
+  const ScreenSettings& ss = settingsGetScreens();
+  const ThresholdsCO2& co2th = settingsGetThresholdsCO2();
+
+  String json = "{";
+  bool first = true;
+  jsonAddStringField(json, "wlanssid", WiFi.SSID(), first);
+  jsonAddBoolField(json, "has_wifi", WiFi.status() == WL_CONNECTED, first);
+  jsonAddBoolField(json, "has_lora", false, first);
+  jsonAddStringField(json, "latitude", "", first);
+  jsonAddStringField(json, "longitude", "", first);
+
+  jsonAddBoolField(json, "npm_read", sc.npm_enabled, first);
+  jsonAddBoolField(json, "mhz19_read", sc.mhz19_enabled, first);
+  jsonAddBoolField(json, "bme280_read", sc.bme280_enabled, first);
+  jsonAddBoolField(json, "bmx280_read", sc.bme280_enabled, first);
+  jsonAddBoolField(json, "mhz16_read", false, first);
+  jsonAddBoolField(json, "s88_read", false, first);
+  jsonAddBoolField(json, "ccs811_read", sc.ccs811_enabled, first);
+  jsonAddBoolField(json, "sfa40_read", sc.sfa40_enabled, first);
+  jsonAddBoolField(json, "nebuleair_read", false, first);
+  jsonAddStringField(json, "nebuleair_id", "", first);
+
+  jsonAddBoolField(json, "has_matrix", true, first);
+  jsonAddBoolField(json, "has_ssd1306", false, first);
+  jsonAddBoolField(json, "display_measure", true, first);
+  jsonAddBoolField(json, "display_forecast", false, first);
+
+  jsonAddBoolField(json, "screen_pm01", ss.pm1, first);
+  jsonAddBoolField(json, "screen_pm25", ss.pm25, first);
+  jsonAddBoolField(json, "screen_pm10", ss.pm10, first);
+  jsonAddBoolField(json, "screen_co2", ss.co2, first);
+  jsonAddBoolField(json, "screen_cov", ss.tvoc, first);
+  jsonAddBoolField(json, "screen_temp", ss.temp, first);
+  jsonAddBoolField(json, "screen_humi", ss.humi, first);
+  jsonAddBoolField(json, "screen_press", false, first);
+  jsonAddBoolField(json, "screen_hcho", ss.hcho, first);
+  jsonAddBoolField(json, "logo_moduleair", ss.logo_moduleair, first);
+  jsonAddBoolField(json, "logo_aircarto", ss.logo_aircarto, first);
+  jsonAddBoolField(json, "logo_atmosud", ss.logo_atmosud, first);
+#ifdef BUILD_LAIRETMOI
+  jsonAddBoolField(json, "logo_lairetmoi", ss.logo_lairetmoi, first);
+#else
+  jsonAddBoolField(json, "logo_lairetmoi", false, first);
+#endif
+
+  jsonAddIntField(json, "display_brightness", displayGetBrightness(), first);
+  jsonAddBoolField(json, "debug_splash", displayGetDebugSplash(), first);
+  jsonAddStringField(json, "language", i18nGetLang() == LANG_EN ? "EN" : "FR", first);
+  jsonAddIntField(json, "co2_good", co2th.good, first);
+  jsonAddIntField(json, "co2_bad", co2th.bad, first);
+
+  jsonAddBoolField(json, "send2custom", false, first);
+  jsonAddBoolField(json, "send2dusti", false, first);
+  jsonAddIntField(json, "sending_intervall_ms", DATA_SEND_INTERVAL, first);
+  jsonAddStringField(json, "temp_offset", "0", first);
+  json += '}';
+  server.send(200, "application/json", json);
+}
+
+static void handleApiWifi() {
+  Logger.println("[API] /api/wifi - launching WiFi scan");
+  int n = WiFi.scanNetworks();
+  if (n < 0) n = 0;
+
+  String json = "{\"count\":" + String(n) + ",\"networks\":[";
+  for (int i = 0; i < n; i++) {
+    if (i > 0) json += ',';
+    json += "{\"ssid\":\"" + jsonEscape(WiFi.SSID(i)) + "\",\"rssi\":" + String(WiFi.RSSI(i));
+    json += ",\"channel\":" + String(WiFi.channel(i));
+    json += ",\"secure\":" + String(WiFi.encryptionType(i) != WIFI_AUTH_OPEN ? "true" : "false") + "}";
+  }
+  json += "]}";
+
+  WiFi.scanDelete();
+  scanCount = -1;
+  scanInProgress = false;
+  server.send(200, "application/json", json);
+}
+
+static void addSensorValue(String& json, bool& first, const char* type, const String& value) {
+  if (!first) json += ',';
+  first = false;
+  json += "{\"value_type\":\"";
+  json += type;
+  json += "\",\"value\":\"";
+  json += jsonEscape(value);
+  json += "\"}";
+}
+
+static void handleDataJson() {
+  const SensorData& d = sensorsGetData();
+  String json = "{\"software_version\":\"" FIRMWARE_VERSION "\"";
+  if (d.lastReadTime > 0) {
+    json += ",\"age\":\"" + String((millis() - d.lastReadTime) / 1000) + "\"";
+  }
+  json += ",\"sensordatavalues\":[";
+
+  bool first = true;
+  if (d.pm_ok) {
+    addSensorValue(json, first, "NPM_P0", String(d.pm1, 1));
+    addSensorValue(json, first, "NPM_P1", String(d.pm10, 1));
+    addSensorValue(json, first, "NPM_P2", String(d.pm25, 1));
+  }
+  if (d.bme_ok) {
+    addSensorValue(json, first, "BME280_temperature", String(d.temperature, 1));
+    addSensorValue(json, first, "BME280_humidity", String(d.humidity, 1));
+    addSensorValue(json, first, "BME280_pressure", String(d.pressure * 100.0f, 1));
+  }
+  if (d.co2_ok) {
+    addSensorValue(json, first, "MHZ19_CO2", String(d.co2));
+  }
+  if (d.ccs_ok) {
+    addSensorValue(json, first, "CCS811", String(d.tvoc));
+  }
+  if (d.sfa40_ok) {
+    addSensorValue(json, first, "SFA40_HCHO", String(d.hcho, 1));
+  }
+  if (WiFi.status() == WL_CONNECTED) {
+    addSensorValue(json, first, "signal", String(WiFi.RSSI()));
+  }
+
+  json += "]}";
+  server.send(200, "application/json", json);
+}
+
 // =============================================
 // Init & Loop
 // =============================================
@@ -1480,6 +1718,10 @@ void wifiManagerInit() {
   }
 
   server.on("/", handleRoot);
+  server.on("/api/info", handleApiInfo);
+  server.on("/api/config", handleApiConfig);
+  server.on("/api/wifi", handleApiWifi);
+  server.on("/data.json", handleDataJson);
   server.on("/scan", handleScan);
   server.on("/save", HTTP_POST, handleSave);
   server.on("/reset", HTTP_POST, handleReset);

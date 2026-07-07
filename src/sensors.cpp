@@ -16,7 +16,7 @@ static HardwareSerial mhzSerial(2);
 static MHZ19 mhz19;
 
 // Previous toggle state, used to detect disabled->enabled transitions in
-// sensorsRead() so we can drain the stale RX buffer and re-bind the library
+// sensorsSample()/sensorsFinalize() so we can drain the stale RX buffer and re-bind the library
 // to the (already opened) UART. We follow the ESPHome / Tasmota convention:
 // keep the UART permanently begun at boot regardless of the toggle, and gate
 // the actual read at poll time. This avoids HardwareSerial::end()/begin()
@@ -35,7 +35,33 @@ static bool ccsFound = false;
 static bool sfa40Found = false;
 static bool sfa40Started = false;
 
-static SensorData data = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xFF, false, false, false, false, false, 0};
+// `data` = struct de TRAVAIL : chaque readXxx() y écrit sa dernière lecture
+// instantanée. Ce n'est PAS ce qui est publié au reste du firmware.
+static SensorData data = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xFF, false, false, false, false, false, 0, SENSOR_ABSENT};
+
+// `published` = snapshot PUBLIÉ (renvoyé par sensorsGetData(), lu par le
+// display, le data_sender et le dashboard web). Rempli uniquement par
+// sensorsFinalize() avec les moyennes de la fenêtre + l'état PM courant.
+static SensorData published = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xFF, false, false, false, false, false, 0, SENSOR_ABSENT};
+
+// Accumulateurs de la fenêtre d'envoi : somme + nombre d'échantillons VALIDES
+// par capteur "spot". À l'envoi, moyenne = somme / nombre (cf. sensorsFinalize).
+// Sommes en double pour éviter tout overflow et garder la précision.
+struct SensorAccum {
+  double co2;    uint16_t co2_n;
+  double temp;
+  double hum;
+  double press;  uint16_t bme_n;
+  double tvoc;
+  double eco2;   uint16_t ccs_n;
+  double hcho;   uint16_t sfa_n;
+};
+static SensorAccum accum;  // statique → initialisé à zéro au boot
+
+static void accumReset() { accum = SensorAccum{}; }
+
+// Moyenne entière arrondie d'une somme positive (CO2/COV/eCO2 sont tous >= 0).
+static int avgRoundI(double sum, uint16_t n) { return (int)(sum / n + 0.5); }
 
 // Registres NextPM
 #define REG_STATUS     0x13
@@ -169,39 +195,109 @@ static void readNextPM() {
   Logger.println();
 }
 
-static void readMHZ19() {
-  Logger.println("[MH-Z19] Reading...");
+// ── CO2 : auto-détection MH-Z19 ↔ SenseAir S8/S88 ──────────────────────────
+// Les deux capteurs partagent le MÊME UART (mhzSerial, 9600 8N1) : un seul
+// connecteur CO2 sur la carte. On ne sait pas lequel est branché, donc on
+// sonde les deux protocoles et on mémorise le gagnant. Les en-têtes diffèrent
+// (MH-Z19 commence ses trames par 0xFF, la SenseAir répond en Modbus avec
+// l'adresse 0xFE) et on draine le RX avant chaque commande : aucune diaphonie.
+enum Co2Sensor { CO2_UNKNOWN, CO2_MHZ19, CO2_S88 };
+static Co2Sensor co2Sensor = CO2_UNKNOWN;
+static uint8_t co2FailStreak = 0;
+static const uint8_t CO2_REDETECT_AFTER = 3;  // échecs consécutifs avant re-détection (hot-swap)
 
+static const char* co2SensorName(Co2Sensor s) {
+  switch (s) {
+    case CO2_MHZ19: return "MH-Z19";
+    case CO2_S88:   return "SenseAir S8/S88";
+    default:        return "?";
+  }
+}
+
+// CRC-16 Modbus RTU (poly 0xA001), octets de poids faible en premier.
+static uint16_t modbusCrc16(const uint8_t* buf, uint8_t len) {
+  uint16_t crc = 0xFFFF;
+  for (uint8_t i = 0; i < len; i++) {
+    crc ^= buf[i];
+    for (uint8_t b = 0; b < 8; b++)
+      crc = (crc & 1) ? ((crc >> 1) ^ 0xA001) : (crc >> 1);
+  }
+  return crc;
+}
+
+// Tente une lecture MH-Z19 (lib WifWaf). Renvoie true + *out si valide.
+static bool mhz19TryRead(int* out) {
   int co2 = mhz19.getCO2();
-  uint8_t err = mhz19.errorCode;
+  if (mhz19.errorCode != RESULT_OK) return false;
+  if (co2 < MHZ_CO2_MIN || co2 > MHZ_CO2_MAX) return false;
+  *out = co2;
+  return true;
+}
 
-  // 1) Verifier l'errorCode de la lib WifWaf
-  if (err != RESULT_OK) {
+// Tente une lecture SenseAir S8/S88 (Modbus RTU brut sur mhzSerial).
+// Commande : lecture du registre d'entrée 0x0003 (CO2 ppm), 1 registre.
+// Réponse attendue : 7 octets [0xFE 0x04 0x02 hi lo crcLo crcHi].
+static bool s88TryRead(int* out) {
+  static const uint8_t cmd[8] = {0xFE, 0x04, 0x00, 0x03, 0x00, 0x01, 0xD5, 0xC5};
+
+  while (mhzSerial.available()) mhzSerial.read();   // draine le RX (vieilles trames)
+  mhzSerial.write(cmd, sizeof(cmd));
+  mhzSerial.flush();
+
+  uint8_t resp[7];
+  int n = 0;
+  unsigned long t0 = millis();
+  while (n < (int)sizeof(resp) && millis() - t0 < 250) {
+    if (mhzSerial.available()) resp[n++] = mhzSerial.read();
+  }
+  if (n < (int)sizeof(resp)) return false;                 // pas de réponse complète
+  if (resp[0] != 0xFE || resp[1] != 0x04 || resp[2] != 0x02) return false;  // en-tête
+
+  uint16_t crc = modbusCrc16(resp, 5);                     // CRC sur addr+func+len+data
+  if ((uint8_t)(crc & 0xFF) != resp[5] || (uint8_t)(crc >> 8) != resp[6]) return false;
+
+  int co2 = (resp[3] << 8) | resp[4];
+  if (co2 < MHZ_CO2_MIN || co2 > MHZ_CO2_MAX) return false;
+  *out = co2;
+  return true;
+}
+
+// Lit le CO2 du capteur détecté (ou sonde les deux si type inconnu) et écrit
+// data.co2 / data.co2_ok. Mémorise le type pour ne pas re-sonder à chaque fois ;
+// après CO2_REDETECT_AFTER échecs d'affilée, repasse en re-détection (hot-swap).
+static void readCO2() {
+  Logger.println("[CO2] Reading...");
+
+  int co2 = 0;
+  bool ok = false;
+
+  if (co2Sensor == CO2_MHZ19) {
+    ok = mhz19TryRead(&co2);
+  } else if (co2Sensor == CO2_S88) {
+    ok = s88TryRead(&co2);
+  } else {
+    // Type inconnu : on sonde le MH-Z19 d'abord (le plus courant), puis la SenseAir.
+    if (mhz19TryRead(&co2))      { co2Sensor = CO2_MHZ19; ok = true; }
+    else if (s88TryRead(&co2))   { co2Sensor = CO2_S88;   ok = true; }
+    if (ok) Logger.printf("  Capteur CO2 detecte: %s\n", co2SensorName(co2Sensor));
+  }
+
+  if (ok) {
+    data.co2 = co2;
+    data.co2_ok = true;
+    co2FailStreak = 0;
+    Logger.printf("  CO2 (%s): %d ppm\n", co2SensorName(co2Sensor), co2);
+  } else {
     data.co2_ok = false;
-    switch (err) {
-      case RESULT_NULL:    Logger.println("  Pas de reponse (NULL)"); break;
-      case RESULT_TIMEOUT: Logger.println("  Timeout UART — capteur deconnecte ?"); break;
-      case RESULT_MATCH:   Logger.println("  Header de trame invalide"); break;
-      case RESULT_CRC:     Logger.println("  Checksum invalide (bruit ligne ?)"); break;
-      case RESULT_FILTER:  Logger.println("  Valeur filtree par la lib (warm-up detecte)"); break;
-      default:             Logger.printf("  Erreur lib MHZ19: %u\n", err); break;
+    if (co2Sensor != CO2_UNKNOWN && ++co2FailStreak >= CO2_REDETECT_AFTER) {
+      Logger.printf("  %s muet x%u — re-detection au prochain cycle\n",
+                    co2SensorName(co2Sensor), co2FailStreak);
+      co2Sensor = CO2_UNKNOWN;
+      co2FailStreak = 0;
+    } else {
+      Logger.println("  Pas de mesure CO2 (capteur absent ou en warm-up)");
     }
-    Logger.println();
-    return;
   }
-
-  // 2) Filtrer les valeurs hors plage physique (400-5000 ppm)
-  if (co2 < MHZ_CO2_MIN || co2 > MHZ_CO2_MAX) {
-    data.co2_ok = false;
-    Logger.printf("  CO2 hors plage: %d ppm (attendu %d-%d)\n", co2, MHZ_CO2_MIN, MHZ_CO2_MAX);
-    Logger.println();
-    return;
-  }
-
-  data.co2 = co2;
-  data.co2_ok = true;
-  Logger.printf("  CO2:  %d ppm\n", co2);
-  Logger.printf("  Temp (MH-Z19): %d C\n", mhz19.getTemperature());
   Logger.println();
 }
 
@@ -269,14 +365,17 @@ static void readBME280() {
 static void readCCS811() {
   Logger.println("[CCS811] Reading...");
 
-  // 1) Ping I2C (CCS811 = adresse 0x5A par defaut, 0x5B en option)
+  // 1) Ping I2C (CCS811 = adresse 0x5A par defaut, 0x5B en option). C'est le
+  // "il est là ?" : si ça ACK, le capteur est PRÉSENT et l'UI ne dira jamais
+  // "non détecté" — au pire "préchauffage".
   bool present = i2cProbe(0x5A) || i2cProbe(0x5B);
 
   if (!present) {
     if (ccsFound) Logger.println("  Capteur perdu (etait present, debranche ?)");
-    else          Logger.println("  Capteur absent");
+    else          Logger.println("  Capteur absent (aucun ACK I2C 0x5A/0x5B)");
     ccsFound = false;
     data.ccs_ok = false;
+    data.ccs_state = SENSOR_ABSENT;
     Logger.println();
     return;
   }
@@ -289,17 +388,22 @@ static void readCCS811() {
       ccs.setDriveMode(CCS811_DRIVE_MODE_10SEC);
       Logger.println("  Init OK");
     } else {
-      Logger.println("  Init echoue malgre I2C present");
+      // Présent en I2C mais l'appli interne n'est pas prête (APP_VALID) :
+      // transitoire au boot, on traite en chauffe plutôt qu'en absence.
+      Logger.println("  Init echoue malgre I2C present (APP pas prete ?)");
       data.ccs_ok = false;
+      data.ccs_state = SENSOR_WARMING;
       Logger.println();
       return;
     }
   }
 
-  // 3) Lecture normale
+  // 3) Présent mais pas encore de mesure (DATA_READY non levé) → on attend
+  // le 1er échantillon. Présent en I2C, donc surtout PAS "non détecté".
   if (!ccs.available()) {
     data.ccs_ok = false;
-    Logger.println("  Donnees pas encore pretes (warm-up)");
+    data.ccs_state = SENSOR_WARMING;
+    Logger.println("  Present, donnees pas encore pretes (en attente)");
     Logger.println();
     return;
   }
@@ -313,11 +417,14 @@ static void readCCS811() {
     data.tvoc = ccs.getTVOC();
     data.eco2 = ccs.geteCO2();
     data.ccs_ok = true;
+    data.ccs_state = SENSOR_OK;   // détecté + mesure fraîche = OK direct
     Logger.printf("  TVOC:  %d ppb\n", data.tvoc);
     Logger.printf("  eCO2:  %d ppm\n", data.eco2);
   } else {
+    // Présent mais lecture KO transitoire : on reste en chauffe, pas en absence.
     data.ccs_ok = false;
-    Logger.println("  Erreur de lecture");
+    data.ccs_state = SENSOR_WARMING;
+    Logger.println("  Erreur de lecture (transitoire)");
   }
 
   Logger.println();
@@ -446,8 +553,8 @@ void sensorsInit() {
   // default state. The toggle gates the *read*, not the hardware lifecycle.
   // This is what lets a user re-enable a sensor that started disabled (via
   // its SENSOR_*_DEFAULT or a previous UI toggle-off) and get it working on
-  // the next cycle without a reboot — the lazy re-arm in sensorsRead() just
-  // drains the RX buffer and re-binds the library. We never call
+  // the next cycle without a reboot — the lazy re-arm in sensorsSample()/
+  // sensorsFinalize() just drains the RX buffer and re-binds the library. We never call
   // HardwareSerial::end() (long bug history on ESP32).
   nextpmSerial.begin(NEXTPM_BAUD, SERIAL_8E1, NEXTPM_RX, NEXTPM_TX);
   nextpm.begin(NEXTPM_ADDR, nextpmSerial);
@@ -458,8 +565,8 @@ void sensorsInit() {
   mhzSerial.begin(MHZ19_BAUD, SERIAL_8N1, MHZ19_RX, MHZ19_TX);
   mhz19.begin(mhzSerial);
   mhz19.autoCalibration(false);
-  Logger.println(cfg.mhz19_enabled ? "MH-Z19 init OK"
-                                   : "MH-Z19 init OK (disabled — toggle in UI to enable)");
+  Logger.println(cfg.mhz19_enabled ? "CO2 init OK (auto MH-Z19/SenseAir S8/S88)"
+                                   : "CO2 init OK (disabled — toggle in UI to enable)");
   prevMhzEnabled = cfg.mhz19_enabled;
 
   Wire.begin(I2C_SDA, I2C_SCL);
@@ -537,16 +644,65 @@ static void rearmMhzUart() {
   delay(80);
   mhz19.begin(mhzSerial);
   mhz19.autoCalibration(false);
-  Logger.println("[MH-Z19] Re-enabled at runtime");
+  co2Sensor = CO2_UNKNOWN;   // force la re-détection MH-Z19/SenseAir après réactivation
+  co2FailStreak = 0;
+  Logger.println("[CO2] Re-enabled at runtime (auto MH-Z19/SenseAir)");
 }
 
-void sensorsRead() {
+// Lit les capteurs "spot" (CO2, T/H/P, COV/eCO2, HCHO) et accumule chaque
+// lecture valide dans `accum`. Appelé toutes les SENSOR_SAMPLE_INTERVAL.
+// Les PM (NextPM) ne sont PAS lus ici : leur moyenne 1 min vient du capteur et
+// est lue une fois par envoi dans sensorsFinalize().
+//
+// L'ordre BME280 -> CCS811 est conservé : readCCS811() utilise la temp/hum du
+// BME280 (data.bme_ok) pour la compensation environnementale.
+void sensorsSample() {
   const SensorSettings& cfg = settingsGetSensors();
 
-  // When a sensor is disabled by the user, force its _ok flag to false so
-  // downstream consumers (data_sender, display, web dashboard) stop treating
-  // the last cached reading as fresh data. Without this, toggling a sensor
-  // off only stops the read but leaves stale values being sent.
+  if (cfg.mhz19_enabled) {
+    if (!prevMhzEnabled) rearmMhzUart();
+    readCO2();   // auto-détection MH-Z19 ↔ SenseAir S8/S88
+    if (data.co2_ok) { accum.co2 += data.co2; accum.co2_n++; }
+  }
+  prevMhzEnabled = cfg.mhz19_enabled;
+
+  if (cfg.bme280_enabled) {
+    readBME280();
+    if (data.bme_ok) {
+      accum.temp  += data.temperature;
+      accum.hum   += data.humidity;
+      accum.press += data.pressure;
+      accum.bme_n++;
+    }
+  }
+
+  if (cfg.ccs811_enabled) {
+    readCCS811();
+    if (data.ccs_ok) {
+      accum.tvoc += data.tvoc;
+      accum.eco2 += data.eco2;
+      accum.ccs_n++;
+    }
+  }
+
+  if (cfg.sfa40_enabled) {
+    readSFA40();
+    if (data.sfa40_ok) { accum.hcho += data.hcho; accum.sfa_n++; }
+  }
+}
+
+// Lit les PM (registre 1 min du NextPM), calcule la moyenne des échantillons
+// "spot" accumulés depuis le dernier envoi, publie le snapshot dans `published`
+// puis remet les accumulateurs à zéro. Appelé à chaque DATA_SEND_INTERVAL.
+//
+// Politique d'erreur (plus robuste que ModuleAir-Next-Gen, qui exigeait un
+// nombre EXACT d'échantillons) : on publie la moyenne dès qu'AU MOINS UN
+// échantillon valide a été collecté ; si zéro (capteur absent, désactivé, ou
+// en warm-up toute la fenêtre), le flag _ok passe à false.
+void sensorsFinalize() {
+  const SensorSettings& cfg = settingsGetSensors();
+
+  // ── PM : lecture unique du NextPM (registre _1MIN = moyenne capteur) ──
   if (cfg.npm_enabled) {
     if (!prevNpmEnabled) rearmNpmUart();
     readNextPM();
@@ -555,20 +711,62 @@ void sensorsRead() {
   }
   prevNpmEnabled = cfg.npm_enabled;
 
-  if (cfg.mhz19_enabled) {
-    if (!prevMhzEnabled) rearmMhzUart();
-    readMHZ19();
-  } else {
-    data.co2_ok = false;
-  }
-  prevMhzEnabled = cfg.mhz19_enabled;
+  // Recopie l'état PM tel quel (aucune moyenne firmware sur les PM).
+  published.pm1       = data.pm1;
+  published.pm25      = data.pm25;
+  published.pm10      = data.pm10;
+  published.npmStatus = data.npmStatus;
+  published.pm_ok     = data.pm_ok;
 
-  if (cfg.bme280_enabled) readBME280();  else data.bme_ok   = false;
-  if (cfg.ccs811_enabled) readCCS811();  else data.ccs_ok   = false;
-  if (cfg.sfa40_enabled)  readSFA40();   else data.sfa40_ok = false;
-  data.lastReadTime = millis();
+  // ── CO2 (MH-Z19) ──
+  if (accum.co2_n > 0) {
+    published.co2 = avgRoundI(accum.co2, accum.co2_n);
+    published.co2_ok = true;
+  } else {
+    published.co2_ok = false;
+  }
+
+  // ── BME280 (température / humidité / pression) ──
+  if (accum.bme_n > 0) {
+    published.temperature = accum.temp  / accum.bme_n;
+    published.humidity    = accum.hum   / accum.bme_n;
+    published.pressure    = accum.press / accum.bme_n;
+    published.bme_ok = true;
+  } else {
+    published.bme_ok = false;
+  }
+
+  // ── COV / eCO2 (CCS811) ──
+  if (accum.ccs_n > 0) {
+    published.tvoc = avgRoundI(accum.tvoc, accum.ccs_n);
+    published.eco2 = avgRoundI(accum.eco2, accum.ccs_n);
+    published.ccs_ok = true;
+  } else {
+    published.ccs_ok = false;
+  }
+  // L'état présence/chauffe est INSTANTANÉ (dernière lecture), pas moyenné :
+  // l'UI veut savoir si le capteur répond MAINTENANT en I2C, pour ne pas crier
+  // "non détecté" pendant la chauffe ni après un débranchement en fin de fenêtre.
+  published.ccs_state = data.ccs_state;
+
+  // ── Formaldéhyde (SFA40) ──
+  if (accum.sfa_n > 0) {
+    published.hcho = accum.hcho / accum.sfa_n;
+    published.sfa40_ok = true;
+  } else {
+    published.sfa40_ok = false;
+  }
+
+  published.lastReadTime = millis();
+
+  Logger.printf("[Sensors] Snapshot publie (echantillons/fenetre): "
+                "CO2=%u BME=%u CCS=%u SFA=%u\n",
+                (unsigned)accum.co2_n, (unsigned)accum.bme_n,
+                (unsigned)accum.ccs_n, (unsigned)accum.sfa_n);
+
+  accumReset();
 }
 
 const SensorData& sensorsGetData() {
-  return data;
+  return published;
 }

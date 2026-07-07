@@ -504,16 +504,41 @@ static void drawScreenConfigWifi() {
 
 // ── Public API ──
 
+// Ordre des couleurs de la dalle LED, selon le PAS physique du panneau :
+//   - P2.5 ("petit ecran", pas 2.5mm) -> RRBBGG   (defaut historique, inchange)
+//   - P3   ("grand ecran",  pas 3mm)   -> RRGGBB
+// Le pas est une donnee MATERIELLE figee a l'assemblage : on la traite comme la
+// langue / le stamp AtmoSud. Le flag de build DEFAULT_PANEL_P3 (envs *_p3) ne
+// fixe que le defaut de 1er boot, grave ensuite en NVS (namespace "display", cle
+// "panelP3"). La NVS survit a l'OTA : un capteur P3 flashe une fois avec un env
+// *_p3 garde RRGGBB MEME apres avoir recu le binaire OTA universel (P2.5 par
+// defaut) -> aucune reinversion des couleurs lors des mises a jour. Sans le
+// flag : P2.5, comportement strictement identique a avant.
+#ifdef DEFAULT_PANEL_P3
+  static const bool PANEL_P3_DEFAULT = true;
+#else
+  static const bool PANEL_P3_DEFAULT = false;
+#endif
+
 void displayInit() {
   Preferences prefs;
-  prefs.begin("display", true);
+  prefs.begin("display", false);   // read-write : on grave le defaut panneau au 1er boot
   debugSplashEnabled = prefs.getBool("dbgSplash", false);
   displayBrightness = prefs.getUChar("brightness", 128);
+  // 1er boot pour CETTE carte (cle "panelP3" absente, sentinelle 0xFF) : on
+  // persiste le defaut compile-time en NVS pour qu'il survive a l'OTA universel
+  // (meme mecanique que i18nInit pour la langue).
+  uint8_t storedPanel = prefs.getUChar("panelP3", 0xFF);
+  if (storedPanel != 0 && storedPanel != 1) {
+    storedPanel = PANEL_P3_DEFAULT ? 1 : 0;
+    prefs.putUChar("panelP3", storedPanel);
+  }
+  bool panelP3 = (storedPanel == 1);
   prefs.end();
 
   display.begin(16);
   display.setDriverChip(SHIFT);
-  display.setColorOrder(RRBBGG);
+  display.setColorOrder(panelP3 ? RRGGBB : RRBBGG);
   display.setBrightness(displayBrightness);
   display.clearDisplay();
 
@@ -525,7 +550,8 @@ void displayInit() {
   timerAlarmWrite(timer, 4000, true);
   timerAlarmEnable(timer);
 
-  Logger.printf("Matrix display init OK (64x32, scan 1/16, debugSplash=%s)\n",
+  Logger.printf("Matrix display init OK (64x32, scan 1/16, panneau=%s, debugSplash=%s)\n",
+    panelP3 ? "P3 grand ecran (RRGGBB)" : "P2.5 (RRBBGG)",
     debugSplashEnabled ? "true" : "false");
 }
 
@@ -807,14 +833,16 @@ void displayShowWifiReconnected() {
 }
 
 // ── Boot animation & BLE provisioning screens ──
-
-// Force a few display refresh cycles (for use when refresh is paused)
-static void manualRefresh(int cycles = 50) {
-  for (int i = 0; i < cycles; i++) {
-    display.display(display_draw_time);
-    delayMicroseconds(200);
-  }
-}
+//
+// These screens, like every other screen, only WRITE the framebuffer
+// (clearDisplay + text). The always-running ISR-driven displayTask (core 0)
+// scans it out at ~250 Hz. They must NOT call display.display() themselves:
+// that would drive the HUB75 panel concurrently with displayTask on another
+// core, corrupting the shared scan state and making the screen flicker. The
+// old manualRefresh() helper did exactly that (a leftover from when refresh
+// was paused during these phases — refreshPaused is never set anymore), which
+// is why only the BLE screens flickered while the data/OTA screens stayed
+// rock-steady.
 
 // Anti-aliased rotating spinner using bilinear sub-pixel splatting:
 // each trail point lives at a float (fx, fy) and distributes its brightness
@@ -917,7 +945,6 @@ void displayShowBleConnected() {
   display.setTextColor(COLOR_WHITE);
   display.setCursor(4, 18);
   display.print(TR().ble_connected);
-  manualRefresh(100);
 }
 
 void displayShowBleCredentials(const char* ssid) {
@@ -933,7 +960,6 @@ void displayShowBleCredentials(const char* ssid) {
   display.setTextColor(COLOR_WHITE);
   display.setCursor(4, 22);
   display.print(truncSSID(ssid));
-  manualRefresh(100);
 }
 
 void displayShowBleWifiTrying(const char* ssid) {
@@ -949,7 +975,6 @@ void displayShowBleWifiTrying(const char* ssid) {
   display.setTextColor(COLOR_GRAY);
   display.setCursor(4, 24);
   display.print("...");
-  manualRefresh(100);
 }
 
 void displayShowBleWifiOk(const char* ssid) {
@@ -962,7 +987,6 @@ void displayShowBleWifiOk(const char* ssid) {
   display.setTextColor(COLOR_WHITE);
   display.setCursor(4, 18);
   display.print(truncSSID(ssid));
-  manualRefresh(100);
 }
 
 void displayShowBleWifiFail() {
@@ -975,7 +999,6 @@ void displayShowBleWifiFail() {
   display.setTextColor(COLOR_ORANGE);
   display.setCursor(7, 18);
   display.print(TR().ble_fail);
-  manualRefresh(100);
 }
 
 void displayShowBleReboot() {
@@ -988,7 +1011,6 @@ void displayShowBleReboot() {
   display.setTextColor(COLOR_WHITE);
   display.setCursor(7, 18);
   display.print(TR().ble_reboot);
-  manualRefresh(100);
 }
 
 // ── OTA screens ──

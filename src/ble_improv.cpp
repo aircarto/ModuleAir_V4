@@ -1,6 +1,7 @@
 #include "ble_improv.h"
 #include "display.h"
 #include "logger.h"
+#include "config.h"   // deviceId : MAC complete (= token / capteurID cote serveur)
 
 #include <NimBLEDevice.h>
 #include <WiFi.h>
@@ -48,9 +49,8 @@ static String pendingSSID;
 static String pendingPassword;
 static bool pendingConnect = false;
 
-// WiFi scan results (stored, sent via notify)
-static String wifiScanResults[20];
-static int wifiScanCount = 0;
+// WiFi scan: performed live when a client subscribes (see bleImprovLoop),
+// not cached at boot — a boot-time scan often runs too early and returns empty.
 static bool wifiScanReady = false;
 static bool wifiScanSent = false;
 
@@ -142,6 +142,11 @@ class ServerCallbacks : public NimBLEServerCallbacks {
     Logger.println("[BLE Improv] Client connected");
     displayShowBleConnected();
   }
+  void onDisconnect(NimBLEServer* pSrv) override {
+    Logger.println("[BLE Improv] Client disconnected");
+    // Re-arm the scan so the next client gets a fresh list.
+    wifiScanSent = false;
+  }
 };
 
 static ServerCallbacks serverCallbacks;
@@ -204,17 +209,10 @@ void bleImprovInit(const String& deviceName) {
 
   pService->start();
 
-  // Run WiFi scan and store results (sent when client subscribes)
-  Logger.println("[BLE Improv] Scanning WiFi networks...");
-  wifiScanCount = WiFi.scanNetworks();
-  if (wifiScanCount < 0) wifiScanCount = 0;
-  if (wifiScanCount > 20) wifiScanCount = 20;
-  Logger.printf("[BLE Improv] Found %d networks\n", wifiScanCount);
-  for (int i = 0; i < wifiScanCount; i++) {
-    wifiScanResults[i] = WiFi.SSID(i) + "\t" + String(WiFi.RSSI(i)) + "\t" + String(WiFi.encryptionType(i) != WIFI_AUTH_OPEN ? 1 : 0);
-    Logger.printf("[BLE Improv]   %s\n", wifiScanResults[i].c_str());
-  }
-  WiFi.scanDelete();
+  // The WiFi list is scanned LIVE when a client subscribes (see bleImprovLoop),
+  // not here at boot: a scan right after softAP() often runs too early and
+  // returns 0, and would then be cached. Live-on-subscribe mirrors the captive
+  // portal's /scan and is reliable.
   wifiScanReady = true;
 
   NimBLEAdvertising* pAdv = NimBLEDevice::getAdvertising();
@@ -233,14 +231,24 @@ void bleImprovLoop() {
   if (wifiScanReady && !wifiScanSent && pServer->getConnectedCount() > 0 && charWifiScan->getSubscribedCount() > 0) {
     wifiScanSent = true;
     delay(200);  // let client settle after subscribing
-    Logger.printf("[BLE Improv] Sending %d scan results via notify\n", wifiScanCount);
-    for (int i = 0; i < wifiScanCount; i++) {
-      const String& s = wifiScanResults[i];
+
+    // Fresh scan now that the system is fully up. WiFi.scanNetworks() auto-
+    // promotes the radio to AP_STA for the scan and keeps the SoftAP alive.
+    Logger.println("[BLE Improv] Live WiFi scan...");
+    int n = WiFi.scanNetworks();
+    if (n < 0) n = 0;
+    if (n > 20) n = 20;
+    Logger.printf("[BLE Improv] Sending %d scan results via notify\n", n);
+
+    for (int i = 0; i < n; i++) {
+      String s = WiFi.SSID(i) + "\t" + String(WiFi.RSSI(i)) + "\t" + String(WiFi.encryptionType(i) != WIFI_AUTH_OPEN ? 1 : 0);
       Logger.printf("[BLE Improv]   Notify[%d] (%d bytes): %s\n", i, s.length(), s.c_str());
       charWifiScan->setValue((const uint8_t*)s.c_str(), s.length());
       charWifiScan->notify();
       delay(150);
     }
+    WiFi.scanDelete();
+
     // End marker
     charWifiScan->setValue((const uint8_t*)"END", 3);
     charWifiScan->notify();
@@ -272,9 +280,11 @@ void bleImprovLoop() {
 
     setState(STATE_PROVISIONED);
 
-    // Send the redirect URL as RPC result
+    // Send the redirect URL + the full device id (MAC) as RPC result.
+    // Server-side, deviceId is also the token / capteurID, so the app can
+    // resolve the sensor (name, data) directly without any manual input.
     String url = "http://" + WiFi.localIP().toString();
-    std::vector<String> result = { url };
+    std::vector<String> result = { url, deviceId };
     sendRpcResult(CMD_WIFI_SETTINGS, result);
 
     delay(1000);

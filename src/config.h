@@ -3,7 +3,7 @@
 
 #include <Arduino.h>
 
-#define FIRMWARE_VERSION "0.3.5"
+#define FIRMWARE_VERSION "0.4.0"
 
 // ── Default sensor enable state ─────────────────────────────────────────────
 // These are the FACTORY DEFAULTS for each sensor's enabled flag — the value
@@ -75,11 +75,21 @@
 // device drops into the normal AP-config flow. Set DEFAULT_WIFI_SSID to ""
 // to disable the default entirely and go straight to config mode.
 #define DEFAULT_WIFI_SSID      "AirLab"
-#define DEFAULT_WIFI_PASSWORD  "123plouf"
+#define DEFAULT_WIFI_PASSWORD  "123plou"
 
 // Data server (AirCarto — toujours actif)
 #define DATA_SERVER_URL "https://data.moduleair.fr/wifi_newDriver2026.php?device_type=ModuleAir"
 #define DATA_SEND_INTERVAL 60000  // 60 secondes
+
+// Sous-échantillonnage capteurs (à la manière de ModuleAir-Next-Gen).
+// On lit les capteurs "spot" (CO2, BME280, CCS811, SFA40) toutes les
+// SENSOR_SAMPLE_INTERVAL et on envoie la MOYENNE des échantillons valides de
+// la fenêtre à chaque DATA_SEND_INTERVAL (≈6 échantillons/minute). 10 s est
+// aussi la cadence interne du CCS811 (DRIVE_MODE_10SEC), c'est l'intervalle
+// naturel. Les PM (NextPM) ne sont PAS moyennés ici : le capteur expose déjà
+// une moyenne glissante 1 min (registres _1MIN), lue une fois par envoi —
+// la moyenner à nouveau ne ferait que la sur-lisser et la retarder.
+#define SENSOR_SAMPLE_INTERVAL 10000  // 10 secondes
 
 // ── Serveur AtmoSud (MicroSpot) ──────────────────────────────────────────────
 // Reproduit la cible et le format de ModuleAir-Next-Gen : envoi HTTPS du payload
