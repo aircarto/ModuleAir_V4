@@ -3,7 +3,7 @@
 
 #include <Arduino.h>
 
-#define FIRMWARE_VERSION "0.4.1"
+#define FIRMWARE_VERSION "0.5.0"
 
 // ── Default sensor enable state ─────────────────────────────────────────────
 // These are the FACTORY DEFAULTS for each sensor's enabled flag — the value
@@ -22,6 +22,27 @@
 #define SENSOR_BME280_DEFAULT  false
 #define SENSOR_CCS811_DEFAULT  false
 #define SENSOR_SFA40_DEFAULT   false
+
+// ── Choix du capteur CO2 (MH-Z19 ou SenseAir S8/S88) ────────────────────────
+// Les deux capteurs partagent le MÊME connecteur / le même UART2 : une carte
+// n'en porte jamais qu'un seul. Ce réglage dit lequel :
+//   CO2_CHOICE_AUTO  -> sonde les deux protocoles et mémorise le gagnant
+//                       (comportement historique, cf. readCO2 dans sensors.cpp)
+//   CO2_CHOICE_MHZ19 -> force le protocole MH-Z19, aucune sonde Modbus
+//   CO2_CHOICE_S88   -> force le Modbus RTU SenseAir, aucune sonde MH-Z19
+//
+// ATTENTION — sémantique DIFFÉRENTE des SENSOR_*_DEFAULT ci-dessus : le capteur
+// monté est une donnée MATÉRIELLE figée à l'assemblage, comme le pas de dalle
+// P3. Ce défaut est donc GRAVÉ en NVS au 1er boot (settings.cpp, sentinelle
+// 0xFF) pour survivre à l'OTA : une carte flashée en usine avec -DDEFAULT_CO2_S88
+// (envs *_s8) garde son réglage SenseAir MÊME après avoir reçu le binaire OTA
+// universel, qui lui reste en AUTO par défaut. Même mécanique que la langue
+// (i18n.cpp) et la dalle P3 (display.cpp).
+#ifdef DEFAULT_CO2_S88
+  #define CO2_SENSOR_DEFAULT  CO2_CHOICE_S88
+#else
+  #define CO2_SENSOR_DEFAULT  CO2_CHOICE_AUTO
+#endif
 
 // ── Default matrix screen / logo state ──────────────────────────────────────
 // First-boot defaults for the matrix rotation — same semantics as the sensor

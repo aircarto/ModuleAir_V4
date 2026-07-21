@@ -181,6 +181,15 @@ static const I18nStrings STR_FR = {
   /* ds_note             */ "L'envoi vers le serveur secondaire est provisionne en usine "
                             "(firmware), selon le capteur. Non modifiable depuis cette "
                             "interface ni par mise a jour.",
+
+  // carte capteur CO2
+  /* card_co2_sensor     */ "Capteur CO2",
+  /* co2_sel_auto        */ "Auto (detection)",
+  /* co2_sel_note        */ "Les deux capteurs partagent le meme connecteur. En mode Auto "
+                            "le firmware teste les deux protocoles ; forcez le modele si "
+                            "la detection hesite. Le choix survit aux mises a jour.",
+  /* co2_detected        */ "Detecte : ",
+  /* co2_detect_pending  */ "en cours...",
 };
 
 // ── English table ───────────────────────────────────────────────────────────
@@ -361,6 +370,15 @@ static const I18nStrings STR_EN = {
   /* ds_note             */ "Upload to the secondary server is factory-provisioned "
                             "(firmware), per sensor. Not changeable from this interface "
                             "nor by firmware updates.",
+
+  // CO2 sensor card
+  /* card_co2_sensor     */ "CO2 sensor",
+  /* co2_sel_auto        */ "Auto (detection)",
+  /* co2_sel_note        */ "Both sensors share the same connector. In Auto mode the "
+                            "firmware probes both protocols; force the model if detection "
+                            "is unreliable. This choice survives firmware updates.",
+  /* co2_detected        */ "Detected: ",
+  /* co2_detect_pending  */ "pending...",
 };
 
 // ── State ───────────────────────────────────────────────────────────────────

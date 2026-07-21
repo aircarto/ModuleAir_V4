@@ -777,6 +777,42 @@ static void handleRootConnected() {
     server.sendContent(chunk);
   }
 
+  // Choix du capteur CO2 (MH-Z19 ou SenseAir S8/S88). Les deux partagent le
+  // meme connecteur : c'est un choix exclusif, d'ou un <select> et non des
+  // toggles. La carte est grisee quand la voie CO2 elle-meme est coupee, sur le
+  // meme principe que les ecrans polluants verrouilles plus bas.
+  {
+    const SensorSettings& sc = settingsGetSensors();
+    bool co2Off = !sc.mhz19_enabled;
+    chunk = "<div class='card'><h2>" + String(TR().card_co2_sensor) + "</h2>";
+    chunk += "<p style='color:#888;font-size:0.8em;margin:0 0 8px'>" + String(TR().co2_sel_note) + "</p>";
+    chunk += "<select";
+    if (co2Off) chunk += " disabled";
+    chunk += " onchange=\"fetch('/set-co2-sensor',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'sel='+this.value}).then(refreshUI)\""
+             " style='width:100%;padding:8px;border-radius:6px;background:#222;color:#eee;border:1px solid #444'>";
+    const char* co2SelKeys[]  = { "auto", "mhz19", "s88" };
+    const char* co2SelNames[] = { TR().co2_sel_auto, "MH-Z19", "SenseAir S8 / S88" };
+    for (int i = 0; i < 3; i++) {
+      chunk += String("<option value='") + co2SelKeys[i] + "'";
+      if ((int)sc.co2_sensor == i) chunk += " selected";
+      chunk += ">" + String(co2SelNames[i]) + "</option>";
+    }
+    chunk += "</select>";
+    // En mode Auto, on montre ce que la detection a effectivement trouve —
+    // sinon l'utilisateur n'a aucun moyen de savoir quel capteur repond.
+    if (sc.co2_sensor == CO2_CHOICE_AUTO && !co2Off) {
+      const char* det = sensorsGetCo2SensorName();
+      chunk += "<p style='color:#4fc3f7;font-size:0.8em;margin:8px 0 0'>"
+               + String(TR().co2_detected)
+               + String(det ? det : TR().co2_detect_pending) + "</p>";
+    }
+    if (co2Off) {
+      chunk += "<p style='color:#888;font-size:0.8em;margin:8px 0 0'>" + String(TR().web_sensor_off) + "</p>";
+    }
+    chunk += "</div>";
+    server.sendContent(chunk);
+  }
+
   // Ecrans affichés
   {
     const ScreenSettings& ss = settingsGetScreens();
@@ -1194,6 +1230,21 @@ static void handleSetSensor() {
   server.send(200, "text/plain", "ok");
 }
 
+// Validation stricte (400 sur valeur inconnue), comme handleSetLang : une
+// valeur invalide ici mettrait la voie CO2 en rade jusqu'a la prochaine
+// intervention, contrairement a un toggle bool ou l'erreur est benigne.
+static void handleSetCo2Sensor() {
+  String sel = server.arg("sel");
+  Co2SensorChoice choice;
+  if      (sel == "auto")  choice = CO2_CHOICE_AUTO;
+  else if (sel == "mhz19") choice = CO2_CHOICE_MHZ19;
+  else if (sel == "s88")   choice = CO2_CHOICE_S88;
+  else { server.send(400, "text/plain", "invalid co2 sensor"); return; }
+  settingsSetCo2Sensor(choice);
+  Logger.printf("[Web] CO2 sensor = %s\n", sel.c_str());
+  server.send(200, "text/plain", "ok");
+}
+
 static void handleSetScreen() {
   String key = server.arg("key");
   bool val = server.arg("val") == "1";
@@ -1506,7 +1557,19 @@ static void handleApiConfig() {
   jsonAddBoolField(json, "bme280_read", sc.bme280_enabled, first);
   jsonAddBoolField(json, "bmx280_read", sc.bme280_enabled, first);
   jsonAddBoolField(json, "mhz16_read", false, first);
-  jsonAddBoolField(json, "s88_read", false, first);
+  // s88_read : champ legacy Next-Gen, jusqu'ici cable en dur a false. Il reflete
+  // desormais la realite — la voie CO2 est active ET c'est bien une SenseAir qui
+  // repond (forcee, ou detectee en mode Auto).
+  {
+    const char* det = sensorsGetCo2SensorName();
+    bool isS88 = sc.mhz19_enabled &&
+                 (sc.co2_sensor == CO2_CHOICE_S88 ||
+                  (sc.co2_sensor == CO2_CHOICE_AUTO && sensorsCo2DetectedIsS88()));
+    jsonAddBoolField(json, "s88_read", isS88, first);
+    const char* selNames[] = { "auto", "mhz19", "s88" };
+    jsonAddStringField(json, "co2_sensor", selNames[sc.co2_sensor], first);
+    jsonAddStringField(json, "co2_sensor_detected", det ? det : "", first);
+  }
   jsonAddBoolField(json, "ccs811_read", sc.ccs811_enabled, first);
   jsonAddBoolField(json, "sfa40_read", sc.sfa40_enabled, first);
   jsonAddBoolField(json, "nebuleair_read", false, first);
@@ -1742,6 +1805,7 @@ void wifiManagerInit() {
   server.on("/set-brightness", HTTP_POST, handleSetBrightness);
   server.on("/set-thresholds-co2", HTTP_POST, handleSetThresholdsCO2);
   server.on("/set-sensor", HTTP_POST, handleSetSensor);
+  server.on("/set-co2-sensor", HTTP_POST, handleSetCo2Sensor);
   server.on("/set-screen", HTTP_POST, handleSetScreen);
   server.on("/set-lang", HTTP_POST, handleSetLang);
   server.on("/check-update", handleCheckUpdate);

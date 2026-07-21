@@ -50,4 +50,12 @@ void sensorsFinalize();
 
 const SensorData& sensorsGetData();
 
+// Nom du capteur CO2 actuellement détecté ("MH-Z19" / "SenseAir S8/S88"), ou
+// NULL si aucun n'a encore répondu. C'est le RÉSULTAT de détection, distinct du
+// réglage Co2SensorChoice (settings.h).
+const char* sensorsGetCo2SensorName();
+
+// true si le capteur CO2 qui répond actuellement est une SenseAir S8/S88.
+bool sensorsCo2DetectedIsS88();
+
 #endif

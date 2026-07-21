@@ -4,6 +4,57 @@ Toutes les modifications notables du firmware ModuleAir V4 sont documentées ici
 
 Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versioning [Semantic Versioning](https://semver.org/).
 
+## [0.5.0] - 2026-07-21
+
+### Ajouté
+
+- **Sélecteur de capteur CO2 dans l'interface web** (carte « Capteur CO2 », FR/EN) :
+  `Auto (détection)` / `MH-Z19` / `SenseAir S8 / S88`. La lecture des deux modèles
+  existait déjà (cf. 0.4.0) mais uniquement en auto-détection, sans moyen de la
+  forcer ni de savoir quel capteur répondait. En mode `Auto`, la carte affiche
+  désormais le capteur **effectivement détecté** ; en mode forcé, le protocole est
+  imposé et l'autre n'est jamais sondé.
+- **Persistance NVS du choix de capteur** (namespace `sensors`, clé `co2sel`), avec
+  gravure du défaut compile-time au 1er boot (sentinelle `0xFF`) — même mécanique
+  que la langue (`i18n/lang`) et la dalle P3 (`display/panelP3`). La NVS survivant
+  à l'OTA, une carte SenseAir provisionnée en usine **garde son réglage** après
+  réception du binaire OTA universel (qui reste en `Auto` par défaut). Le réglage
+  reste modifiable à tout moment depuis l'UI.
+- 2 environnements PlatformIO `moduleair_s8` et `atmosud_provision_s8`
+  (`-DDEFAULT_CO2_S88`) : mêmes builds que `moduleair` / `atmosud_provision` avec
+  le capteur CO2 par défaut sur SenseAir. **Flash USB uniquement** — leur
+  `extra_scripts` exclut `post:ota_upload.py`, sinon une carte MH-Z19 neuve (NVS
+  vierge) démarrerait forcée en SenseAir. Utiles pour garantir une lecture
+  déterministe dès le 1er cycle sur un parc dont on connaît le matériel, sans
+  dépendre de la sonde.
+- Champs `co2_sensor` (réglage) et `co2_sensor_detected` (résultat de détection)
+  dans `/api/config`.
+
+### Modifié
+
+- **Pas de re-détection en mode forcé** (`readCO2`) : le hot-swap après
+  `CO2_REDETECT_AFTER` échecs consécutifs ne s'applique plus qu'en mode `Auto`.
+  En mode forcé, l'utilisateur a déclaré quel capteur est monté — un silence est
+  une panne ou un warm-up, pas un changement de matériel — donc partir sonder
+  l'autre protocole serait faux.
+- Un changement de capteur depuis l'UI **draine le RX et repart d'une détection
+  vierge**, pour qu'un reliquat de trame du protocole précédent ne puisse pas être
+  relu comme une réponse valide.
+- `s88_read` dans `/api/config` (champ legacy Next-Gen jusqu'ici câblé en dur à
+  `false`) reflète désormais la réalité : voie CO2 active **et** SenseAir qui
+  répond (forcée, ou détectée en mode `Auto`).
+
+### Inchangé (volontairement)
+
+- **L'envoi des données est strictement identique** quel que soit le capteur : les
+  deux modèles écrivent dans le même champ `data.co2`, donc les clés
+  `ISO_17` (AirCarto), `MHZ16_CO2` (AtmoSud) et `MHZ19_CO2` (dashboard local)
+  partent inchangées. Aucun impact côté serveurs.
+- L'ABC (auto-calibration) de la SenseAir reste à son réglage d'usine (180 h,
+  `HR32` @`0x001F`). `mhz19.autoCalibration(false)` ne concerne que le MH-Z19
+  (commande propriétaire 0x79) : les deux capteurs ont donc des comportements de
+  dérive différents — décision assumée, à revoir si besoin.
+
 ## [0.4.1] - 2026-07-07
 
 ### Ajouté
