@@ -216,12 +216,8 @@ struct I18nStrings {
   const char* ds_inactive;         // "Inactif (capteur non concerne)" / "Inactive (not provisioned)"
   const char* ds_note;             // explication : decide en usine, non modifiable ici
 
-  // ── Web: carte de selection du capteur CO2 ──
-  const char* card_co2_sensor;     // "Capteur CO2" / "CO2 sensor"
-  const char* co2_sel_auto;        // "Auto (detection)" / "Auto (detection)"
-  const char* co2_sel_note;        // explication du mode auto vs force
-  const char* co2_detected;        // "Detecte : " / "Detected: "
-  const char* co2_detect_pending;  // "en cours..." / "pending..."
+  // NB : pas de chaines "capteur CO2" ici — le modele (MH-Z19 / SenseAir) est
+  // detecte automatiquement et n'apparait pas dans l'UI.
 };
 
 void i18nInit();

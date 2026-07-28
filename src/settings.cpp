@@ -23,19 +23,10 @@ void settingsInit() {
   sensors.sfa40_enabled  = prefs.getBool("sfa40",  SENSOR_SFA40_DEFAULT);
   prefs.end();
 
-  // Capteur CO2 monté sur la carte : contrairement aux toggles ci-dessus, c'est
-  // une donnée MATÉRIELLE. On ouvre donc "sensors" en READ-WRITE pour graver le
-  // défaut compile-time au 1er boot (sentinelle 0xFF = clé absente), sinon la
-  // première OTA reviendrait silencieusement en AUTO sur une carte SenseAir
-  // flashée avec un env *_s8. Même mécanique que la langue et la dalle P3.
-  prefs.begin("sensors", false);
-  uint8_t storedCo2 = prefs.getUChar("co2sel", 0xFF);
-  if (storedCo2 > CO2_CHOICE_S88) {          // clé absente OU valeur corrompue
-    storedCo2 = (uint8_t)CO2_SENSOR_DEFAULT;
-    prefs.putUChar("co2sel", storedCo2);
-  }
-  sensors.co2_sensor = (Co2SensorChoice)storedCo2;
-  prefs.end();
+  // NB : le modèle de capteur CO2 (MH-Z19 / SenseAir) n'est PAS un réglage —
+  // il est détecté automatiquement au runtime (sensors.cpp). L'ancienne clé NVS
+  // "co2sel" (<= 0.5.0) n'est plus ni lue ni écrite : sur les cartes déjà
+  // provisionnées elle reste en place, orpheline et sans effet.
 
   prefs.begin("screens", true);
   screens.pm1  = prefs.getBool("pm1",  SCREEN_PM1_DEFAULT);
@@ -66,7 +57,6 @@ void settingsInit() {
   Logger.printf("[Settings] Thresholds CO2: good<%d, bad>=%d\n", thCO2.good, thCO2.bad);
   Logger.printf("[Settings] Sensors: NPM=%d MHZ19=%d BME280=%d CCS811=%d SFA40=%d\n",
     sensors.npm_enabled, sensors.mhz19_enabled, sensors.bme280_enabled, sensors.ccs811_enabled, sensors.sfa40_enabled);
-  Logger.printf("[Settings] Capteur CO2: %s\n", settingsCo2SensorLabel(sensors.co2_sensor));
   Logger.printf("[Settings] Screens: PM1=%d PM2.5=%d PM10=%d CO2=%d Temp=%d Humi=%d COV=%d HCHO=%d Logo=%d AirCarto=%d AtmoSud=%d\n",
     screens.pm1, screens.pm25, screens.pm10, screens.co2, screens.temp, screens.humi, screens.tvoc, screens.hcho,
     screens.logo_moduleair, screens.logo_aircarto, screens.logo_atmosud);
@@ -75,33 +65,13 @@ void settingsInit() {
 SensorSettings& settingsGetSensors() { return sensors; }
 ScreenSettings& settingsGetScreens() { return screens; }
 
-const char* settingsCo2SensorLabel(Co2SensorChoice choice) {
-  switch (choice) {
-    case CO2_CHOICE_MHZ19: return "MH-Z19 (force)";
-    case CO2_CHOICE_S88:   return "SenseAir S8/S88 (force)";
-    default:               return "Auto (detection)";
-  }
-}
-
-void settingsSetCo2Sensor(Co2SensorChoice choice) {
-  if (choice > CO2_CHOICE_S88) return;  // sanity check
-  sensors.co2_sensor = choice;
-  Preferences prefs;
-  prefs.begin("sensors", false);
-  prefs.putUChar("co2sel", (uint8_t)choice);
-  prefs.end();
-  Logger.printf("[Settings] Capteur CO2 -> %s\n", settingsCo2SensorLabel(choice));
-}
-
 void settingsSetSensorEnabled(const char* key, bool enabled) {
   Preferences prefs;
   prefs.begin("sensors", false);
   prefs.putBool(key, enabled);
   prefs.end();
 
-  // Reload. NB : on ne relit PAS "co2sel" ici — c'est un uchar, aucun des
-  // getBool ci-dessous ne peut l'écraser, et sensors.co2_sensor garde donc sa
-  // valeur RAM (seul settingsSetCo2Sensor la modifie).
+  // Reload
   prefs.begin("sensors", true);
   sensors.npm_enabled    = prefs.getBool("npm",    SENSOR_NPM_DEFAULT);
   sensors.mhz19_enabled  = prefs.getBool("mhz19",  SENSOR_MHZ19_DEFAULT);

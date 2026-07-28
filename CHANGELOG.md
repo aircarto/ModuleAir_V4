@@ -4,6 +4,65 @@ Toutes les modifications notables du firmware ModuleAir V4 sont documentées ici
 
 Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versioning [Semantic Versioning](https://semver.org/).
 
+## [0.6.0] - 2026-07-28
+
+### Ajouté
+
+- **Environnement PlatformIO `atmosud_display`** — « AtmoSud vitrine » : le logo
+  AtmoSud est ON par défaut dans la rotation matrice (`-DBUILD_ATMOSUD`), mais le
+  capteur **n'envoie rien à AtmoSud/MicroSpot** — pas de `-DFACTORY_ATMOSUD=1`,
+  donc aucun stamp NVS n'est écrit et les données partent chez AirCarto seul.
+  C'est la seule différence avec `atmosud_provision`, qui stampe la carte à vie.
+  Flash USB uniquement (`extra_scripts` sans `post:ota_upload.py`), comme les
+  envs P3 : ce binaire pose un défaut de 1er boot différent du binaire universel.
+  **Limite** : le stamp est une propriété de la CARTE, pas du binaire — flasher
+  cet env sur un capteur déjà provisionné AtmoSud ne le dé-stampe pas.
+
+### Supprimé
+
+- **Carte « Capteur CO2 » entièrement retirée de l'interface web** — sélecteur
+  `Auto / MH-Z19 / SenseAir S8-S88` (introduit en 0.5.0) *et* affichage du modèle
+  détecté. L'auto-détection fait le travail seule : le choix manuel n'apportait
+  qu'un moyen de se tromper (forcer le mauvais protocole coupait la voie CO2 en
+  silence), et le modèle branché n'a aucun intérêt pour l'utilisateur. Le toggle
+  CO2 de « Capteurs actifs » suffit : il coupe la voie entière, quel que soit le
+  modèle. Supprimés avec : route `POST /set-co2-sensor`, `settingsSetCo2Sensor()`,
+  `settingsCo2SensorLabel()`, l'enum `Co2SensorChoice`, le champ
+  `SensorSettings::co2_sensor` et les 4 chaînes i18n FR/EN de la carte.
+- **Environnements PlatformIO `moduleair_s8` et `atmosud_provision_s8`** et le flag
+  `-DDEFAULT_CO2_S88` associé. Il n'y a plus de build « spécial SenseAir » : tous
+  les envs restants fonctionnent indifféremment avec un MH-Z19 ou une SenseAir, y
+  compris le binaire OTA universel. Plus besoin de savoir quel capteur est monté
+  avant de flasher.
+- **Champ `co2_sensor` (le réglage) dans `/api/config`.** `co2_sensor_detected`
+  (le résultat de détection) est conservé.
+
+### Modifié
+
+- `readCO2()` (sensors.cpp) repasse en auto-détection pure : sonde MH-Z19 puis
+  SenseAir, mémorise le gagnant, et re-détecte après `CO2_REDETECT_AFTER` (3)
+  échecs consécutifs — la re-détection redevient donc **inconditionnelle**, elle
+  était désactivée en mode forcé depuis 0.5.0.
+- `s88_read` (`/api/config`) ne dépend plus que de la détection : voie CO2 active
+  **et** SenseAir qui répond.
+
+### Migration
+
+- **Aucune action.** La clé NVS `sensors/co2sel` n'est plus ni lue ni écrite ; sur
+  une carte déjà provisionnée elle reste en place, orpheline et sans effet.
+- Une carte flashée en 0.5.0 avec `moduleair_s8` / `atmosud_provision_s8` (donc
+  `co2sel = 2`, SenseAir forcée) repasse en auto-détection après l'OTA et
+  re-détecte sa SenseAir au premier cycle de lecture. Aucune interruption de
+  mesure attendue.
+
+### Inchangé
+
+- L'envoi des données reste identique quel que soit le capteur : `ISO_17`
+  (AirCarto), `MHZ16_CO2` (AtmoSud) et `MHZ19_CO2` (dashboard local) partent
+  toujours depuis le même champ `data.co2`. Aucun impact côté serveurs.
+- Lecture Modbus RTU SenseAir (registre `0x0003`, CRC16) et lecture MH-Z19
+  inchangées, de même que l'ABC de chaque capteur.
+
 ## [0.5.0] - 2026-07-21
 
 ### Ajouté

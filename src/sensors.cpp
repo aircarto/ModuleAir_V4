@@ -201,19 +201,14 @@ static void readNextPM() {
 // trames par 0xFF, la SenseAir répond en Modbus avec l'adresse 0xFE) et on
 // draine le RX avant chaque commande : aucune diaphonie.
 //
-// Deux modes, pilotés par le réglage NVS Co2SensorChoice (settings.h) :
-//   - AUTO           : on sonde les deux protocoles et on mémorise le gagnant,
-//                      avec re-détection après CO2_REDETECT_AFTER échecs (hot-swap).
-//   - MHZ19 / S88    : le protocole est imposé, on ne sonde JAMAIS l'autre.
-//                      Utile quand l'auto-détection patine (capteur lent au
-//                      démarrage) et pour un parc dont on connaît le matériel.
-// `co2Sensor` ci-dessous reste le RÉSULTAT courant (ce qui a répondu), distinct
-// du CHOIX utilisateur.
+// La détection est ENTIÈREMENT automatique (aucun réglage, aucun flag de
+// compilation, cf. config.h) : on sonde les deux protocoles, on mémorise le
+// gagnant dans `co2Sensor`, et après CO2_REDETECT_AFTER échecs consécutifs on
+// repart en re-détection — ce qui couvre aussi le hot-swap d'un capteur.
 enum Co2Sensor { CO2_UNKNOWN, CO2_MHZ19, CO2_S88 };
 static Co2Sensor co2Sensor = CO2_UNKNOWN;
 static uint8_t co2FailStreak = 0;
 static const uint8_t CO2_REDETECT_AFTER = 3;  // échecs consécutifs avant re-détection (hot-swap)
-static Co2SensorChoice prevCo2Choice = CO2_CHOICE_AUTO;  // pour détecter un changement à chaud
 
 static const char* co2SensorName(Co2Sensor s) {
   switch (s) {
@@ -277,14 +272,6 @@ static bool s88TryRead(int* out) {
 static void readCO2() {
   Logger.println("[CO2] Reading...");
 
-  const Co2SensorChoice choice = settingsGetSensors().co2_sensor;
-
-  // Choix manuel : on impose le protocole. On écrase `co2Sensor` à chaque cycle
-  // plutôt qu'une seule fois, pour que le mode reste tenu même après un échec
-  // (la branche d'erreur plus bas ne remet en CO2_UNKNOWN qu'en mode AUTO).
-  if (choice == CO2_CHOICE_MHZ19)     co2Sensor = CO2_MHZ19;
-  else if (choice == CO2_CHOICE_S88)  co2Sensor = CO2_S88;
-
   int co2 = 0;
   bool ok = false;
 
@@ -293,7 +280,7 @@ static void readCO2() {
   } else if (co2Sensor == CO2_S88) {
     ok = s88TryRead(&co2);
   } else {
-    // AUTO, type encore inconnu : on sonde le MH-Z19 d'abord (le plus courant),
+    // Type encore inconnu : on sonde le MH-Z19 d'abord (le plus courant),
     // puis la SenseAir.
     if (mhz19TryRead(&co2))      { co2Sensor = CO2_MHZ19; ok = true; }
     else if (s88TryRead(&co2))   { co2Sensor = CO2_S88;   ok = true; }
@@ -307,11 +294,7 @@ static void readCO2() {
     Logger.printf("  CO2 (%s): %d ppm\n", co2SensorName(co2Sensor), co2);
   } else {
     data.co2_ok = false;
-    // En mode forcé, la re-détection n'a aucun sens : l'utilisateur a déclaré
-    // quel capteur est monté, un silence est une panne/un warm-up, pas un
-    // hot-swap. On garde donc le protocole et on log simplement l'échec.
-    if (choice == CO2_CHOICE_AUTO &&
-        co2Sensor != CO2_UNKNOWN && ++co2FailStreak >= CO2_REDETECT_AFTER) {
+    if (co2Sensor != CO2_UNKNOWN && ++co2FailStreak >= CO2_REDETECT_AFTER) {
       Logger.printf("  %s muet x%u — re-detection au prochain cycle\n",
                     co2SensorName(co2Sensor), co2FailStreak);
       co2Sensor = CO2_UNKNOWN;
@@ -591,11 +574,10 @@ void sensorsInit() {
   mhzSerial.begin(MHZ19_BAUD, SERIAL_8N1, MHZ19_RX, MHZ19_TX);
   mhz19.begin(mhzSerial);
   mhz19.autoCalibration(false);
-  Logger.printf(cfg.mhz19_enabled ? "CO2 init OK — %s\n"
-                                  : "CO2 init OK — %s (disabled — toggle in UI to enable)\n",
-                settingsCo2SensorLabel(cfg.co2_sensor));
+  Logger.println(cfg.mhz19_enabled
+                   ? "CO2 init OK — modele detecte au 1er cycle (MH-Z19 / SenseAir S8-S88)"
+                   : "CO2 init OK (disabled — toggle in UI to enable)");
   prevMhzEnabled = cfg.mhz19_enabled;
-  prevCo2Choice  = cfg.co2_sensor;
 
   Wire.begin(I2C_SDA, I2C_SCL);
   Wire.setClock(100000);
@@ -672,7 +654,7 @@ static void rearmMhzUart() {
   delay(80);
   mhz19.begin(mhzSerial);
   mhz19.autoCalibration(false);
-  co2Sensor = CO2_UNKNOWN;   // repart d'une détection vierge (readCO2 réimpose le choix si forcé)
+  co2Sensor = CO2_UNKNOWN;   // repart d'une détection vierge
   co2FailStreak = 0;
   Logger.println("[CO2] UART re-arme");
 }
@@ -688,20 +670,11 @@ void sensorsSample() {
   const SensorSettings& cfg = settingsGetSensors();
 
   if (cfg.mhz19_enabled) {
-    if (!prevMhzEnabled) {
-      rearmMhzUart();
-    } else if (cfg.co2_sensor != prevCo2Choice) {
-      // L'utilisateur vient de changer de capteur dans l'UI : on repart d'un RX
-      // propre et d'une détection vierge, sinon le protocole précédent resterait
-      // collé (ou pire, un reliquat de trame serait relu comme une réponse).
-      rearmMhzUart();
-      Logger.printf("[CO2] Choix capteur -> %s\n", settingsCo2SensorLabel(cfg.co2_sensor));
-    }
+    if (!prevMhzEnabled) rearmMhzUart();
     readCO2();
     if (data.co2_ok) { accum.co2 += data.co2; accum.co2_n++; }
   }
   prevMhzEnabled = cfg.mhz19_enabled;
-  prevCo2Choice  = cfg.co2_sensor;
 
   if (cfg.bme280_enabled) {
     readBME280();
