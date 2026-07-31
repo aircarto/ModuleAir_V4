@@ -89,10 +89,34 @@ static int avgRoundI(double sum, uint16_t n) { return (int)(sum / n + 0.5); }
 // Plage de mesure NextPM (datasheet Tera Sensor : 0-1000 µg/m³)
 #define NPM_PM_MAX 1000.0f
 
-// Plage de mesure MH-Z19B / MH-Z16 (datasheet Winsen : 0-5000 ppm en air ambiant)
-// 400 ppm ≈ CO2 atmospherique de fond — en dessous c'est physiquement impossible
-#define MHZ_CO2_MIN 400
-#define MHZ_CO2_MAX 5000
+// ── Plage de mesure CO2 (MH-Z19 et SenseAir S8/S88 partagent ce filtre) ─────
+// Datasheets : MH-Z19B/MH-Z16 (Winsen) existent en 2000 / 5000 / 10000 ppm ;
+// SenseAir S88 (Senseair) = 400-10 000 ppm, exactitude +-40 ppm +-3% de lecture.
+// On borne donc au plus large des deux modeles, et on ne rejette QUE ce qui est
+// impossible : 0 ppm (aucune mesure : les deux capteurs sortent 0 pendant la
+// chauffe — S88 < 10 s, MH-Z19B ~1 a 3 min), valeur negative (registre Modbus
+// lu en signe), ou > 10 000 ppm.
+//
+// NE PAS remonter ce plancher a 400 ppm (c'etait le cas jusqu'en 0.6.0, et ca
+// faisait disparaitre toute la voie CO2 des courbes les nuits calmes). Le fond
+// atmospherique est ~420 ppm, mais LES DEUX capteurs sortent legitimement moins :
+//   - MH-Z19 : la lib WifWaf appelle getCO2(isunLimited = true), c.-a-d. la
+//     commande 0x85 "unlimited" = la mesure AVANT l'ecretage a 400 ppm applique
+//     par le firmware Winsen. Une valeur sous 400 est donc normale et attendue.
+//   - SenseAir S8/S88 : l'ABC recale la baseline sur la mesure la PLUS BASSE vue
+//     pendant sa periode (8 jours en defaut usine). Tant qu'elle n'a pas
+//     converge — sonde neuve, deplacee, ou jamais exposee a de l'air exterieur —
+//     la sonde lit bas, souvent 300-400 ppm.
+// Une mesure basse est une information de DERIVE DE CALIBRATION, pas une panne :
+// on la transmet, et on la signale dans les logs (cf. CO2_DRIFT_WARN).
+#define CO2_MIN 1
+#define CO2_MAX 10000
+
+// Seuil de suspicion de derive : sous cette valeur on est en dessous du fond
+// atmospherique (~420 ppm en 2026), donc la baseline du capteur a derive vers le
+// bas. La mesure part quand meme au serveur — on ne masque pas la realite — mais
+// le log dit quoi faire (recalibration / exposition a l'air exterieur).
+#define CO2_DRIFT_WARN 350
 
 // Ping I2C : renvoie true si un device repond a cette adresse.
 // Utilise pour detecter les capteurs branches/debranches en cours d'utilisation
@@ -210,6 +234,27 @@ static Co2Sensor co2Sensor = CO2_UNKNOWN;
 static uint8_t co2FailStreak = 0;
 static const uint8_t CO2_REDETECT_AFTER = 3;  // échecs consécutifs avant re-détection (hot-swap)
 
+// Compteurs d'anomalies consécutives, uniquement pour espacer les logs : le
+// buffer ne garde que 200 lignes, une sonde en défaut permanent la remplirait
+// en quelques minutes et effacerait tout le reste du diagnostic. Ils
+// n'influencent NI la validité d'une mesure NI la re-détection.
+static uint16_t co2DriftStreak = 0;   // lectures consécutives sous CO2_DRIFT_WARN
+static uint16_t co2OorStreak   = 0;   // lectures consécutives hors plage
+static const uint16_t CO2_LOG_EVERY = 30;  // ~5 min a 1 echantillon / 10 s
+
+// Résultat d'une tentative de lecture. On sépare ce que le capteur DIT (une
+// trame bien formée = capteur présent et vivant) de ce que VAUT la mesure
+// qu'elle transporte. Jusqu'en 0.6.0 les deux étaient confondus dans un bool :
+// une valeur jugée aberrante remontait comme « capteur muet », ce qui armait le
+// compteur d'échecs, déclenchait la re-détection hot-swap et faisait disparaître
+// le modèle détecté de l'UI — alors que la sonde répondait parfaitement.
+enum Co2Read {
+  CO2_READ_SILENT,        // pas de trame, ou trame invalide (CRC/en-tête) -> capteur muet
+  CO2_READ_WARMUP,        // trame valide, 0 ppm -> capteur présent, pas encore de mesure
+  CO2_READ_OUT_OF_RANGE,  // trame valide, valeur hors plage capteur -> mesure rejetée
+  CO2_READ_OK,            // trame valide, mesure exploitable
+};
+
 static const char* co2SensorName(Co2Sensor s) {
   switch (s) {
     case CO2_MHZ19: return "MH-Z19";
@@ -229,20 +274,56 @@ static uint16_t modbusCrc16(const uint8_t* buf, uint8_t len) {
   return crc;
 }
 
-// Tente une lecture MH-Z19 (lib WifWaf). Renvoie true + *out si valide.
-static bool mhz19TryRead(int* out) {
-  int co2 = mhz19.getCO2();
-  if (mhz19.errorCode != RESULT_OK) return false;
-  if (co2 < MHZ_CO2_MIN || co2 > MHZ_CO2_MAX) return false;
+// Classe une valeur déjà extraite d'une trame valide. *out est TOUJOURS
+// renseigné, y compris hors plage, pour que l'appelant puisse la logger : une
+// valeur rejetée en silence est un diagnostic perdu.
+static Co2Read classifyCo2(int co2, int* out) {
   *out = co2;
-  return true;
+  if (co2 == 0)                       return CO2_READ_WARMUP;
+  if (co2 < CO2_MIN || co2 > CO2_MAX) return CO2_READ_OUT_OF_RANGE;
+  return CO2_READ_OK;
 }
 
-// Tente une lecture SenseAir S8/S88 (Modbus RTU brut sur mhzSerial).
-// Commande : lecture du registre d'entrée 0x0003 (CO2 ppm), 1 registre.
-// Réponse attendue : 7 octets [0xFE 0x04 0x02 hi lo crcLo crcHi].
-static bool s88TryRead(int* out) {
-  static const uint8_t cmd[8] = {0xFE, 0x04, 0x00, 0x03, 0x00, 0x01, 0xD5, 0xC5};
+// Tente une lecture MH-Z19 (lib WifWaf). getCO2() lit par défaut la valeur
+// « unlimited » (commande 0x85 = mesure AVANT l'écrêtage à 400 ppm du firmware
+// Winsen), d'où un plancher à CO2_MIN et non à 400 — cf. le bloc CO2_MIN.
+// errorCode couvre TIMEOUT / CRC / MATCH / FILTER : tout ce qui n'est pas
+// RESULT_OK signifie qu'aucune trame exploitable n'est arrivée.
+static Co2Read mhz19TryRead(int* out) {
+  int co2 = mhz19.getCO2();
+  if (mhz19.errorCode != RESULT_OK) return CO2_READ_SILENT;
+  return classifyCo2(co2, out);
+}
+
+// ── SenseAir S8/S88 : Modbus RTU (doc Senseair TDE2067 « Modbus on S8 ») ────
+// Adresse 0xFE = « any sensor » : la sonde répond quelle que soit son adresse
+// individuelle, on n'a donc pas besoin de la connaître.
+#define S88_ADDR      0xFE
+#define S88_IR_STATUS 0x0000  // IR1 « meter status » : 0x0000 = capteur sain
+#define S88_IR_CO2    0x0003  // IR4 CO2 filtré et compensé, en ppm
+
+// Bits du meter status (IR1). Seul OUT_OF_RANGE se ré-arme tout seul au retour
+// en plage ; tous les autres restent levés jusqu'à un power-cycle. C'est CE
+// registre qui dit si la sonde est réellement en panne — à ne pas confondre
+// avec une simple dérive de baseline, qui elle ne lève aucun bit.
+#define S88_ERR_FATAL        0x0001
+#define S88_ERR_OFFSET_REG   0x0002
+#define S88_ERR_ALGORITHM    0x0004
+#define S88_ERR_OUTPUT       0x0008
+#define S88_ERR_SELF_DIAG    0x0010
+#define S88_ERR_OUT_OF_RANGE 0x0020
+#define S88_ERR_MEMORY       0x0040
+
+// Lit UN registre d'entrée (fonction 0x04) sur la SenseAir.
+//   émis    : [0xFE 0x04 regHi regLo 0x00 0x01 crcLo crcHi]  (8 octets)
+//   attendu : [0xFE 0x04 0x02 valHi valLo crcLo crcHi]       (7 octets)
+// Le CRC est calculé ici au lieu d'être codé en dur : une seule fonction sert
+// désormais le CO2 et le status.
+static bool s88ReadInputReg(uint16_t reg, uint16_t* out) {
+  uint8_t cmd[8] = { S88_ADDR, 0x04, (uint8_t)(reg >> 8), (uint8_t)(reg & 0xFF), 0x00, 0x01, 0, 0 };
+  uint16_t ccrc = modbusCrc16(cmd, 6);
+  cmd[6] = (uint8_t)(ccrc & 0xFF);
+  cmd[7] = (uint8_t)(ccrc >> 8);
 
   while (mhzSerial.available()) mhzSerial.read();   // draine le RX (vieilles trames)
   mhzSerial.write(cmd, sizeof(cmd));
@@ -255,15 +336,45 @@ static bool s88TryRead(int* out) {
     if (mhzSerial.available()) resp[n++] = mhzSerial.read();
   }
   if (n < (int)sizeof(resp)) return false;                 // pas de réponse complète
-  if (resp[0] != 0xFE || resp[1] != 0x04 || resp[2] != 0x02) return false;  // en-tête
+  // En-tête : filtre aussi les trames d'exception Modbus (fonction | 0x80),
+  // notamment celles que la SenseAir renvoie aux commandes MH-Z19 de détection.
+  if (resp[0] != S88_ADDR || resp[1] != 0x04 || resp[2] != 0x02) return false;
 
   uint16_t crc = modbusCrc16(resp, 5);                     // CRC sur addr+func+len+data
   if ((uint8_t)(crc & 0xFF) != resp[5] || (uint8_t)(crc >> 8) != resp[6]) return false;
 
-  int co2 = (resp[3] << 8) | resp[4];
-  if (co2 < MHZ_CO2_MIN || co2 > MHZ_CO2_MAX) return false;
-  *out = co2;
+  *out = (uint16_t)((resp[3] << 8) | resp[4]);
   return true;
+}
+
+// Tente une lecture CO2 SenseAir. Le registre est signé : une valeur négative
+// (sonde en défaut) doit sortir comme telle et non comme ~65000 ppm.
+static Co2Read s88TryRead(int* out) {
+  uint16_t raw;
+  if (!s88ReadInputReg(S88_IR_CO2, &raw)) return CO2_READ_SILENT;
+  return classifyCo2((int)(int16_t)raw, out);
+}
+
+// Trace le meter status de la SenseAir. Appelé quand quelque chose cloche, pour
+// que les logs distinguent « sonde HS » de « sonde qui a juste dérivé ».
+static void s88LogStatus() {
+  uint16_t st;
+  if (!s88ReadInputReg(S88_IR_STATUS, &st)) {
+    Logger.println("  Status SenseAir illisible (pas de reponse)");
+    return;
+  }
+  if (st == 0) {
+    Logger.println("  Status SenseAir: 0x0000 — capteur sain (donc calibration, pas panne)");
+    return;
+  }
+  Logger.printf("  Status SenseAir: 0x%04X\n", st);
+  if (st & S88_ERR_FATAL)        Logger.println("    -> FATAL_ERROR");
+  if (st & S88_ERR_OFFSET_REG)   Logger.println("    -> OFFSET_REGULATION_ERROR");
+  if (st & S88_ERR_ALGORITHM)    Logger.println("    -> ALGORITHM_ERROR");
+  if (st & S88_ERR_OUTPUT)       Logger.println("    -> OUTPUT_ERROR");
+  if (st & S88_ERR_SELF_DIAG)    Logger.println("    -> SELF_DIAGNOSTICS_ERROR");
+  if (st & S88_ERR_OUT_OF_RANGE) Logger.println("    -> OUT_OF_RANGE (se re-arme au retour en plage)");
+  if (st & S88_ERR_MEMORY)       Logger.println("    -> MEMORY_ERROR");
 }
 
 // Lit le CO2 du capteur détecté (ou sonde les deux si type inconnu) et écrit
@@ -273,36 +384,87 @@ static void readCO2() {
   Logger.println("[CO2] Reading...");
 
   int co2 = 0;
-  bool ok = false;
+  Co2Read r;
 
   if (co2Sensor == CO2_MHZ19) {
-    ok = mhz19TryRead(&co2);
+    r = mhz19TryRead(&co2);
   } else if (co2Sensor == CO2_S88) {
-    ok = s88TryRead(&co2);
+    r = s88TryRead(&co2);
   } else {
-    // Type encore inconnu : on sonde le MH-Z19 d'abord (le plus courant),
-    // puis la SenseAir.
-    if (mhz19TryRead(&co2))      { co2Sensor = CO2_MHZ19; ok = true; }
-    else if (s88TryRead(&co2))   { co2Sensor = CO2_S88;   ok = true; }
-    if (ok) Logger.printf("  Capteur CO2 detecte: %s\n", co2SensorName(co2Sensor));
+    // Type encore inconnu : on sonde le MH-Z19 d'abord (le plus courant), puis
+    // la SenseAir. Une trame BIEN FORMÉE suffit à identifier le modèle, même si
+    // la mesure qu'elle porte est inexploitable (chauffe, dérive) : sinon une
+    // sonde branchée mais encore en warm-up resterait « non détectée ».
+    r = mhz19TryRead(&co2);
+    if (r != CO2_READ_SILENT) {
+      co2Sensor = CO2_MHZ19;
+    } else {
+      r = s88TryRead(&co2);
+      if (r != CO2_READ_SILENT) co2Sensor = CO2_S88;
+    }
+    if (co2Sensor != CO2_UNKNOWN) {
+      Logger.printf("  Capteur CO2 detecte: %s\n", co2SensorName(co2Sensor));
+      if (co2Sensor == CO2_S88) s88LogStatus();   // état de santé à la détection
+    }
   }
 
-  if (ok) {
-    data.co2 = co2;
-    data.co2_ok = true;
-    co2FailStreak = 0;
-    Logger.printf("  CO2 (%s): %d ppm\n", co2SensorName(co2Sensor), co2);
-  } else {
-    data.co2_ok = false;
-    if (co2Sensor != CO2_UNKNOWN && ++co2FailStreak >= CO2_REDETECT_AFTER) {
-      Logger.printf("  %s muet x%u — re-detection au prochain cycle\n",
-                    co2SensorName(co2Sensor), co2FailStreak);
-      co2Sensor = CO2_UNKNOWN;
+  data.co2_ok = false;
+
+  switch (r) {
+    case CO2_READ_OK: {
+      data.co2 = co2;
+      data.co2_ok = true;
       co2FailStreak = 0;
-    } else {
-      Logger.printf("  Pas de mesure CO2 (%s absent ou en warm-up)\n",
-                    co2Sensor == CO2_UNKNOWN ? "capteur" : co2SensorName(co2Sensor));
+      Logger.printf("  CO2 (%s): %d ppm\n", co2SensorName(co2Sensor), co2);
+      co2OorStreak = 0;
+
+      // Dérive de baseline : la mesure part quand même au serveur (c'est une
+      // donnée, pas une panne), mais on la signale — au 1er échantillon
+      // concerné, puis toutes les CO2_LOG_EVERY lectures.
+      if (co2 < CO2_DRIFT_WARN) {
+        if (co2DriftStreak % CO2_LOG_EVERY == 0) {
+          Logger.printf("  ATTENTION: %d ppm sous le fond atmospherique (~420 ppm) — "
+                        "baseline derivee. Mesure transmise telle quelle ; exposer la "
+                        "sonde a l'air exterieur ou recalibrer.\n", co2);
+          if (co2Sensor == CO2_S88) s88LogStatus();
+        }
+        co2DriftStreak++;
+      } else {
+        co2DriftStreak = 0;
+      }
+      break;
     }
+
+    case CO2_READ_WARMUP:
+      // Le capteur a répondu : il est présent. Pas de compteur d'échecs, pas de
+      // re-détection — simplement pas encore de mesure à publier.
+      co2FailStreak = 0;
+      co2OorStreak = 0;
+      Logger.printf("  %s en chauffe (0 ppm) — pas encore de mesure\n",
+                    co2SensorName(co2Sensor));
+      break;
+
+    case CO2_READ_OUT_OF_RANGE:
+      // Trame valide : le capteur est là, donc pas de re-détection non plus.
+      co2FailStreak = 0;
+      Logger.printf("  CO2 hors plage: %d ppm (attendu %d-%d) — mesure rejetee\n",
+                    co2, CO2_MIN, CO2_MAX);
+      if (co2Sensor == CO2_S88 && co2OorStreak % CO2_LOG_EVERY == 0) s88LogStatus();
+      co2OorStreak++;
+      break;
+
+    case CO2_READ_SILENT:
+    default:
+      if (co2Sensor != CO2_UNKNOWN && ++co2FailStreak >= CO2_REDETECT_AFTER) {
+        Logger.printf("  %s muet x%u — re-detection au prochain cycle\n",
+                      co2SensorName(co2Sensor), co2FailStreak);
+        co2Sensor = CO2_UNKNOWN;
+        co2FailStreak = 0;
+      } else {
+        Logger.printf("  Pas de mesure CO2 (%s absent ou en warm-up)\n",
+                      co2Sensor == CO2_UNKNOWN ? "capteur" : co2SensorName(co2Sensor));
+      }
+      break;
   }
   Logger.println();
 }
@@ -656,6 +818,8 @@ static void rearmMhzUart() {
   mhz19.autoCalibration(false);
   co2Sensor = CO2_UNKNOWN;   // repart d'une détection vierge
   co2FailStreak = 0;
+  co2DriftStreak = 0;        // ré-armer aussi les compteurs de log
+  co2OorStreak = 0;
   Logger.println("[CO2] UART re-arme");
 }
 

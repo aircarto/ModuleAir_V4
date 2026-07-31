@@ -4,6 +4,76 @@ Toutes les modifications notables du firmware ModuleAir V4 sont documentées ici
 
 Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versioning [Semantic Versioning](https://semver.org/).
 
+## [0.6.1] - 2026-07-31
+
+### Corrigé
+
+- **La voie CO2 disparaissait des courbes dès que la mesure passait sous
+  400 ppm.** `MHZ_CO2_MIN` valait 400 ppm et rejetait toute mesure inférieure —
+  sur les deux capteurs. Une trame parfaitement valide (en-tête + CRC16 Modbus
+  bons pour la SenseAir) était traitée comme une absence de réponse : plus
+  d'échantillon accumulé, donc `co2_ok = false` à l'envoi, donc `ISO_17` /
+  `MHZ16_CO2` / `MHZ19_CO2` **omis du payload** et bit 7 `CO2_ERROR` levé dans
+  `error_flags`. Résultat : trou dans la courbe CO2 les nuits calmes, alors que
+  la sonde mesurait correctement. Le plancher passe à 1 ppm (`CO2_MIN`), le
+  plafond de 5000 à 10 000 ppm (`CO2_MAX`, plage haute de la SenseAir S88).
+  Justification datasheets : le MH-Z19 est lu via `getCO2(isunLimited = true)`,
+  soit la commande `0x85` = mesure **avant** l'écrêtage à 400 ppm du firmware
+  Winsen ; et l'ABC de la SenseAir S8/S88 recale la baseline sur la mesure la
+  plus basse de sa période (8 jours par défaut), donc une sonde dont l'ABC n'a
+  pas convergé lit légitimement 300-400 ppm. Sous 400 ppm il n'y a pas de panne :
+  il y a une dérive de calibration, qui est une donnée à transmettre.
+- **Moyenne de la minute biaisée vers le haut.** Comme seuls les échantillons
+  ≥ 400 ppm entraient dans l'accumulateur, une fenêtre à cheval sur le seuil
+  publiait la moyenne des seuls échantillons hauts — la courbe se collait
+  artificiellement à ~400 ppm avant de couper net.
+- **Sonde déclarée absente parce qu'elle mesurait bas.** 3 lectures d'affilée
+  sous 400 ppm (30 s) suffisaient à armer `CO2_REDETECT_AFTER` : `co2Sensor`
+  repassait à `CO2_UNKNOWN`, `co2_sensor_detected` disparaissait de `/api/config`
+  et chaque échantillon suivant re-sondait le MH-Z19 (500 ms de timeout bloquant
+  de la lib WifWaf) avant de retomber sur la SenseAir — en boucle toute la nuit.
+- **Log de diagnostic perdu au refactor 0.4.0.** Le message `CO2 hors plage:
+  %d ppm` introduit avec le filtre n'existait plus : dans les logs du device, une
+  mesure basse était indiscernable d'une sonde débranchée (`capteur absent ou en
+  warm-up`). Restauré, avec la valeur fautive.
+
+### Ajouté
+
+- **Lecture du « meter status » SenseAir (IR1, adresse `0x0000`)** — c'est le
+  registre qui dit si la sonde est réellement en panne. Décodé bit à bit dans les
+  logs (`FATAL_ERROR`, `OFFSET_REGULATION_ERROR`, `ALGORITHM_ERROR`,
+  `OUTPUT_ERROR`, `SELF_DIAGNOSTICS_ERROR`, `OUT_OF_RANGE`, `MEMORY_ERROR`) et
+  interrogé à la détection du capteur, sur mesure hors plage et sur dérive
+  détectée. `0x0000` = capteur sain, donc problème de calibration et non de
+  matériel. Seul `OUT_OF_RANGE` se ré-arme seul ; les autres bits tiennent
+  jusqu'au power-cycle (doc Senseair TDE2067 « Modbus on S8 »).
+- **Avertissement de dérive de baseline** sous `CO2_DRIFT_WARN` (350 ppm) dans
+  les logs, rate-limité à 1 ligne toutes les 30 lectures (~5 min) pour ne pas
+  saturer le buffer de 200 lignes. La mesure est transmise telle quelle.
+
+### Modifié
+
+- `readCO2()` distingue désormais **quatre** issues au lieu d'un booléen
+  (`Co2Read`) : `SILENT` (aucune trame / CRC faux → capteur muet), `WARMUP`
+  (trame valide, 0 ppm → capteur présent en chauffe), `OUT_OF_RANGE` (trame
+  valide, valeur inexploitable) et `OK`. **Seul `SILENT` incrémente le compteur
+  d'échecs et peut déclencher la re-détection hot-swap** : une trame bien formée
+  prouve que le capteur est branché, quelle que soit la valeur qu'elle porte.
+- L'auto-détection accepte une trame valide même si sa valeur est inexploitable :
+  une sonde encore en chauffe (0 ppm) est désormais identifiée immédiatement, au
+  lieu de rester « non détectée » jusqu'à sa première mesure valide.
+- Lecture Modbus SenseAir factorisée dans `s88ReadInputReg(reg, out)`, avec CRC16
+  calculé au lieu d'être codé en dur ; le registre CO2 est lu **signé** (`int16`),
+  une valeur négative de sonde en défaut ne remonte plus à ~65000 ppm.
+
+### Inchangé
+
+- Aucun changement de protocole : mêmes clés `ISO_17` / `MHZ16_CO2` /
+  `MHZ19_CO2`, même sémantique de `error_flags` bit 7 — qui redevient exact,
+  puisqu'il ne se lève plus que sur un vrai défaut de lecture.
+- L'ABC des deux capteurs reste au réglage d'usine : le firmware ne recalibre
+  rien, il se contente de ne plus masquer la dérive.
+
 ## [0.6.0] - 2026-07-28
 
 ### Ajouté
