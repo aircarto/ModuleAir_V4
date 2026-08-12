@@ -772,8 +772,9 @@ void displayUpdate() {
     avail[count++] = SCR_CONFIG_WIFI;
   }
 
-  // Active logos (LOGO_SLOT_COUNT = 3, ou 4 sur la build lairetmoi). Un seul
-  // logo par cycle (slot "logo" de l'ordre), tourné à chaque tour — inchangé.
+  // Logos partenaires : TOUJOURS en tête de cycle, position non configurable
+  // (seuls les toggles individuels le sont). Un seul logo par cycle
+  // (LOGO_SLOT_COUNT = 3, ou 4 sur la build lairetmoi), tourné à chaque tour.
   Screen logos[LOGO_SLOT_COUNT];
   int logoCount = 0;
   if (scfg.logo_moduleair) logos[logoCount++] = SCR_LOGO_MA;
@@ -783,6 +784,7 @@ void displayUpdate() {
   if (scfg.logo_lairetmoi) logos[logoCount++] = SCR_LOGO_LAM;
 #endif
   static int logoRotationIdx = 0;
+  if (logoCount > 0) avail[count++] = logos[logoRotationIdx % logoCount];
 
   // Data screens, dans l'ordre configuré. Trois états par famille de capteurs,
   // inchangés :
@@ -831,8 +833,6 @@ void displayUpdate() {
     } else if (tok == "crypto") {
       if (scfg.crypto && (pluginsCrypto().valid || pluginsCrypto().error))
         avail[count++] = SCR_CRYPTO;
-    } else if (tok == "logo") {
-      if (logoCount > 0) avail[count++] = logos[logoRotationIdx % logoCount];
     }
   }
 

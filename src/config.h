@@ -72,12 +72,14 @@
 #endif
 
 // ── Rotation des écrans matrice ──────────────────────────────────────────────
-// Ordre d'affichage par défaut (1er boot). Chaque jeton = un écran ; "logo" est
-// le SLOT logos (un seul logo par cycle, tourné à chaque tour, comme avant).
+// Ordre d'affichage par défaut (1er boot). Chaque jeton = un écran. Le SLOT
+// logos n'est PAS un jeton : les logos partenaires ouvrent TOUJOURS le cycle
+// (un seul logo par cycle, tourné à chaque tour), position non négociable —
+// seuls leurs toggles individuels restent configurables.
 // L'ordre est réordonnable par drag & drop dans l'interface web et persiste en
 // NVS ("screens"/"order"). Un jeton absent de la liste stockée est ré-ajouté en
 // fin de rotation au chargement (robustesse aux mises à jour du firmware).
-#define SCREEN_ORDER_DEFAULT "clock,pm1,pm25,pm10,co2,temp,humi,tvoc,hcho,weather,crypto,logo"
+#define SCREEN_ORDER_DEFAULT "clock,pm1,pm25,pm10,co2,temp,humi,tvoc,hcho,weather,crypto"
 // Durée d'affichage de chaque écran (secondes, plancher 3, plafond 60) —
 // réglable dans l'interface web, persistée en NVS ("screens"/"rot_s").
 #define SCREEN_ROTATION_DEFAULT 5

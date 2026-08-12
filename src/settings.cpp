@@ -10,10 +10,11 @@ static ThresholdsCO2 thCO2;
 static String screenOrder;
 static uint16_t rotationSec = SCREEN_ROTATION_DEFAULT;
 
-// Jetons d'écran valides pour l'ordre de rotation ("logo" = le slot logos).
+// Jetons d'écran valides pour l'ordre de rotation. Le slot logos n'en fait pas
+// partie : il ouvre toujours le cycle (voir displayUpdate), position fixe.
 static const char* const SCREEN_TOKENS[] = {
   "clock", "pm1", "pm25", "pm10", "co2", "temp", "humi", "tvoc", "hcho",
-  "weather", "crypto", "logo"
+  "weather", "crypto"
 };
 static const int SCREEN_TOKEN_COUNT = sizeof(SCREEN_TOKENS) / sizeof(SCREEN_TOKENS[0]);
 
