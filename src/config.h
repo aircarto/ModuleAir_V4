@@ -3,7 +3,7 @@
 
 #include <Arduino.h>
 
-#define FIRMWARE_VERSION "0.6.1"
+#define FIRMWARE_VERSION "0.7.0"
 
 // ── Default sensor enable state ─────────────────────────────────────────────
 // These are the FACTORY DEFAULTS for each sensor's enabled flag — the value
@@ -42,6 +42,12 @@
 //
 // AtmoSud logo is OFF by default — flip LOGO_ATMOSUD_DEFAULT to true if you
 // want it back in the rotation.
+// Écrans « info » (horloge / météo / bourse — données via plugins.cpp).
+// L'horloge est ON par défaut (aucune API requise, juste le NTP) ; météo et
+// bourse sont OFF — l'utilisateur les active depuis l'interface web.
+#define SCREEN_CLOCK_DEFAULT    true
+#define SCREEN_WEATHER_DEFAULT  false
+#define SCREEN_CRYPTO_DEFAULT   false
 #define SCREEN_PM1_DEFAULT      true
 #define SCREEN_PM25_DEFAULT     true
 #define SCREEN_PM10_DEFAULT     true
@@ -64,6 +70,17 @@
 #ifdef BUILD_LAIRETMOI
   #define LOGO_LAIRETMOI_DEFAULT  true
 #endif
+
+// ── Rotation des écrans matrice ──────────────────────────────────────────────
+// Ordre d'affichage par défaut (1er boot). Chaque jeton = un écran ; "logo" est
+// le SLOT logos (un seul logo par cycle, tourné à chaque tour, comme avant).
+// L'ordre est réordonnable par drag & drop dans l'interface web et persiste en
+// NVS ("screens"/"order"). Un jeton absent de la liste stockée est ré-ajouté en
+// fin de rotation au chargement (robustesse aux mises à jour du firmware).
+#define SCREEN_ORDER_DEFAULT "clock,pm1,pm25,pm10,co2,temp,humi,tvoc,hcho,weather,crypto,logo"
+// Durée d'affichage de chaque écran (secondes, plancher 3, plafond 60) —
+// réglable dans l'interface web, persistée en NVS ("screens"/"rot_s").
+#define SCREEN_ROTATION_DEFAULT 5
 
 // WiFi AP
 // The hotspot is intentionally open (no password). The first-time-config

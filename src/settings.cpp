@@ -7,6 +7,52 @@
 static SensorSettings sensors;
 static ScreenSettings screens;
 static ThresholdsCO2 thCO2;
+static String screenOrder;
+static uint16_t rotationSec = SCREEN_ROTATION_DEFAULT;
+
+// Jetons d'écran valides pour l'ordre de rotation ("logo" = le slot logos).
+static const char* const SCREEN_TOKENS[] = {
+  "clock", "pm1", "pm25", "pm10", "co2", "temp", "humi", "tvoc", "hcho",
+  "weather", "crypto", "logo"
+};
+static const int SCREEN_TOKEN_COUNT = sizeof(SCREEN_TOKENS) / sizeof(SCREEN_TOKENS[0]);
+
+bool settingsIsValidScreenToken(const char* token) {
+  for (int i = 0; i < SCREEN_TOKEN_COUNT; i++)
+    if (strcmp(token, SCREEN_TOKENS[i]) == 0) return true;
+  return false;
+}
+
+// Normalise un CSV d'ordre : ne garde que les jetons connus (sans doublon),
+// puis ré-ajoute en fin les jetons manquants. Résultat toujours complet et
+// valide, même si la valeur stockée vient d'un firmware plus ancien/corrompu.
+static String normalizeOrder(const String& csv) {
+  bool used[SCREEN_TOKEN_COUNT] = {};
+  String out;
+  int start = 0;
+  while (start < (int)csv.length()) {
+    int comma = csv.indexOf(',', start);
+    if (comma < 0) comma = csv.length();
+    String tok = csv.substring(start, comma);
+    tok.trim();
+    start = comma + 1;
+    for (int i = 0; i < SCREEN_TOKEN_COUNT; i++) {
+      if (!used[i] && tok == SCREEN_TOKENS[i]) {
+        used[i] = true;
+        if (out.length()) out += ',';
+        out += SCREEN_TOKENS[i];
+        break;
+      }
+    }
+  }
+  for (int i = 0; i < SCREEN_TOKEN_COUNT; i++) {
+    if (!used[i]) {
+      if (out.length()) out += ',';
+      out += SCREEN_TOKENS[i];
+    }
+  }
+  return out;
+}
 
 void settingsInit() {
   Preferences prefs;
@@ -29,6 +75,9 @@ void settingsInit() {
   // provisionnées elle reste en place, orpheline et sans effet.
 
   prefs.begin("screens", true);
+  screens.clock   = prefs.getBool("clock",   SCREEN_CLOCK_DEFAULT);
+  screens.weather = prefs.getBool("weather", SCREEN_WEATHER_DEFAULT);
+  screens.crypto  = prefs.getBool("crypto",  SCREEN_CRYPTO_DEFAULT);
   screens.pm1  = prefs.getBool("pm1",  SCREEN_PM1_DEFAULT);
   screens.pm25 = prefs.getBool("pm25", SCREEN_PM25_DEFAULT);
   screens.pm10 = prefs.getBool("pm10", SCREEN_PM10_DEFAULT);
@@ -43,6 +92,10 @@ void settingsInit() {
 #ifdef BUILD_LAIRETMOI
   screens.logo_lairetmoi = prefs.getBool("logo_lam", LOGO_LAIRETMOI_DEFAULT);
 #endif
+  screenOrder = normalizeOrder(prefs.getString("order", SCREEN_ORDER_DEFAULT));
+  rotationSec = prefs.getUShort("rot_s", SCREEN_ROTATION_DEFAULT);
+  if (rotationSec < 3)  rotationSec = 3;
+  if (rotationSec > 60) rotationSec = 60;
   prefs.end();
 
   prefs.begin("thresholds", true);
@@ -88,6 +141,9 @@ void settingsSetScreenEnabled(const char* key, bool enabled) {
   prefs.end();
 
   prefs.begin("screens", true);
+  screens.clock   = prefs.getBool("clock",   SCREEN_CLOCK_DEFAULT);
+  screens.weather = prefs.getBool("weather", SCREEN_WEATHER_DEFAULT);
+  screens.crypto  = prefs.getBool("crypto",  SCREEN_CRYPTO_DEFAULT);
   screens.pm1  = prefs.getBool("pm1",  SCREEN_PM1_DEFAULT);
   screens.pm25 = prefs.getBool("pm25", SCREEN_PM25_DEFAULT);
   screens.pm10 = prefs.getBool("pm10", SCREEN_PM10_DEFAULT);
@@ -117,4 +173,28 @@ void settingsSetThresholdsCO2(int good, int bad) {
   prefs.putInt("co2_bad", bad);
   prefs.end();
   Logger.printf("[Settings] Thresholds CO2 updated: good<%d, bad>=%d\n", good, bad);
+}
+
+const String& settingsGetScreenOrder() { return screenOrder; }
+
+void settingsSetScreenOrder(const String& orderCsv) {
+  screenOrder = normalizeOrder(orderCsv);
+  Preferences prefs;
+  prefs.begin("screens", false);
+  prefs.putString("order", screenOrder);
+  prefs.end();
+  Logger.printf("[Settings] Screen order: %s\n", screenOrder.c_str());
+}
+
+uint16_t settingsGetRotationSec() { return rotationSec; }
+
+void settingsSetRotationSec(uint16_t sec) {
+  if (sec < 3)  sec = 3;
+  if (sec > 60) sec = 60;
+  rotationSec = sec;
+  Preferences prefs;
+  prefs.begin("screens", false);
+  prefs.putUShort("rot_s", rotationSec);
+  prefs.end();
+  Logger.printf("[Settings] Rotation: %us/ecran\n", rotationSec);
 }

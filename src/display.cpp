@@ -12,6 +12,11 @@
 #include "fonts/Font4x7Fixed.h"
 #include "wifi_icon.h"
 #include "wifi_manager.h"
+#include "plugins.h"
+#include <time.h>
+#include <Fonts/FreeSansBold12pt7b.h>
+#include <Fonts/FreeSansBold9pt7b.h>
+#include <Fonts/TomThumb.h>
 
 // ── Hardware ──
 
@@ -60,7 +65,8 @@ static SensorData sensorCache = {};
 static bool hasData = false;
 static unsigned long lastScreenChange = 0;
 static int currentScreen = 0;
-#define SCREEN_INTERVAL 5000
+// Durée d'affichage de chaque écran : réglable dans l'UI web, persistée en
+// NVS — voir settingsGetRotationSec() (défaut SCREEN_ROTATION_DEFAULT).
 
 // When a transient splash (WiFi connected / lost / reconnected) is drawn,
 // suppress the rotating-data displayUpdate() for a short window so the
@@ -69,6 +75,7 @@ static unsigned long suppressUpdateUntil = 0;
 
 // Screen IDs
 enum Screen { SCR_PM1, SCR_PM25, SCR_PM10, SCR_CO2, SCR_TEMP, SCR_HUMI, SCR_COV, SCR_HCHO,
+              SCR_CLOCK, SCR_WEATHER, SCR_CRYPTO,
               SCR_PM_ERR, SCR_CO2_ERR,
               SCR_LOGO_MA, SCR_LOGO_AC, SCR_LOGO_AS,
 #ifdef BUILD_LAIRETMOI
@@ -502,6 +509,173 @@ static void drawScreenConfigWifi() {
   drawWifiIcon(WIFI_ICON_FRAMES - 1);
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+//  Écrans « info » — horloge / météo / bourse (portés depuis ModuleClaude).
+//  Données externes : plugins.cpp (Open-Meteo, CoinGecko) + heure NTP.
+//  Layouts identiques à l'aperçu de l'interface web (web/app.html).
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Couleurs supplémentaires « pures » (une composante faible = 0, sinon la
+// dalle rend un pastel délavé).
+#define RGB565C(r,g,b) ((uint16_t)((((r)&0xF8)<<8)|(((g)&0xFC)<<3)|((b)>>3)))
+static const uint16_t C_AMBER   = RGB565C(0xff,0x88,0x00);
+static const uint16_t C_DIM     = RGB565C(0x88,0xa8,0xc0);
+static const uint16_t C_SUN     = RGB565C(0xff,0xcc,0x00);
+static const uint16_t C_SUNCORE = RGB565C(0xff,0xf1,0xa6);
+static const uint16_t C_CLOUDC  = RGB565C(0xe0,0xee,0xfc);
+static const uint16_t C_RAIN    = RGB565C(0x00,0xa0,0xff);
+
+// petit texte : police glcd 5x7 (origine haut-gauche, avance 6px)
+static void tprint(int x, int y, const char* s, uint16_t c) {
+  display.setFont(NULL); display.setTextSize(1);
+  display.setTextColor(c); display.setCursor(x, y); display.print(s);
+}
+static int  tw(const char* s) { return (int)strlen(s) * 6 - 1; }
+static void tright(int xr, int y, const char* s, uint16_t c)  { tprint(xr - tw(s), y, s, c); }
+static void tcenter(int cx, int y, const char* s, uint16_t c) { tprint(cx - tw(s) / 2, y, s, c); }
+
+// symbole ° 5x4 px (les polices FreeSans n'ont pas un ° propre à cette taille)
+static void degreeMark(int x, int y, uint16_t c) {
+  display.fillRect(x+1, y, 3, 1, c); display.fillRect(x, y+1, 1, 2, c);
+  display.fillRect(x+4, y+1, 1, 2, c); display.fillRect(x+1, y+3, 3, 1, c);
+}
+
+// écran « pas de données » (fetch en erreur)
+static void drawUnavail(const char* what) {
+  display.clearDisplay();
+  tcenter(32, 8, what, COLOR_WHITE);
+  tcenter(32, 18, i18nGetLang() == LANG_EN ? "NO DATA" : "INDISPO", C_DIM);
+}
+
+// ── Horloge ──────────────────────────────────────────────────────────────────
+// Suivi de la minute affichée : displayUpdate() redessine l'horloge dès que la
+// minute change pendant son slot, sans attendre le prochain tour de rotation.
+static int clockShownMinute = -1;
+
+static void drawScreenClock() {
+  display.clearDisplay();
+  time_t now = time(nullptr);
+  struct tm tmv;
+  localtime_r(&now, &tmv);   // TZ Europe/Paris posée par configTzTime (plugins.cpp)
+  char hhmm[6];
+  snprintf(hhmm, sizeof(hhmm), "%02d:%02d", tmv.tm_hour, tmv.tm_min);
+  // heure : FreeSansBold 12pt (17px), blanche, centrée, baseline 17
+  display.setFont(&FreeSansBold12pt7b);
+  display.setTextColor(COLOR_WHITE);
+  int16_t bx, by; uint16_t bw, bh;
+  display.getTextBounds(hhmm, 0, 17, &bx, &by, &bw, &bh);
+  display.setCursor((MATRIX_WIDTH - (int)bw) / 2 - bx, 17);
+  display.print(hhmm);
+  display.setFont(NULL);
+  // date compacte "JEU 16/07" sous l'heure, cyan (accent ModuleAir)
+  static const char* const D3_FR[7] = {"DIM","LUN","MAR","MER","JEU","VEN","SAM"};
+  static const char* const D3_EN[7] = {"SUN","MON","TUE","WED","THU","FRI","SAT"};
+  const char* const* D3 = (i18nGetLang() == LANG_EN) ? D3_EN : D3_FR;
+  char dt[16];
+  snprintf(dt, sizeof(dt), "%s %02d/%02d", D3[tmv.tm_wday], tmv.tm_mday, tmv.tm_mon + 1);
+  tcenter(MATRIX_WIDTH / 2, 23, dt, COLOR_CYAN);
+  clockShownMinute = tmv.tm_min;
+}
+
+// ── Météo (pixel-art) ────────────────────────────────────────────────────────
+static int wxType(int code) {   // 0 soleil,1 éclaircies,2 nuage,3 pluie,4 neige,5 orage
+  if (code == 0) return 0;
+  if (code <= 2) return 1;
+  if (code == 3) return 2;
+  if (code >= 45 && code <= 48) return 2;
+  if (code >= 51 && code <= 67) return 3;
+  if (code >= 71 && code <= 77) return 4;
+  if (code >= 80 && code <= 82) return 3;
+  if (code >= 95) return 5;
+  return 2;
+}
+static const char* wxLabel(int code) {
+  bool en = (i18nGetLang() == LANG_EN);
+  switch (wxType(code)) {
+    case 0: return en ? "SUNNY" : "ENSOLEILLE";
+    case 1: return en ? "PARTLY SUNNY" : "ECLAIRCIES";
+    case 3: return (code >= 80) ? (en ? "SHOWERS" : "AVERSES") : (en ? "RAIN" : "PLUIE");
+    case 4: return en ? "SNOW" : "NEIGE";
+    case 5: return en ? "STORM" : "ORAGE";
+    default: return (code >= 45 && code <= 48) ? (en ? "FOG" : "BROUILLARD")
+                                               : (en ? "CLOUDY" : "COUVERT");
+  }
+}
+static void wsun(int cx, int cy, int r) {
+  static const int d[8][2] = {{0,-1},{0,1},{-1,0},{1,0},{-1,-1},{1,-1},{-1,1},{1,1}};
+  for (int i = 0; i < 8; i++) {                          // rayons 2px collés au disque
+    display.drawPixel(cx + d[i][0]*(r+1), cy + d[i][1]*(r+1), C_SUN);
+    display.drawPixel(cx + d[i][0]*(r+2), cy + d[i][1]*(r+2), C_SUN);
+  }
+  display.fillCircle(cx, cy, r, C_SUN);
+  display.fillCircle(cx, cy, r-2, C_SUNCORE);            // cœur plus clair
+}
+static void wcloud(int x, int y) {
+  display.fillCircle(x+4, y+6, 3, C_CLOUDC); display.fillCircle(x+9, y+4, 4, C_CLOUDC);
+  display.fillCircle(x+14, y+6, 3, C_CLOUDC); display.fillRect(x+3, y+7, 13, 3, C_CLOUDC);
+}
+static void drawWeatherGlyph(int code, int cx, int cy) {
+  switch (wxType(code)) {
+    case 0: wsun(cx, cy, 6); break;
+    case 1: wsun(cx-1, cy-3, 3); wcloud(cx-9, cy); break;
+    case 3: wcloud(cx-9, cy-4); for (int i=-4;i<=6;i+=5) display.fillRect(cx+i,cy+7,2,3,C_RAIN); break;
+    case 4: wcloud(cx-9, cy-4); for (int i=-4;i<=6;i+=5) display.fillRect(cx+i,cy+7,2,2,COLOR_WHITE); break;
+    case 5: { wcloud(cx-9, cy-4); static const int b[4][2]={{0,6},{-1,8},{1,9},{0,11}};
+              for (int i=0;i<4;i++) display.drawPixel(cx+b[i][0],cy+b[i][1],C_AMBER); } break;
+    default: wcloud(cx-9, cy-2); break;
+  }
+}
+
+static void drawScreenWeather() {
+  const WeatherData& d = pluginsWeather();
+  if (!d.valid) { drawUnavail(i18nGetLang() == LANG_EN ? "WEATHER" : "METEO"); return; }
+  display.clearDisplay();
+  drawWeatherGlyph(d.code, 12, 12);
+  int16_t bx, by; uint16_t bw, bh;
+  // ville : TomThumb 3x5, cyan, en haut à droite
+  String city = pluginsCfg().wxCity;
+  city.toUpperCase();
+  if (city.length() > 12) city = city.substring(0, 12);
+  display.setFont(&TomThumb); display.setTextColor(COLOR_CYAN);
+  display.getTextBounds(city.c_str(), 0, 7, &bx, &by, &bw, &bh);
+  display.setCursor(MATRIX_WIDTH - 2 - (int)bw, 7); display.print(city);
+  // température : FreeSansBold 9pt + °
+  display.setFont(&FreeSansBold9pt7b); display.setTextColor(COLOR_WHITE);
+  char tp[6];
+  snprintf(tp, sizeof(tp), "%d", (int)lroundf(d.temp));
+  display.getTextBounds(tp, 30, 21, &bx, &by, &bw, &bh);
+  display.setCursor(30, 21); display.print(tp);
+  degreeMark(30 + (int)bw + 2, 9, COLOR_WHITE);
+  // condition : TomThumb ambre, centrée en bas
+  display.setFont(&TomThumb); display.setTextColor(C_AMBER);
+  const char* lab = wxLabel(d.code);
+  display.getTextBounds(lab, 0, 31, &bx, &by, &bw, &bh);
+  display.setCursor((MATRIX_WIDTH - (int)bw) / 2 - bx, 31); display.print(lab);
+  display.setFont(NULL);
+}
+
+// ── Bourse / crypto ──────────────────────────────────────────────────────────
+static void drawScreenCrypto() {
+  const CryptoData& d = pluginsCrypto();
+  if (!d.valid) { drawUnavail(i18nGetLang() == LANG_EN ? "MARKETS" : "MARCHES"); return; }
+  display.clearDisplay();
+  for (int i = 0; i < d.count && i < 3; i++) {
+    int y = 2 + i * 10;
+    bool up = d.items[i].change >= 0;
+    tprint(2, y, d.items[i].sym.c_str(), COLOR_WHITE);
+    char pr[12];
+    float v = d.items[i].price;
+    if (v >= 100000)    snprintf(pr, sizeof(pr), "%.0fK", v/1000.0f);
+    else if (v >= 1000) snprintf(pr, sizeof(pr), "%.1fK", v/1000.0f);
+    else if (v >= 1)    snprintf(pr, sizeof(pr), "%.1f", v);
+    else                snprintf(pr, sizeof(pr), "%.3f", v);
+    tright(57, y, pr, COLOR_CYAN);
+    uint16_t tc = up ? COLOR_GREEN : COLOR_RED;
+    if (up) display.fillTriangle(59, y+6, 63, y+6, 61, y+1, tc);
+    else    display.fillTriangle(59, y+1, 63, y+1, 61, y+6, tc);
+  }
+}
+
 // ── Public API ──
 
 // Ordre des couleurs de la dalle LED, selon le PAS physique du panneau :
@@ -560,16 +734,31 @@ void displaySetSensorData(const SensorData& data) {
   hasData = true;
 }
 
+// Dernier écran de rotation dessiné — sert au rafraîchissement de l'horloge
+// (redessin quand la minute change pendant son slot d'affichage).
+static Screen lastDrawnScreen = SCR_COUNT;
+
 void displayUpdate() {
   if (!hasData) return;
   // Hold whatever splash was just drawn until its suppression window expires.
   if (millis() < suppressUpdateUntil) return;
 
+  // L'horloge affichée suit la minute courante sans attendre le prochain tour
+  // de rotation (le slot peut durer plus longtemps qu'un changement de minute).
+  if (lastDrawnScreen == SCR_CLOCK && pluginsTimeValid()) {
+    time_t nowT = time(nullptr);
+    struct tm tmv;
+    localtime_r(&nowT, &tmv);
+    if (tmv.tm_min != clockShownMinute) drawScreenClock();
+  }
+
   unsigned long now = millis();
-  if (now - lastScreenChange < SCREEN_INTERVAL) return;
+  const unsigned long intervalMs = (unsigned long)settingsGetRotationSec() * 1000UL;
+  if (now - lastScreenChange < intervalMs) return;
   lastScreenChange = now;
 
-  // Build list of available screens: all data screens, then 1 logo (rotated each cycle)
+  // Build list of available screens following the user-configured order
+  // (drag & drop in the web UI, CSV in NVS — see settingsGetScreenOrder()).
   const ScreenSettings& scfg = settingsGetScreens();
   const SensorSettings& sensCfg = settingsGetSensors();
   Screen avail[SCR_COUNT];
@@ -583,32 +772,8 @@ void displayUpdate() {
     avail[count++] = SCR_CONFIG_WIFI;
   }
 
-  // Data screens. We distinguish three states per family:
-  //   1. Sensor enabled + reading OK    -> show data screens
-  //   2. Sensor enabled + reading KO    -> show single error screen
-  //   3. Sensor disabled by user        -> hide everything (NOT an error)
-  if (sensorCache.pm_ok) {
-    if (scfg.pm1)  avail[count++] = SCR_PM1;
-    if (scfg.pm25) avail[count++] = SCR_PM25;
-    if (scfg.pm10) avail[count++] = SCR_PM10;
-  } else if (sensCfg.npm_enabled && (scfg.pm1 || scfg.pm25 || scfg.pm10)) {
-    avail[count++] = SCR_PM_ERR;
-  }
-  if (scfg.co2) {
-    if (sensorCache.co2_ok) {
-      avail[count++] = SCR_CO2;
-    } else if (sensCfg.mhz19_enabled) {
-      avail[count++] = SCR_CO2_ERR;
-    }
-  }
-  if (sensorCache.bme_ok) {
-    if (scfg.temp) avail[count++] = SCR_TEMP;
-    if (scfg.humi) avail[count++] = SCR_HUMI;
-  }
-  if (sensorCache.ccs_ok && scfg.tvoc) avail[count++] = SCR_COV;
-  if (sensorCache.sfa40_ok && scfg.hcho) avail[count++] = SCR_HCHO;
-
-  // Active logos (LOGO_SLOT_COUNT = 3, ou 4 sur la build lairetmoi)
+  // Active logos (LOGO_SLOT_COUNT = 3, ou 4 sur la build lairetmoi). Un seul
+  // logo par cycle (slot "logo" de l'ordre), tourné à chaque tour — inchangé.
   Screen logos[LOGO_SLOT_COUNT];
   int logoCount = 0;
   if (scfg.logo_moduleair) logos[logoCount++] = SCR_LOGO_MA;
@@ -617,11 +782,58 @@ void displayUpdate() {
 #ifdef BUILD_LAIRETMOI
   if (scfg.logo_lairetmoi) logos[logoCount++] = SCR_LOGO_LAM;
 #endif
-
-  // Append one logo at the end (rotated across cycles)
   static int logoRotationIdx = 0;
-  if (logoCount > 0) {
-    avail[count++] = logos[logoRotationIdx % logoCount];
+
+  // Data screens, dans l'ordre configuré. Trois états par famille de capteurs,
+  // inchangés :
+  //   1. Sensor enabled + reading OK    -> show data screens
+  //   2. Sensor enabled + reading KO    -> show single error screen
+  //      (l'écran d'erreur PM prend la place du 1er écran PM de l'ordre)
+  //   3. Sensor disabled by user        -> hide everything (NOT an error)
+  const String& order = settingsGetScreenOrder();
+  bool pmErrAdded = false;
+  int start = 0;
+  while (start < (int)order.length() && count < SCR_COUNT) {
+    int comma = order.indexOf(',', start);
+    if (comma < 0) comma = order.length();
+    String tok = order.substring(start, comma);
+    start = comma + 1;
+
+    if (tok == "clock") {
+      // n'entre en rotation qu'une fois l'heure NTP acquise
+      if (scfg.clock && pluginsTimeValid()) avail[count++] = SCR_CLOCK;
+    } else if (tok == "pm1" || tok == "pm25" || tok == "pm10") {
+      bool wanted = (tok == "pm1") ? scfg.pm1 : (tok == "pm25") ? scfg.pm25 : scfg.pm10;
+      if (sensorCache.pm_ok) {
+        if (wanted) avail[count++] = (tok == "pm1") ? SCR_PM1 : (tok == "pm25") ? SCR_PM25 : SCR_PM10;
+      } else if (!pmErrAdded && wanted && sensCfg.npm_enabled) {
+        avail[count++] = SCR_PM_ERR;
+        pmErrAdded = true;
+      }
+    } else if (tok == "co2") {
+      if (scfg.co2) {
+        if (sensorCache.co2_ok)          avail[count++] = SCR_CO2;
+        else if (sensCfg.mhz19_enabled)  avail[count++] = SCR_CO2_ERR;
+      }
+    } else if (tok == "temp") {
+      if (sensorCache.bme_ok && scfg.temp) avail[count++] = SCR_TEMP;
+    } else if (tok == "humi") {
+      if (sensorCache.bme_ok && scfg.humi) avail[count++] = SCR_HUMI;
+    } else if (tok == "tvoc") {
+      if (sensorCache.ccs_ok && scfg.tvoc) avail[count++] = SCR_COV;
+    } else if (tok == "hcho") {
+      if (sensorCache.sfa40_ok && scfg.hcho) avail[count++] = SCR_HCHO;
+    } else if (tok == "weather") {
+      // visible dès qu'une donnée est là (ou une erreur -> écran INDISPO) ;
+      // pendant le tout premier chargement on saute simplement l'écran.
+      if (scfg.weather && (pluginsWeather().valid || pluginsWeather().error))
+        avail[count++] = SCR_WEATHER;
+    } else if (tok == "crypto") {
+      if (scfg.crypto && (pluginsCrypto().valid || pluginsCrypto().error))
+        avail[count++] = SCR_CRYPTO;
+    } else if (tok == "logo") {
+      if (logoCount > 0) avail[count++] = logos[logoRotationIdx % logoCount];
+    }
   }
 
   if (count == 0) return;
@@ -633,6 +845,7 @@ void displayUpdate() {
   }
 
   static const char* screenNames[] = { "PM1", "PM2.5", "PM10", "CO2", "Temp", "Humi", "COV", "HCHO",
+                                       "Horloge", "Meteo", "Bourse",
                                        "PM ERR", "CO2 ERR",
                                        "Logo ModuleAir", "Logo AirCarto", "Logo AtmoSud",
 #ifdef BUILD_LAIRETMOI
@@ -641,7 +854,7 @@ void displayUpdate() {
                                        "Config WiFi" };
 
   Screen scr = avail[currentScreen];
-  Logger.printf("[Display](%ds) Screen %d/%d: %s\n", SCREEN_INTERVAL / 1000, currentScreen + 1, count, screenNames[scr]);
+  Logger.printf("[Display](%us) Screen %d/%d: %s\n", settingsGetRotationSec(), currentScreen + 1, count, screenNames[scr]);
 
   switch (scr) {
     case SCR_PM1:     drawScreenPM1();      break;
@@ -652,6 +865,9 @@ void displayUpdate() {
     case SCR_HUMI:    drawScreenHumi();     break;
     case SCR_COV:     drawScreenCOV();      break;
     case SCR_HCHO:    drawScreenHCHO();     break;
+    case SCR_CLOCK:   drawScreenClock();    break;
+    case SCR_WEATHER: drawScreenWeather();  break;
+    case SCR_CRYPTO:  drawScreenCrypto();   break;
     case SCR_PM_ERR:  drawScreenPMError();  break;
     case SCR_CO2_ERR: drawScreenCO2Error(); break;
     case SCR_LOGO_MA: displayShowLogo();           break;
@@ -663,6 +879,7 @@ void displayUpdate() {
     case SCR_CONFIG_WIFI: drawScreenConfigWifi();  break;
     default: break;
   }
+  lastDrawnScreen = scr;
 
   currentScreen++;
 }

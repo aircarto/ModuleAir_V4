@@ -4,6 +4,48 @@ Toutes les modifications notables du firmware ModuleAir V4 sont documentées ici
 
 Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versioning [Semantic Versioning](https://semver.org/).
 
+## [0.7.0] - 2026-08-12
+
+### Ajouté
+
+- **Trois nouveaux écrans « info » dans la rotation matrice** (portés depuis le
+  projet ModuleClaude) : **Horloge** (HH:MM FreeSansBold + date, synchro NTP
+  avec vraie timezone POSIX Europe/Paris — DST automatique), **Météo**
+  (Open-Meteo, sans clé : glyphe pixel-art, ville, température, condition ;
+  poll 10 min) et **Bourse/crypto** (CoinGecko, sans clé : 3 actifs max,
+  prix + triangle de tendance 24 h ; poll 3 min). Horloge ON par défaut,
+  météo/bourse OFF. Nouveau module `plugins.cpp` : fetchers scopés (un seul
+  contexte TLS vivant à la fois, `setReuse(false)` — mêmes précautions heap que
+  `data_sender.cpp`), un seul fetch par passage de boucle, config en NVS
+  (namespace `plugins`).
+- **Ordre de rotation des écrans configurable** (drag & drop dans la nouvelle
+  interface web) : CSV de jetons persisté en NVS (`screens/order`), normalisé au
+  chargement (jetons inconnus retirés, manquants ré-ajoutés — robuste aux mises
+  à jour). Le slot `logo` garde le comportement historique (un logo par cycle,
+  tourné à chaque tour).
+- **Durée d'affichage par écran réglable** (3-60 s, défaut 5 s, NVS
+  `screens/rot_s`) — remplace le `SCREEN_INTERVAL` fixe.
+- **Nouvelle interface web (SPA)** servie gzippée depuis PROGMEM sur `/`
+  (STA) : aperçu LED 64×32 pixel-perfect sur canvas, gestion des écrans par
+  cartes réordonnables, mesures en direct, capteurs, seuils CO2, luminosité,
+  logs temps réel, OTA, langue FR/EN — thème clair, accent bleu. Source unique
+  `web/app.html`, embarquée au build par `web_embed.py` (`src/web_index.h`,
+  généré + gitignoré). **L'ancienne interface reste accessible sur `/config`.**
+- Nouveaux endpoints : `GET /api/display` (config + données live pour la SPA),
+  `POST /set-screen-order`, `/set-rotation`, `/set-weather`, `/set-crypto`.
+  `/set-screen` accepte les nouvelles clés `clock`/`weather`/`crypto` et
+  valide désormais la clé reçue (400 sinon). `/api/config` expose
+  `screen_clock/weather/crypto`, `screen_order`, `screen_rotation_s`.
+- Dépendance `ArduinoJson@^7` (parsing des réponses API + JSON de `/api/display`).
+
+### Inchangé (garanti)
+
+- **Aucune modification des mesures ni de l'envoi de données** : `sensors.cpp`,
+  `data_sender.cpp` et la cadence `sensorsSample()` / `sensorsFinalize()` /
+  `dataSenderSend()` sont intacts. L'écran horloge n'entre en rotation qu'une
+  fois l'heure NTP acquise ; météo/bourse n'apparaissent qu'avec une donnée (ou
+  un écran INDISPO explicite en cas d'erreur API).
+
 ## [0.6.1] - 2026-07-31
 
 ### Corrigé

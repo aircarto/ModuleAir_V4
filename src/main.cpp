@@ -11,6 +11,7 @@
 #include "data_sender.h"
 #include "settings.h"
 #include "network_monitor.h"
+#include "plugins.h"
 
 unsigned long lastCycle = 0;
 unsigned long lastSample = 0;
@@ -35,6 +36,7 @@ void setup() {
   configInit();
   i18nInit();          // load language from NVS (survives OTA) before any UI/screen text
   settingsInit();
+  pluginsInit();       // config météo/bourse (NVS) pour les écrans "info"
   dataSenderInit();    // stamp provisioning AtmoSud + migration ancien flag (cf. data_sender.h)
   logoStorageInit();
   displayInit();
@@ -111,6 +113,11 @@ void loop() {
       dataSenderSend();
     }
   }
+
+  // NTP + fetch météo/bourse (non bloquant la plupart du temps : un fetch
+  // HTTPS ~1-2 s toutes les 3-10 min par écran activé, séquencé avec l'envoi
+  // de données — jamais deux contextes TLS vivants en même temps).
+  pluginsLoop();
 
   // The "Config WiFi" slot is now part of the rotation itself (inserted by
   // displayUpdate() when wifiShouldShowConfigSplash() is true), so we no

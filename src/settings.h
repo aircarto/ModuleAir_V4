@@ -18,6 +18,10 @@ struct SensorSettings {
 
 // Display screen enable/disable
 struct ScreenSettings {
+  // Écrans « info » (horloge / météo / bourse — données via plugins.cpp)
+  bool clock;
+  bool weather;
+  bool crypto;
   // Polluants
   bool pm1;
   bool pm25;
@@ -43,6 +47,19 @@ ScreenSettings& settingsGetScreens();
 
 void settingsSetSensorEnabled(const char* key, bool enabled);
 void settingsSetScreenEnabled(const char* key, bool enabled);
+
+// ── Ordre de rotation des écrans matrice ────────────────────────────────────
+// CSV de jetons parmi : clock, pm1, pm25, pm10, co2, temp, humi, tvoc, hcho,
+// weather, crypto, logo (le slot logos). Normalisé au chargement : jetons
+// inconnus/dupliqués retirés, jetons manquants ré-ajoutés en fin — l'ordre
+// stocké reste donc valide après une mise à jour qui ajoute des écrans.
+const String& settingsGetScreenOrder();
+void settingsSetScreenOrder(const String& orderCsv);
+bool settingsIsValidScreenToken(const char* token);
+
+// Durée d'affichage de chaque écran (secondes, borné 3..60).
+uint16_t settingsGetRotationSec();
+void settingsSetRotationSec(uint16_t sec);
 
 // Thresholds
 struct ThresholdsCO2 {

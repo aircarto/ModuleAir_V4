@@ -1,0 +1,1621 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ModuleAir</title>
+<style>
+/* ============================================================================
+   ModuleAir — interface web embarquée · single-file, offline, PROGMEM-ready
+   DA "Wise" du projet frère Module Info, palette basculée en BLEU.
+   ========================================================================== */
+:root{
+  --ink:#0a2540; --accent:#6ec1ff; --pale:#dceeff; --deep:#0b4a7a;
+  --alarm:#cb272f; --charcoal:#454745; --obsidian:#0e0f0c;
+  --pebble:#868685; --slate:#6a6c6a; --fog:#e8ebe6; --paper:#ffffff;
+  --sans:system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif;
+  --r-card:16px; --r-lg:28px; --r-pill:9999px; --r-in:12px;
+  --shadow-xl:0 10px 32px rgba(10,20,30,.12),0 40px 60px rgba(10,20,30,.06);
+  --shadow-lg:0 6px 20px rgba(10,20,30,.09);
+  --maxw:1180px;
+  --ease:cubic-bezier(.2,.9,.2,1);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%}
+body{font-family:var(--sans);color:var(--charcoal);background:var(--paper);
+  -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;overflow-x:hidden}
+button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit}
+input{font-family:inherit}
+a{color:inherit}
+::selection{background:var(--accent);color:var(--ink)}
+[hidden]{display:none!important}
+.tnum{font-variant-numeric:tabular-nums;font-feature-settings:"tnum"}
+
+/* ---- shared atoms -------------------------------------------------------- */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;
+  border-radius:var(--r-pill);font-weight:600;font-size:15px;letter-spacing:-.01em;
+  padding:12px 24px;transition:transform .15s var(--ease),background .2s,box-shadow .2s;white-space:nowrap}
+.btn:active{transform:translateY(1px) scale(.99)}
+.btn-primary{background:var(--ink);color:var(--paper)}
+.btn-primary:hover{background:#103156}
+.btn-accent{background:var(--accent);color:var(--ink)}
+.btn-accent:hover{background:#84cbff}
+.btn-ghost{background:transparent;border:1px solid var(--ink);color:var(--ink)}
+.btn-ghost:hover{background:var(--pale)}
+.btn-danger{background:transparent;border:1px solid #eccfd1;color:var(--alarm)}
+.btn-danger:hover{background:#fdf0f0;border-color:var(--alarm)}
+.btn-link{background:none;text-decoration:underline;text-underline-offset:3px;padding:6px 2px;font-weight:500}
+.btn[disabled]{opacity:.4;pointer-events:none}
+.spin{width:15px;height:15px;border:2px solid rgba(10,37,64,.25);border-top-color:var(--ink);
+  border-radius:50%;animation:spin .7s linear infinite;display:inline-block;flex:none}
+.btn-primary .spin{border-color:rgba(255,255,255,.35);border-top-color:#fff}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ============================================================================
+   SPLASH — logotype ModuleAir, court (<2 s)
+   ========================================================================== */
+#splash{position:fixed;inset:0;z-index:100;background:var(--ink);
+  display:grid;place-items:center;transition:opacity .55s var(--ease),visibility .55s}
+#splash.gone{opacity:0;visibility:hidden}
+.splash-in{display:flex;flex-direction:column;align-items:center;gap:16px;
+  animation:splashIn .7s var(--ease)}
+@keyframes splashIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+.splash-dot{width:16px;height:16px;border-radius:50%;background:var(--accent);
+  box-shadow:0 0 0 0 rgba(110,193,255,.5);animation:pulse 1.4s var(--ease) infinite}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(110,193,255,.45)}70%{box-shadow:0 0 0 16px rgba(110,193,255,0)}100%{box-shadow:0 0 0 0 rgba(110,193,255,0)}}
+.splash-in b{color:var(--paper);font-weight:800;font-size:30px;letter-spacing:-.03em}
+.splash-in b i{font-style:normal;color:var(--accent)}
+.splash-tag{color:var(--pale);opacity:.6;font-size:12.5px;font-weight:500;
+  letter-spacing:.14em;text-transform:uppercase}
+
+/* ============================================================================
+   APP
+   ========================================================================== */
+#app{min-height:100dvh;display:flex;flex-direction:column}
+.nav{position:sticky;top:0;z-index:40;background:rgba(255,255,255,.82);
+  backdrop-filter:saturate(160%) blur(14px);-webkit-backdrop-filter:saturate(160%) blur(14px);
+  border-bottom:1px solid var(--fog)}
+.nav-in{max-width:var(--maxw);margin:0 auto;height:66px;display:flex;align-items:center;
+  gap:16px;padding:0 clamp(16px,4vw,28px)}
+.brand{display:flex;align-items:center;gap:10px;font-weight:800;letter-spacing:-.02em;
+  color:var(--ink);font-size:18px}
+.brand i{font-style:normal;color:#2f9de8}
+.brand-dot{width:12px;height:12px;border-radius:50%;background:var(--accent);
+  box-shadow:inset 0 0 0 3px var(--ink);flex:none}
+.nav-spacer{flex:1}
+.device-pill{display:flex;align-items:center;gap:9px;background:var(--fog);
+  border-radius:9999px;padding:7px 14px;font-weight:600;font-size:14.5px;color:var(--ink)}
+.device-pill .dot{width:8px;height:8px;border-radius:50%;background:var(--pebble);flex:none}
+.device-pill .dot.on{background:#3ecf6a;box-shadow:0 0 0 3px rgba(62,207,106,.22)}
+.icon-btn{width:40px;height:40px;border-radius:9999px;display:grid;place-items:center;
+  color:var(--ink);transition:background .15s}
+.icon-btn:hover{background:var(--fog)}
+
+.wide{max-width:var(--maxw);margin:0 auto;width:100%;padding:0 clamp(16px,4vw,28px)}
+
+/* alert banner */
+.banner{margin-top:18px;background:#fdecec;border:1px solid #f3c5c7;color:#8f1d22;
+  border-radius:var(--r-card);padding:13px 18px;font-size:14.5px;font-weight:600;
+  display:flex;align-items:center;gap:11px}
+.banner svg{flex:none}
+
+.stage{max-width:var(--maxw);margin:0 auto;width:100%;
+  padding:clamp(20px,4vw,40px) clamp(16px,4vw,28px) 10px;
+  display:grid;grid-template-columns:minmax(0,1fr) 400px;gap:clamp(24px,4vw,52px);align-items:start}
+@media(max-width:900px){.stage{grid-template-columns:1fr;gap:28px}}
+
+/* -- left : live preview -- */
+.preview-col{position:sticky;top:90px}
+@media(max-width:900px){.preview-col{position:static}}
+.pc-head{margin-bottom:22px}
+.pc-head h1{font-weight:800;letter-spacing:-.04em;line-height:.96;color:var(--obsidian);
+  font-size:clamp(38px,6vw,58px)}
+.pc-head p{color:var(--slate);font-size:16.5px;margin-top:12px;max-width:46ch;line-height:1.5}
+
+.device{background:linear-gradient(160deg,#22252a,#0e0f0c);border-radius:24px;
+  padding:20px;box-shadow:var(--shadow-xl),inset 0 1px 0 rgba(255,255,255,.06);position:relative}
+.device::after{content:"";position:absolute;left:50%;bottom:9px;transform:translateX(-50%);
+  width:44px;height:5px;border-radius:9999px;background:rgba(255,255,255,.10)}
+.screen{position:relative;aspect-ratio:2/1;border-radius:12px;overflow:hidden;
+  background:#050608;box-shadow:inset 0 0 0 2px rgba(0,0,0,.6),inset 0 2px 14px rgba(0,0,0,.9)}
+.screen::before{content:"";position:absolute;inset:0;pointer-events:none;z-index:6;border-radius:12px;
+  background:radial-gradient(120% 80% at 50% -8%,rgba(255,255,255,.05),transparent 55%),
+             radial-gradient(130% 130% at 50% 130%,rgba(0,0,0,.4),transparent 62%)}
+.screen canvas{position:absolute;inset:0;width:100%;height:100%;display:block;border-radius:12px;
+  transition:opacity .16s linear}
+
+.dv-strip{display:flex;align-items:center;gap:12px;margin-top:20px}
+.dv-tabs{display:flex;gap:6px;background:var(--fog);border-radius:9999px;padding:5px;
+  overflow-x:auto;flex:1;scrollbar-width:none}
+.dv-tabs::-webkit-scrollbar{display:none}
+.dv-tab{border-radius:9999px;padding:9px 14px;font-size:14px;font-weight:600;
+  color:var(--charcoal);white-space:nowrap;transition:.15s;display:flex;align-items:center;gap:7px}
+.dv-tab.on{background:var(--accent);color:var(--ink)}
+.dv-tab .g{width:7px;height:7px;border-radius:50%;background:var(--deep)}
+.dv-tab.on .g{background:var(--ink)}
+.cycle-btn{width:44px;height:44px;border-radius:9999px;background:var(--ink);
+  color:var(--accent);display:grid;place-items:center;flex:none;transition:.15s}
+.cycle-btn:hover{background:#103156}
+.cycle-note{color:var(--pebble);font-size:13px;margin-top:12px;display:flex;align-items:center;gap:7px}
+.demo-note{margin-top:7px;font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--pebble);
+  border:1px solid var(--fog);border-radius:9999px;padding:3px 9px;display:inline-block;opacity:.75}
+
+/* -- right : screens manager -- */
+.mgr-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:6px}
+.mgr-head h2{font-size:22px;font-weight:700;letter-spacing:-.02em;color:var(--ink)}
+.mgr-head span{color:var(--pebble);font-size:14px;font-weight:500;transition:color .2s}
+.mgr-head span.err{color:var(--alarm)}
+.mgr-sub{color:var(--slate);font-size:14.5px;line-height:1.5;margin-bottom:16px}
+
+.rot-card{border:1px solid var(--fog);border-radius:var(--r-card);padding:15px 18px;margin-bottom:16px;background:var(--paper)}
+.rot-top{display:flex;justify-content:space-between;align-items:baseline;font-size:14px;
+  font-weight:600;color:var(--ink);margin-bottom:10px}
+.rot-top b{color:var(--deep);font-size:15px}
+input[type=range]{width:100%;accent-color:var(--ink);height:22px}
+
+.plugins{display:flex;flex-direction:column;gap:14px}
+.plugin{border:1px solid var(--fog);border-radius:var(--r-card);background:var(--paper);
+  overflow:hidden;transition:border-color .2s,box-shadow .2s,opacity .2s}
+.plugin.on{border-color:var(--ink);box-shadow:var(--shadow-lg)}
+.plugin.locked{opacity:.55}
+.plugin.locked .pg-top{cursor:default}
+.plugin.shake{animation:shk .4s}
+@keyframes shk{0%,100%{transform:translateX(0)}25%{transform:translateX(-4px)}75%{transform:translateX(4px)}}
+.pg-top{display:flex;align-items:center;gap:12px;padding:14px 16px 14px 8px;cursor:pointer}
+.grip{touch-action:none;cursor:grab;color:#c2c4c2;padding:8px 4px;flex:none;display:grid;place-items:center;border-radius:8px}
+.grip:hover{color:var(--pebble);background:var(--fog)}
+.grip:active{cursor:grabbing}
+.pg-ic{width:44px;height:44px;border-radius:12px;flex:none;display:grid;place-items:center;
+  background:var(--pale);color:var(--ink);transition:.2s}
+.plugin.on .pg-ic{background:var(--ink);color:var(--accent)}
+.pg-meta{flex:1;min-width:0}
+.pg-meta b{display:block;font-size:15.5px;font-weight:700;color:var(--ink);letter-spacing:-.01em}
+.pg-meta small{display:block;color:var(--slate);font-size:13px;margin-top:2px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pg-meta small.warn{color:#b3762a}
+/* toggle iOS 48x28 */
+.tgl{width:48px;height:28px;border-radius:9999px;background:#c9cbc9;position:relative;
+  flex:none;transition:background .2s;cursor:pointer}
+.tgl::after{content:"";position:absolute;top:3px;left:3px;width:22px;height:22px;
+  border-radius:50%;background:#fff;transition:transform .22s var(--ease);box-shadow:0 1px 3px rgba(0,0,0,.3)}
+.tgl.on{background:var(--accent)}
+.tgl.on::after{transform:translateX(20px)}
+.tgl.locked{background:var(--fog);pointer-events:none}
+.pg-body{max-height:0;overflow:hidden;transition:max-height .3s var(--ease)}
+.plugin.open .pg-body{max-height:640px}
+.pg-inner{padding:2px 18px 18px;border-top:1px solid var(--fog)}
+.pg-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.chip{border:1px solid var(--fog);background:var(--fog);border-radius:9999px;
+  padding:8px 14px;font-size:13.5px;font-weight:600;color:var(--charcoal);transition:.15s}
+.chip.on{background:var(--ink);color:var(--accent);border-color:var(--ink)}
+.chip:hover:not(.on){background:var(--pale);border-color:var(--pale)}
+.pg-inner .lbl{font-size:13px;font-weight:600;color:var(--ink);margin-top:15px;display:block}
+.field{display:flex;align-items:center;gap:10px;background:var(--paper);
+  border:1px solid var(--pebble);border-radius:var(--r-in);padding:11px 14px;
+  transition:border-color .18s,box-shadow .18s}
+.field:focus-within{border-color:var(--ink);box-shadow:0 0 0 3px rgba(10,37,64,.08)}
+.field input{flex:1;border:none;outline:none;font-size:15px;color:var(--obsidian);
+  background:transparent;min-width:0}
+.field input::placeholder{color:var(--pebble)}
+.pg-inner .field{margin-top:10px}
+.mini-list{margin-top:10px;display:flex;flex-direction:column;gap:4px}
+.mini-row{display:flex;align-items:center;gap:10px;font-size:14px;color:var(--charcoal)}
+.mini-row .k{font-weight:600;color:var(--ink);min-width:56px}
+.state-msg{margin-top:11px;font-size:13px;color:var(--slate);line-height:1.5}
+.state-msg.err{color:var(--alarm)}
+.skel{height:14px;border-radius:6px;background:linear-gradient(90deg,var(--fog),#f3f5f3,var(--fog));
+  background-size:200% 100%;animation:sh 1.2s linear infinite;margin-top:8px}
+@keyframes sh{to{background-position:-200% 0}}
+.sub-tgl{display:flex;align-items:center;justify-content:space-between;padding:10px 0;
+  border-bottom:1px dashed var(--fog);font-size:14.5px;font-weight:600;color:var(--ink)}
+.sub-tgl:last-of-type{border-bottom:none}
+.th-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
+
+/* drag & drop */
+.drag-ghost{position:fixed;z-index:70;pointer-events:none;box-shadow:var(--shadow-xl);
+  opacity:.96;transform:rotate(1.2deg);border-radius:var(--r-card);background:var(--paper);
+  border:1px solid var(--ink)}
+.drag-ghost .pg-body{display:none}
+.plugin.drag-src{opacity:.35;border-style:dashed;border-color:var(--pebble)}
+.plugin.drag-src *{visibility:hidden}
+
+/* ============================================================================
+   Full-width sections
+   ========================================================================== */
+.sections{padding-bottom:80px}
+.sec{border:1px solid var(--fog);border-radius:var(--r-lg);background:var(--paper);
+  padding:clamp(20px,3vw,30px) clamp(18px,3vw,32px);margin-top:26px}
+.sec-head{display:flex;align-items:baseline;justify-content:space-between;gap:14px;
+  flex-wrap:wrap;margin-bottom:16px}
+.sec-head h2{font-size:22px;font-weight:800;letter-spacing:-.025em;color:var(--obsidian)}
+.sec-note{color:var(--pebble);font-size:13.5px}
+.sec-actions{display:flex;gap:8px}
+
+/* measure tiles */
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
+.tile{border:1px solid var(--fog);border-radius:var(--r-card);padding:14px 16px}
+.tile .tn{font-size:12.5px;color:var(--slate);font-weight:600;display:flex;align-items:center;gap:7px;
+  white-space:nowrap;overflow:hidden}
+.tile .tn .dot{width:9px;height:9px;border-radius:50%;background:var(--fog);flex:none}
+.tile .tv{font-size:25px;font-weight:800;letter-spacing:-.02em;color:var(--obsidian);margin-top:7px}
+.tile .tu{font-size:13px;color:var(--pebble);font-weight:600;margin-left:3px;letter-spacing:0}
+.tile.off .tv{color:var(--pebble)}
+.tile.errt{border-color:#f3c5c7;background:#fdf6f6}
+.tile.errt .tv{color:var(--alarm);font-size:15px;font-weight:700;margin-top:11px}
+
+/* sensors */
+.sensor-list{display:flex;flex-direction:column}
+.sensor-row{display:flex;align-items:center;gap:14px;padding:13px 2px;border-bottom:1px solid var(--fog)}
+.sensor-row:last-child{border-bottom:none}
+.sensor-row .pg-ic{width:40px;height:40px;border-radius:11px}
+.sensor-row.on .pg-ic{background:var(--ink);color:var(--accent)}
+.sensor-row b{display:block;font-size:15px;color:var(--ink);letter-spacing:-.01em}
+.sensor-row small{display:block;color:var(--slate);font-size:13px;margin-top:1px}
+.sensor-row .st{font-size:12px;font-weight:700;border-radius:9999px;padding:3px 10px;flex:none}
+.sensor-row .st.ok{background:#e4f7ea;color:#1c7c3d}
+.sensor-row .st.ko{background:#fdecec;color:var(--alarm)}
+.sensor-meta{flex:1;min-width:0}
+
+/* logs */
+.console{background:#0b1522;color:#c9dcf2;border-radius:14px;height:280px;overflow:auto;
+  padding:14px 16px;font:12.5px/1.6 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  white-space:pre-wrap;word-break:break-word}
+.console .log-empty{color:#5b7391;font-style:italic}
+
+/* system */
+.sys-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:0 34px}
+.sys-row{display:flex;justify-content:space-between;align-items:center;gap:14px;
+  border-bottom:1px dashed var(--fog);padding:10px 0;font-size:14.5px}
+.sys-row .k{color:var(--slate);font-weight:600}
+.sys-row .v{color:var(--ink);font-weight:600;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.upd{margin-top:20px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.upd .state-msg{margin-top:0}
+
+/* ============================================================================
+   Modal
+   ========================================================================== */
+.modal{position:fixed;inset:0;z-index:90;display:grid;place-items:center;padding:20px;
+  background:rgba(10,20,30,.5);opacity:0;visibility:hidden;transition:.25s}
+.modal.show{opacity:1;visibility:visible}
+.modal-card{background:var(--paper);border-radius:var(--r-lg);width:100%;max-width:460px;
+  padding:30px;box-shadow:var(--shadow-xl);transform:translateY(12px);transition:transform .25s var(--ease);
+  max-height:calc(100dvh - 40px);overflow:auto}
+.modal.show .modal-card{transform:none}
+.modal-card h3{font-size:23px;font-weight:800;letter-spacing:-.03em;color:var(--obsidian)}
+.lbl-row{display:flex;justify-content:space-between;font-size:13px;font-weight:600;
+  color:var(--ink);margin-top:22px}
+.lbl-row .tnum{color:var(--pebble)}
+.modal-card .lbl{font-size:13px;font-weight:600;color:var(--ink);margin-top:20px;display:block}
+.set-row{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-top:20px;
+  font-size:14px;font-weight:600;color:var(--ink)}
+.danger{margin-top:24px;border-top:1px solid var(--fog);padding-top:6px}
+.danger .lbl{color:var(--alarm)}
+.modal-actions{display:flex;gap:12px;align-items:center;margin-top:22px;justify-content:flex-end}
+
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.001s!important;transition-duration:.001s!important}
+}
+</style>
+</head>
+<body>
+
+<!-- ========================= SPLASH ========================= -->
+<div id="splash">
+  <div class="splash-in">
+    <span class="splash-dot"></span>
+    <b>Module <i>Air</i></b>
+    <span class="splash-tag" data-i18n="tagline">qualité de l'air en direct</span>
+  </div>
+</div>
+
+<!-- ========================== APP =========================== -->
+<main id="app" hidden>
+  <header class="nav">
+    <div class="nav-in">
+      <div class="brand"><span class="brand-dot"></span><span>Module&nbsp;<i>Air</i></span></div>
+      <div class="nav-spacer"></div>
+      <div class="device-pill"><span class="dot" id="pillDot"></span><span id="pillName">ModuleAir</span></div>
+      <button class="icon-btn" id="openSettings" aria-label="Réglages">
+        <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <div class="wide">
+    <div class="banner" id="alertBanner" hidden>
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+      <span id="alertText"></span>
+    </div>
+  </div>
+
+  <div class="stage">
+    <!-- LEFT : LED preview -->
+    <section class="preview-col">
+      <div class="pc-head">
+        <h1 id="pcTitle">Compose tes<br>écrans.</h1>
+        <p id="pcSub"></p>
+      </div>
+      <div class="device">
+        <div class="screen"><canvas id="pxcanvas" width="768" height="384"></canvas></div>
+      </div>
+      <div class="dv-strip">
+        <button class="cycle-btn" id="cycleBtn" aria-label="lecture / pause">
+          <svg id="cycleIcon" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
+        </button>
+        <div class="dv-tabs" id="dvTabs"></div>
+      </div>
+      <div class="cycle-note" id="cycleNote"></div>
+      <div class="demo-note" id="demoNote" hidden data-i18n="demo_badge">données d'exemple</div>
+    </section>
+
+    <!-- RIGHT : screens manager -->
+    <section class="control-col">
+      <div class="mgr-head">
+        <h2 data-i18n="mgr_title">Écrans</h2>
+        <span id="mgrCount"></span>
+      </div>
+      <p class="mgr-sub" data-i18n="mgr_sub"></p>
+      <div class="rot-card">
+        <div class="rot-top"><span data-i18n="rot_label">Durée par écran</span><b class="tnum" id="rotVal">5 s</b></div>
+        <input type="range" id="rotSlider" min="3" max="30" step="1" value="5">
+      </div>
+      <div class="plugins" id="scrList"></div>
+    </section>
+  </div>
+
+  <!-- ================== FULL-WIDTH SECTIONS =================== -->
+  <div class="wide sections">
+    <section class="sec">
+      <div class="sec-head"><h2 data-i18n="mz_title">Mesures en direct</h2><span class="sec-note" id="mzNote"></span></div>
+      <div class="tiles" id="tileGrid"></div>
+    </section>
+
+    <section class="sec">
+      <div class="sec-head"><h2 data-i18n="sn_title">Capteurs</h2><span class="sec-note" data-i18n="sn_sub"></span></div>
+      <div class="sensor-list" id="sensorList"></div>
+    </section>
+
+    <section class="sec">
+      <div class="sec-head">
+        <h2 data-i18n="lg_title">Logs en direct</h2>
+        <div class="sec-actions">
+          <button class="chip" id="logPause">pause</button>
+          <button class="chip" id="logClear">vider</button>
+        </div>
+      </div>
+      <div class="console" id="logBox"><span class="log-empty" id="logEmpty"></span></div>
+    </section>
+
+    <section class="sec">
+      <div class="sec-head"><h2 data-i18n="sy_title">Système &amp; mise à jour</h2></div>
+      <div class="sys-grid" id="sysGrid"></div>
+      <div class="upd" id="updBox"></div>
+    </section>
+  </div>
+</main>
+
+<!-- ===================== SETTINGS MODAL ===================== -->
+<div class="modal" id="setModal">
+  <div class="modal-card">
+    <h3 data-i18n="st_title">Réglages du module</h3>
+    <label class="lbl-row"><span data-i18n="st_bright">Luminosité de l'écran</span><span class="tnum" id="brVal">128/255</span></label>
+    <input type="range" id="brSlider" min="0" max="255" step="1" style="margin-top:10px">
+    <span class="lbl" data-i18n="st_lang">Langue</span>
+    <div class="pg-row" id="langRow">
+      <button class="chip" data-lang="FR">Français</button>
+      <button class="chip" data-lang="EN">English</button>
+    </div>
+    <div class="set-row"><span data-i18n="st_debug">Splash de debug au démarrage</span><div class="tgl" id="dbgTgl" role="switch"></div></div>
+    <div class="danger">
+      <span class="lbl" data-i18n="st_danger">Zone sensible</span>
+      <div class="pg-row">
+        <button class="btn btn-danger" id="btnForget" data-i18n="st_forget">Oublier le WiFi</button>
+        <button class="btn btn-danger" id="btnReboot" data-i18n="st_reboot">Redémarrer</button>
+      </div>
+    </div>
+    <div class="modal-actions"><button class="btn-link" id="setClose" data-i18n="st_close">fermer</button></div>
+  </div>
+</div>
+
+<script>
+"use strict";
+/* ============================================================================
+   ModuleAir front-end
+   Sections : I18N · STATE · API · FONTS · CANVAS · SCREENS · PREVIEW ·
+              MANAGER · DND · LIVE DATA · SENSORS · LOGS · SYSTEM · SETTINGS · BOOT
+   ========================================================================== */
+
+/* ============================== I18N ====================================== */
+const L={
+FR:{
+  tagline:"qualité de l'air en direct", demo_badge:"données d'exemple",
+  pc_title:"Compose tes<br>écrans.",
+  pc_sub:"Aperçu fidèle de la matrice LED 64×32 du module. Réordonne et active les écrans à droite : le module suit en direct.",
+  loop_on:"boucle active", loop_off:"en pause · aperçu figé",
+  scr_s:"écran", scr_p:"écrans", per_s:"s/écran", no_screen:"aucun écran actif",
+  mgr_title:"Écrans", mgr_sub:"Glisse la poignée pour changer l'ordre d'affichage, active ce que le module montre.",
+  mgr_count:(n,t)=>`${n} / ${t} actifs`, keep_one:"garde au moins un écran",
+  rot_label:"Durée par écran",
+  sensor_locked:"capteur désactivé",
+  name:{clock:"Horloge",pm1:"PM1",pm25:"PM2.5",pm10:"PM10",co2:"CO₂",temp:"Température",
+    humi:"Humidité",tvoc:"COV",hcho:"Formaldéhyde",weather:"Météo",crypto:"Bourse",logo:"Logos partenaires"},
+  tab:{clock:"Horloge",pm1:"PM1",pm25:"PM2.5",pm10:"PM10",co2:"CO₂",temp:"Temp",humi:"Humi",
+    tvoc:"COV",hcho:"HCHO",weather:"Météo",crypto:"Bourse",logo:"Logos"},
+  tag:{clock:"Heure et date",pm1:"Particules < 1 µm",pm25:"Particules < 2,5 µm",pm10:"Particules < 10 µm",
+    co2:"Dioxyde de carbone",temp:"Air intérieur",humi:"Humidité relative",tvoc:"Composés organiques volatils",
+    hcho:"HCHO",weather:"Température et condition",crypto:"Cours et variation",logo:"ModuleAir · AirCarto · AtmoSud"},
+  desc:{clock:"Heure en grand, jour et date en dessous. L'heure vient du réseau (NTP).",
+    pm1:"Seuils : vert < 10, jaune < 20, orange < 50, rouge au-delà (µg/m³).",
+    pm25:"Seuils : vert < 10, jaune < 20, orange < 50, rouge au-delà (µg/m³).",
+    pm10:"Seuils : vert < 15, jaune < 30, orange < 75, rouge au-delà (µg/m³).",
+    temp:"Zone de confort : bleu < 19 °C, vert de 19 à 28 °C, rouge au-delà.",
+    humi:"Confort : vert entre 40 et 60 %, rouge en dehors.",
+    tvoc:"Seuils CCS811 : vert < 220, jaune < 660, orange < 2200 ppb.",
+    hcho:"Seuils : vert < 10, jaune < 30, orange < 100 ppb."},
+  co2_desc:"En dessous du seuil bon : vert. Entre les deux : jaune « AERER SVP ». Au-dessus du seuil mauvais : rouge.",
+  c2_good:"Seuil bon (ppm)", c2_bad:"Seuil mauvais (ppm)", c2_apply:"Appliquer",
+  c2_def:"Défaut 800 / 1500", c2_ok:"seuils appliqués", c2_err:"valeurs invalides (bon < mauvais)",
+  wx_lbl:"Ville affichée", wx_ph:"Chercher une ville…", wx_none:"aucune ville trouvée", wx_err:"recherche indisponible",
+  cr_lbl:"Actifs suivis (max 4)", cr_pop:"Populaires", cr_max:"4 actifs maximum", cr_none:"aucun actif",
+  cr_ph:"Chercher… Bitcoin, Solana, Pepe…", cr_nores:"rien trouvé",
+  lg_ma:"Logo ModuleAir", lg_ac:"Logo AirCarto", lg_as:"Logo AtmoSud",
+  logo_desc:"Le créneau « logos » affiche un logo différent à chaque tour de boucle.",
+  logos_n:n=>n===0?"aucun logo actif":n===1?"1 logo actif":n+" logos actifs",
+  mz_title:"Mesures en direct", mz_note:"rafraîchies toutes les 30 s", mz_note_demo:"données d'exemple",
+  tile:{pm1:"PM1",pm25:"PM2.5",pm10:"PM10",co2:"CO₂",temp:"Température",humi:"Humidité",
+    press:"Pression",tvoc:"COV",eco2:"eCO₂",hcho:"Formaldéhyde"},
+  banner:list=>`Capteur en erreur : ${list} — mesures indisponibles, vérifie le câblage.`,
+  err_short:"erreur capteur",
+  sn_title:"Capteurs", sn_sub:"désactiver un capteur retire ses écrans de l'affichage",
+  sname:{npm:"NextPM",mhz19:"MH-Z19 / SenseAir S8",bme280:"BME280",ccs811:"CCS811",sfa40:"SFA40"},
+  stag:{npm:"Particules PM1 · PM2.5 · PM10",mhz19:"CO₂",bme280:"Température · humidité · pression",
+    ccs811:"Composés organiques volatils",sfa40:"Formaldéhyde"},
+  st_ok:"OK", st_ko:"erreur", st_off:"inactif",
+  lg_title:"Logs en direct", lg_pause:"pause", lg_resume:"reprendre", lg_clear:"vider",
+  lg_empty:"en attente de logs…", lg_demo:"mode démo — logs simulés",
+  sy_title:"Système & mise à jour",
+  sys:{version:"Version",ip:"Adresse IP",ssid:"Réseau WiFi",rssi:"Signal",uptime:"En ligne depuis",chip:"Identifiant"},
+  sy_check:"Vérifier les mises à jour", sy_checking:"vérification…",
+  sy_uptodate:v=>`Firmware à jour (v${v})`, sy_avail:(c,r)=>`Mise à jour disponible : v${c} → v${r}`,
+  sy_do:"Mettre à jour", sy_updating:"Mise à jour en cours — le module télécharge puis redémarre (1 à 2 min)…",
+  sy_back:"Module de retour en ligne — rechargement…", sy_err:"vérification impossible",
+  sy_demo:"module hors ligne — mode démo",
+  st_title:"Réglages du module", st_bright:"Luminosité de l'écran", st_lang:"Langue",
+  st_debug:"Splash de debug au démarrage", st_danger:"Zone sensible",
+  st_forget:"Oublier le WiFi", st_reboot:"Redémarrer", st_close:"fermer",
+  cf_reset:"Oublier le réseau WiFi et redémarrer le module en mode configuration ?",
+  cf_reboot:"Redémarrer le module ?",
+  cf_update:"Lancer la mise à jour ? Le module redémarrera (1 à 2 min).",
+  pill_demo:"démo",
+  days:["DIM","LUN","MAR","MER","JEU","VEN","SAM"],
+  wx:{sun:"Ensoleillé","sun-cloud":"Éclaircies",cloud:"Couvert",fog:"Brouillard",rain:"Pluie",
+    snow:"Neige",shower:"Averses",storm:"Orage",cloudy:"Nuageux"},
+  msg:{good:"BON",medium:"MOYEN",degraded:"DEGRADE",bad:"MAUVAIS",vent:"AERER SVP",
+    cold:"FROID",ok:"OK",hot:"CHAUD",dry:"SEC",ideal:"IDEAL",wet:"HUMIDE",sensor:"CAPTEUR",error:"ERREUR"}
+},
+EN:{
+  tagline:"live air quality", demo_badge:"sample data",
+  pc_title:"Compose your<br>screens.",
+  pc_sub:"Faithful preview of the module's 64×32 LED matrix. Reorder and toggle screens on the right: the module follows live.",
+  loop_on:"loop running", loop_off:"paused · preview frozen",
+  scr_s:"screen", scr_p:"screens", per_s:"s/screen", no_screen:"no active screen",
+  mgr_title:"Screens", mgr_sub:"Drag the handle to change the display order, toggle what the module shows.",
+  mgr_count:(n,t)=>`${n} / ${t} active`, keep_one:"keep at least one screen",
+  rot_label:"Time per screen",
+  sensor_locked:"sensor disabled",
+  name:{clock:"Clock",pm1:"PM1",pm25:"PM2.5",pm10:"PM10",co2:"CO₂",temp:"Temperature",
+    humi:"Humidity",tvoc:"VOC",hcho:"Formaldehyde",weather:"Weather",crypto:"Markets",logo:"Partner logos"},
+  tab:{clock:"Clock",pm1:"PM1",pm25:"PM2.5",pm10:"PM10",co2:"CO₂",temp:"Temp",humi:"Humi",
+    tvoc:"VOC",hcho:"HCHO",weather:"Weather",crypto:"Markets",logo:"Logos"},
+  tag:{clock:"Time and date",pm1:"Particles < 1 µm",pm25:"Particles < 2.5 µm",pm10:"Particles < 10 µm",
+    co2:"Carbon dioxide",temp:"Indoor air",humi:"Relative humidity",tvoc:"Volatile organic compounds",
+    hcho:"HCHO",weather:"Temperature and condition",crypto:"Prices and change",logo:"ModuleAir · AirCarto · AtmoSud"},
+  desc:{clock:"Big time, day and date below. Time comes from the network (NTP).",
+    pm1:"Thresholds: green < 10, yellow < 20, orange < 50, red above (µg/m³).",
+    pm25:"Thresholds: green < 10, yellow < 20, orange < 50, red above (µg/m³).",
+    pm10:"Thresholds: green < 15, yellow < 30, orange < 75, red above (µg/m³).",
+    temp:"Comfort zone: blue < 19 °C, green 19–28 °C, red above.",
+    humi:"Comfort: green between 40 and 60 %, red outside.",
+    tvoc:"CCS811 thresholds: green < 220, yellow < 660, orange < 2200 ppb.",
+    hcho:"Thresholds: green < 10, yellow < 30, orange < 100 ppb."},
+  co2_desc:"Below the good threshold: green. In between: yellow “VENTILATE”. Above the bad threshold: red.",
+  c2_good:"Good threshold (ppm)", c2_bad:"Bad threshold (ppm)", c2_apply:"Apply",
+  c2_def:"Default 800 / 1500", c2_ok:"thresholds applied", c2_err:"invalid values (good < bad)",
+  wx_lbl:"Displayed city", wx_ph:"Search a city…", wx_none:"no city found", wx_err:"search unavailable",
+  cr_lbl:"Tracked assets (max 4)", cr_pop:"Popular", cr_max:"4 assets maximum", cr_none:"no asset",
+  cr_ph:"Search… Bitcoin, Solana, Pepe…", cr_nores:"nothing found",
+  lg_ma:"ModuleAir logo", lg_ac:"AirCarto logo", lg_as:"AtmoSud logo",
+  logo_desc:"The “logos” slot shows a different logo on each loop.",
+  logos_n:n=>n===0?"no active logo":n===1?"1 active logo":n+" active logos",
+  mz_title:"Live measurements", mz_note:"refreshed every 30 s", mz_note_demo:"sample data",
+  tile:{pm1:"PM1",pm25:"PM2.5",pm10:"PM10",co2:"CO₂",temp:"Temperature",humi:"Humidity",
+    press:"Pressure",tvoc:"VOC",eco2:"eCO₂",hcho:"Formaldehyde"},
+  banner:list=>`Sensor failure: ${list} — readings unavailable, check the wiring.`,
+  err_short:"sensor error",
+  sn_title:"Sensors", sn_sub:"disabling a sensor removes its screens from the display",
+  sname:{npm:"NextPM",mhz19:"MH-Z19 / SenseAir S8",bme280:"BME280",ccs811:"CCS811",sfa40:"SFA40"},
+  stag:{npm:"Particles PM1 · PM2.5 · PM10",mhz19:"CO₂",bme280:"Temperature · humidity · pressure",
+    ccs811:"Volatile organic compounds",sfa40:"Formaldehyde"},
+  st_ok:"OK", st_ko:"error", st_off:"off",
+  lg_title:"Live logs", lg_pause:"pause", lg_resume:"resume", lg_clear:"clear",
+  lg_empty:"waiting for logs…", lg_demo:"demo mode — simulated logs",
+  sy_title:"System & update",
+  sys:{version:"Version",ip:"IP address",ssid:"WiFi network",rssi:"Signal",uptime:"Uptime",chip:"Chip ID"},
+  sy_check:"Check for updates", sy_checking:"checking…",
+  sy_uptodate:v=>`Firmware up to date (v${v})`, sy_avail:(c,r)=>`Update available: v${c} → v${r}`,
+  sy_do:"Update now", sy_updating:"Updating — the module downloads then reboots (1 to 2 min)…",
+  sy_back:"Module back online — reloading…", sy_err:"check failed",
+  sy_demo:"module offline — demo mode",
+  st_title:"Module settings", st_bright:"Screen brightness", st_lang:"Language",
+  st_debug:"Debug splash at boot", st_danger:"Danger zone",
+  st_forget:"Forget WiFi", st_reboot:"Reboot", st_close:"close",
+  cf_reset:"Forget the WiFi network and reboot the module in config mode?",
+  cf_reboot:"Reboot the module?",
+  cf_update:"Start the update? The module will reboot (1 to 2 min).",
+  pill_demo:"demo",
+  days:["SUN","MON","TUE","WED","THU","FRI","SAT"],
+  wx:{sun:"Sunny","sun-cloud":"Partly sunny",cloud:"Overcast",fog:"Fog",rain:"Rain",
+    snow:"Snow",shower:"Showers",storm:"Storm",cloudy:"Cloudy"},
+  msg:{good:"GOOD",medium:"MEDIUM",degraded:"POOR",bad:"BAD",vent:"VENTILATE",
+    cold:"COLD",ok:"OK",hot:"HOT",dry:"DRY",ideal:"IDEAL",wet:"HUMID",sensor:"SENSOR",error:"ERROR"}
+}};
+function T(){return L[S.language]||L.FR;}
+
+/* ============================== STATE ====================================== */
+const SCREENS=["clock","pm1","pm25","pm10","co2","temp","humi","tvoc","hcho","weather","crypto","logo"];
+const DEP={pm1:"npm",pm25:"npm",pm10:"npm",co2:"mhz19",temp:"bme280",humi:"bme280",tvoc:"ccs811",hcho:"sfa40"};
+const SENSORS=["npm","mhz19","bme280","ccs811","sfa40"];
+const SENSOR_SCREENS={npm:["pm1","pm25","pm10"],mhz19:["co2"],bme280:["temp","humi"],ccs811:["tvoc"],sfa40:["hcho"]};
+const DEFAULT_S={
+  rotation:5,
+  order:[...SCREENS],
+  enabled:{clock:true,pm1:true,pm25:true,pm10:true,co2:true,temp:true,humi:true,tvoc:true,hcho:true,
+    weather:false,crypto:false,logo_ma:true,logo_ac:true,logo_as:true},
+  sensors:{npm:true,mhz19:true,bme280:true,ccs811:false,sfa40:false},
+  brightness:128, language:"FR", debugSplash:false,
+  co2_good:800, co2_bad:1500, timeValid:true,
+  weather:{city:"Marseille",lat:43.2965,lon:5.3698,valid:false,temp:21.4,code:1,max:26,min:15.2},
+  crypto:{ids:"bitcoin,ethereum,solana",items:[]}
+};
+let S=structuredClone(DEFAULT_S);
+let DEVICE=false;
+let INFO=null;                       // /api/info snapshot
+const LIVE={};                       // parsed /data.json values
+const SENSOK={};                     // sensor health from /api/info
+const DEMOV={pm1:4.2,pm25:6.8,pm10:11,co2:612,temp:22.4,humi:48,press:1013,tvoc:89,hcho:3};
+
+function loadLocal(){
+  try{
+    const j=JSON.parse(localStorage.getItem("moduleair_ui"));
+    if(j&&j.order){
+      S=Object.assign({},structuredClone(DEFAULT_S),j);
+      S.enabled=Object.assign({},DEFAULT_S.enabled,j.enabled||{});
+      S.sensors=Object.assign({},DEFAULT_S.sensors,j.sensors||{});
+      S.weather=Object.assign({},DEFAULT_S.weather,j.weather||{});
+      S.crypto=Object.assign({},DEFAULT_S.crypto,j.crypto||{});
+      sanitizeOrder();
+    }
+  }catch(e){}
+}
+function save(){
+  try{
+    localStorage.setItem("moduleair_ui",JSON.stringify({
+      rotation:S.rotation,order:S.order,enabled:S.enabled,sensors:S.sensors,
+      brightness:S.brightness,language:S.language,debugSplash:S.debugSplash,
+      co2_good:S.co2_good,co2_bad:S.co2_bad,
+      weather:{city:S.weather.city,lat:S.weather.lat,lon:S.weather.lon},
+      crypto:{ids:S.crypto.ids}
+    }));
+  }catch(e){}
+}
+function sanitizeOrder(){
+  const seen=new Set(), out=[];
+  (Array.isArray(S.order)?S.order:[]).forEach(k=>{if(SCREENS.includes(k)&&!seen.has(k)){seen.add(k);out.push(k);}});
+  SCREENS.forEach(k=>{if(!seen.has(k))out.push(k);});
+  S.order=out;
+}
+function applyDeviceConfig(j){
+  if(!j||typeof j!=="object")return;
+  if(typeof j.rotation==="number"&&j.rotation>=3)S.rotation=Math.min(60,Math.round(j.rotation));
+  if(Array.isArray(j.order)){S.order=j.order.slice();sanitizeOrder();}
+  const en=j.enabled||{};
+  for(const k of Object.keys(S.enabled)){
+    if(typeof en[k]==="boolean")S.enabled[k]=en[k];
+  }
+  // variantes de clés logo tolérées
+  if(typeof en.logo_moduleair==="boolean")S.enabled.logo_ma=en.logo_moduleair;
+  if(typeof en.logo_aircarto==="boolean")S.enabled.logo_ac=en.logo_aircarto;
+  if(typeof en.logo_atmosud==="boolean")S.enabled.logo_as=en.logo_atmosud;
+  const sn=j.sensors||{};
+  for(const k of SENSORS)if(typeof sn[k]==="boolean")S.sensors[k]=sn[k];
+  if(typeof j.brightness==="number")S.brightness=Math.max(0,Math.min(255,j.brightness));
+  if(j.language==="EN"||j.language==="FR")S.language=j.language;
+  if(typeof j.debugSplash==="boolean")S.debugSplash=j.debugSplash;
+  if(typeof j.co2_good==="number")S.co2_good=j.co2_good;
+  if(typeof j.co2_bad==="number")S.co2_bad=j.co2_bad;
+  if(typeof j.timeValid==="boolean")S.timeValid=j.timeValid;
+  if(j.weather&&typeof j.weather==="object"){
+    const w=j.weather;
+    if(w.city)S.weather.city=String(w.city);
+    if(typeof w.lat==="number")S.weather.lat=w.lat;
+    if(typeof w.lon==="number")S.weather.lon=w.lon;
+    if(typeof w.valid==="boolean")S.weather.valid=w.valid;
+    if(typeof w.temp==="number")S.weather.temp=w.temp;
+    if(typeof w.code==="number")S.weather.code=w.code;
+    if(typeof w.max==="number")S.weather.max=w.max;
+    if(typeof w.min==="number")S.weather.min=w.min;
+  }
+  if(j.crypto&&typeof j.crypto==="object"){
+    if(typeof j.crypto.ids==="string")S.crypto.ids=j.crypto.ids;
+    if(Array.isArray(j.crypto.items))S.crypto.items=j.crypto.items.filter(x=>x&&x.sym);
+  }
+}
+
+/* ============================== API ======================================== */
+function fetchT(url,opt={},ms=6000){
+  const c=new AbortController();
+  const t=setTimeout(()=>c.abort(),ms);
+  return fetch(url,Object.assign({cache:"no-store"},opt,{signal:c.signal})).finally(()=>clearTimeout(t));
+}
+function apiPost(path,params){
+  if(!DEVICE)return Promise.resolve();
+  const body=new URLSearchParams(params||{}).toString();
+  return fetchT(path,{method:"POST",
+    headers:{"Content-Type":"application/x-www-form-urlencoded"},body}).catch(()=>{});
+}
+function deb(fn,ms){let t=null;return(...a)=>{clearTimeout(t);t=setTimeout(()=>fn(...a),ms);};}
+const pushOrder=deb(()=>apiPost("/set-screen-order",{order:S.order.join(",")}),400);
+const pushRotation=deb(()=>apiPost("/set-rotation",{val:S.rotation}),300);
+const pushBrightness=deb(()=>apiPost("/set-brightness",{val:S.brightness}),140);
+function esc(s){return String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
+
+/* ============================== FONTS ====================================== */
+/* Polices ré-encodées depuis les GFX du firmware (mêmes rendus que la dalle). */
+/* 5x7 uppercase bitmap font — rows top→bottom, bit4 = leftmost column */
+const FONT={
+ " ":[0,0,0,0,0,0,0],
+ "0":[14,17,19,21,25,17,14],"1":[4,12,4,4,4,4,14],"2":[14,17,1,2,4,8,31],"3":[30,1,1,14,1,1,30],
+ "4":[2,6,10,18,31,2,2],"5":[31,16,30,1,1,17,14],"6":[6,8,16,30,17,17,14],"7":[31,1,2,4,8,8,8],
+ "8":[14,17,17,14,17,17,14],"9":[14,17,17,15,1,2,12],
+ "A":[14,17,17,31,17,17,17],"B":[30,17,17,30,17,17,30],"C":[14,17,16,16,16,17,14],"D":[28,18,17,17,17,18,28],
+ "E":[31,16,16,30,16,16,31],"F":[31,16,16,30,16,16,16],"G":[14,17,16,23,17,17,15],"H":[17,17,17,31,17,17,17],
+ "I":[14,4,4,4,4,4,14],"J":[7,2,2,2,2,18,12],"K":[17,18,20,24,20,18,17],"L":[16,16,16,16,16,16,31],
+ "M":[17,27,21,21,17,17,17],"N":[17,17,25,21,19,17,17],"O":[14,17,17,17,17,17,14],"P":[30,17,17,30,16,16,16],
+ "Q":[14,17,17,17,21,18,13],"R":[30,17,17,30,20,18,17],"S":[15,16,16,14,1,1,30],"T":[31,4,4,4,4,4,4],
+ "U":[17,17,17,17,17,17,14],"V":[17,17,17,17,17,10,4],"W":[17,17,17,21,21,27,17],"X":[17,17,10,4,10,17,17],
+ "Y":[17,17,10,4,4,4,4],"Z":[31,1,2,4,8,16,31],
+ ":":[0,4,4,0,4,4,0],".":[0,0,0,0,0,6,6],",":[0,0,0,0,6,4,8],"-":[0,0,0,14,0,0,0],"/":[1,1,2,4,8,16,16],
+ "%":[25,26,4,11,19,0,0],"$":[4,15,20,14,5,30,4],"+":[0,4,4,31,4,4,0],
+ "'":[4,4,0,0,0,0,0],"!":[4,4,4,4,4,0,4],"?":[14,17,1,6,4,0,4],
+ "▲":[0,4,4,14,14,31,0],"▼":[0,31,14,14,4,4,0]
+};
+/* FreeSansBold 12pt — chiffres + ':' (horloge) */
+const CLKFONT={y:29,g:{
+"0":{w:12,h:17,a:13,dx:1,dy:-16,b:[31,131,252,127,231,158,240,255,15,240,255,15,240,255,15,240,255,15,240,247,158,127,227,252,15,0]},
+"1":{w:7,h:17,a:14,dx:3,dy:-16,b:[6,28,127,255,227,199,143,30,60,120,241,227,199,143,30]},
+"2":{w:12,h:17,a:13,dx:1,dy:-16,b:[31,131,252,127,239,159,240,255,15,0,240,15,1,224,60,15,129,224,60,3,128,127,247,255,127,240]},
+"3":{w:12,h:17,a:13,dx:1,dy:-16,b:[31,7,252,255,239,30,241,224,30,3,192,120,7,192,30,0,240,15,240,255,31,127,231,252,31,128]},
+"4":{w:11,h:17,a:13,dx:1,dy:-16,b:[3,192,248,31,7,225,188,39,140,243,30,99,216,123,255,255,255,254,7,128,240,30,3,192]},
+"5":{w:12,h:17,a:13,dx:1,dy:-16,b:[63,231,254,127,231,0,96,6,248,127,207,254,241,240,15,0,240,15,0,254,30,255,231,252,63,0]},
+"6":{w:12,h:17,a:13,dx:1,dy:-16,b:[15,131,252,127,231,159,240,15,120,255,207,254,249,255,15,240,255,15,240,247,159,127,227,252,15,128]},
+"7":{w:11,h:17,a:13,dx:1,dy:-16,b:[255,255,255,255,128,224,28,7,1,224,56,15,1,192,120,15,1,224,56,15,1,224,60,0]},
+"8":{w:12,h:17,a:13,dx:1,dy:-16,b:[15,3,252,127,199,158,112,231,14,57,193,248,63,199,158,240,255,15,240,255,159,127,227,252,31,128]},
+"9":{w:12,h:17,a:13,dx:1,dy:-16,b:[31,3,252,127,239,158,240,239,15,240,255,15,249,247,255,63,241,239,0,239,30,127,231,252,31,0]},
+":":{w:4,h:12,a:6,dx:1,dy:-11,b:[255,240,0,0,15,255]}
+}};
+/* FreeSansBold 9pt (météo) */
+const CLKFONT9={y:22,g:{"0":{w:9,h:13,a:10,dx:1,dy:-12,b:[62,63,157,220,126,63,31,143,199,227,241,221,207,227,224]},"1":{w:5,h:13,a:10,dx:2,dy:-12,b:[8,255,243,156,231,57,206,115,128]},"2":{w:9,h:13,a:10,dx:1,dy:-12,b:[62,63,184,252,112,56,28,28,28,28,28,28,15,247,248]},"3":{w:8,h:13,a:10,dx:1,dy:-12,b:[60,127,231,231,7,12,14,7,7,231,231,126,60]},"4":{w:8,h:13,a:10,dx:2,dy:-12,b:[14,30,30,46,46,78,78,142,255,255,14,14,14]},"5":{w:9,h:13,a:10,dx:1,dy:-12,b:[127,63,144,24,13,231,251,158,7,3,129,241,255,231,192]},"6":{w:9,h:13,a:10,dx:1,dy:-12,b:[62,63,156,252,14,231,251,223,199,227,241,221,239,227,224]},"7":{w:9,h:13,a:10,dx:0,dy:-12,b:[255,255,192,224,224,96,112,48,56,28,12,14,7,3,128]},"8":{w:10,h:13,a:10,dx:0,dy:-12,b:[63,31,238,63,135,227,207,199,251,207,225,248,127,61,254,63,0]},"9":{w:9,h:13,a:10,dx:1,dy:-12,b:[62,63,189,220,126,63,31,222,255,59,129,249,207,227,192]},":":{w:3,h:9,a:4,dx:1,dy:-8,b:[252,0,7,224]},".":{w:3,h:2,a:4,dx:1,dy:-1,b:[252]},"-":{w:5,h:2,a:6,dx:0,dy:-5,b:[255,192]}}};
+/* TomThumb 3x5 (+ µ et ³ ajoutés pour les unités ModuleAir) */
+const TINYFONT={y:6,g:{" ":{w:1,h:1,a:2,dx:0,dy:-5,b:[0]},"!":{w:1,h:5,a:2,dx:0,dy:-5,b:[232]},"\"":{w:3,h:2,a:4,dx:0,dy:-5,b:[180]},"#":{w:3,h:5,a:4,dx:0,dy:-5,b:[190,250]},"$":{w:3,h:5,a:4,dx:0,dy:-5,b:[121,228]},"%":{w:3,h:5,a:4,dx:0,dy:-5,b:[133,66]},"&":{w:3,h:5,a:4,dx:0,dy:-5,b:[219,214]},"'":{w:1,h:2,a:2,dx:0,dy:-5,b:[192]},"(":{w:2,h:5,a:3,dx:0,dy:-5,b:[106,64]},")":{w:2,h:5,a:3,dx:0,dy:-5,b:[149,128]},"*":{w:3,h:3,a:4,dx:0,dy:-5,b:[170,128]},"+":{w:3,h:3,a:4,dx:0,dy:-4,b:[93,0]},",":{w:2,h:2,a:3,dx:0,dy:-2,b:[96]},"-":{w:3,h:1,a:4,dx:0,dy:-3,b:[224]},".":{w:1,h:1,a:2,dx:0,dy:-1,b:[128]},"/":{w:3,h:5,a:4,dx:0,dy:-5,b:[37,72]},"0":{w:3,h:5,a:4,dx:0,dy:-5,b:[118,220]},"1":{w:2,h:5,a:3,dx:0,dy:-5,b:[117,64]},"2":{w:3,h:5,a:4,dx:0,dy:-5,b:[197,78]},"3":{w:3,h:5,a:4,dx:0,dy:-5,b:[197,28]},"4":{w:3,h:5,a:4,dx:0,dy:-5,b:[183,146]},"5":{w:3,h:5,a:4,dx:0,dy:-5,b:[243,28]},"6":{w:3,h:5,a:4,dx:0,dy:-5,b:[115,222]},"7":{w:3,h:5,a:4,dx:0,dy:-5,b:[229,72]},"8":{w:3,h:5,a:4,dx:0,dy:-5,b:[247,222]},"9":{w:3,h:5,a:4,dx:0,dy:-5,b:[247,156]},":":{w:1,h:3,a:2,dx:0,dy:-4,b:[160]},";":{w:2,h:4,a:3,dx:0,dy:-4,b:[70]},"<":{w:3,h:5,a:4,dx:0,dy:-5,b:[42,34]},"=":{w:3,h:3,a:4,dx:0,dy:-4,b:[227,128]},">":{w:3,h:5,a:4,dx:0,dy:-5,b:[136,168]},"?":{w:3,h:5,a:4,dx:0,dy:-5,b:[229,4]},"@":{w:3,h:5,a:4,dx:0,dy:-5,b:[87,198]},"A":{w:3,h:5,a:4,dx:0,dy:-5,b:[87,218]},"B":{w:3,h:5,a:4,dx:0,dy:-5,b:[215,92]},"C":{w:3,h:5,a:4,dx:0,dy:-5,b:[114,70]},"D":{w:3,h:5,a:4,dx:0,dy:-5,b:[214,220]},"E":{w:3,h:5,a:4,dx:0,dy:-5,b:[243,206]},"F":{w:3,h:5,a:4,dx:0,dy:-5,b:[243,200]},"G":{w:3,h:5,a:4,dx:0,dy:-5,b:[115,214]},"H":{w:3,h:5,a:4,dx:0,dy:-5,b:[183,218]},"I":{w:3,h:5,a:4,dx:0,dy:-5,b:[233,46]},"J":{w:3,h:5,a:4,dx:0,dy:-5,b:[36,212]},"K":{w:3,h:5,a:4,dx:0,dy:-5,b:[183,90]},"L":{w:3,h:5,a:4,dx:0,dy:-5,b:[146,78]},"M":{w:3,h:5,a:4,dx:0,dy:-5,b:[191,218]},"N":{w:3,h:5,a:4,dx:0,dy:-5,b:[191,250]},"O":{w:3,h:5,a:4,dx:0,dy:-5,b:[86,212]},"P":{w:3,h:5,a:4,dx:0,dy:-5,b:[215,72]},"Q":{w:3,h:5,a:4,dx:0,dy:-5,b:[86,246]},"R":{w:3,h:5,a:4,dx:0,dy:-5,b:[215,234]},"S":{w:3,h:5,a:4,dx:0,dy:-5,b:[113,28]},"T":{w:3,h:5,a:4,dx:0,dy:-5,b:[233,36]},"U":{w:3,h:5,a:4,dx:0,dy:-5,b:[182,214]},"V":{w:3,h:5,a:4,dx:0,dy:-5,b:[182,164]},"W":{w:3,h:5,a:4,dx:0,dy:-5,b:[183,250]},"X":{w:3,h:5,a:4,dx:0,dy:-5,b:[181,90]},"Y":{w:3,h:5,a:4,dx:0,dy:-5,b:[181,36]},"Z":{w:3,h:5,a:4,dx:0,dy:-5,b:[229,78]},"[":{w:3,h:5,a:4,dx:0,dy:-5,b:[242,78]},"\\":{w:3,h:3,a:4,dx:0,dy:-4,b:[136,128]},"]":{w:3,h:5,a:4,dx:0,dy:-5,b:[228,158]},"^":{w:3,h:2,a:4,dx:0,dy:-5,b:[84]},"_":{w:3,h:1,a:4,dx:0,dy:-1,b:[224]},"`":{w:2,h:2,a:3,dx:0,dy:-5,b:[144]},"a":{w:3,h:4,a:4,dx:0,dy:-4,b:[206,240]},"b":{w:3,h:5,a:4,dx:0,dy:-5,b:[154,220]},"c":{w:3,h:4,a:4,dx:0,dy:-4,b:[114,48]},"d":{w:3,h:5,a:4,dx:0,dy:-5,b:[46,214]},"e":{w:3,h:4,a:4,dx:0,dy:-4,b:[119,48]},"f":{w:3,h:5,a:4,dx:0,dy:-5,b:[43,164]},"g":{w:3,h:5,a:4,dx:0,dy:-4,b:[119,148]},"h":{w:3,h:5,a:4,dx:0,dy:-5,b:[154,218]},"i":{w:1,h:5,a:2,dx:0,dy:-5,b:[184]},"j":{w:3,h:6,a:4,dx:0,dy:-5,b:[32,154,128]},"k":{w:3,h:5,a:4,dx:0,dy:-5,b:[151,106]},"l":{w:3,h:5,a:4,dx:0,dy:-5,b:[201,46]},"m":{w:3,h:4,a:4,dx:0,dy:-4,b:[255,208]},"n":{w:3,h:4,a:4,dx:0,dy:-4,b:[214,208]},"o":{w:3,h:4,a:4,dx:0,dy:-4,b:[86,160]},"p":{w:3,h:5,a:4,dx:0,dy:-4,b:[214,232]},"q":{w:3,h:5,a:4,dx:0,dy:-4,b:[118,178]},"r":{w:3,h:4,a:4,dx:0,dy:-4,b:[114,64]},"s":{w:3,h:4,a:4,dx:0,dy:-4,b:[121,224]},"t":{w:3,h:5,a:4,dx:0,dy:-5,b:[93,38]},"u":{w:3,h:4,a:4,dx:0,dy:-4,b:[182,176]},"v":{w:3,h:4,a:4,dx:0,dy:-4,b:[183,160]},"w":{w:3,h:4,a:4,dx:0,dy:-4,b:[191,240]},"x":{w:3,h:4,a:4,dx:0,dy:-4,b:[169,80]},"y":{w:3,h:5,a:4,dx:0,dy:-4,b:[181,148]},"z":{w:3,h:4,a:4,dx:0,dy:-4,b:[239,112]},"{":{w:3,h:5,a:4,dx:0,dy:-5,b:[106,38]},"|":{w:1,h:5,a:2,dx:0,dy:-5,b:[216]},"}":{w:3,h:5,a:4,dx:0,dy:-5,b:[200,172]},"~":{w:3,h:2,a:4,dx:0,dy:-5,b:[120]},
+"µ":{w:3,h:5,a:4,dx:0,dy:-4,b:[183,200]},"³":{w:2,h:3,a:3,dx:0,dy:-5,b:[220]}}};
+
+/* ============================== CANVAS ===================================== */
+const cv=document.getElementById("pxcanvas"), ctx=cv.getContext("2d");
+const LEDW=64, LEDH=32, LED=cv.width/LEDW;
+const PAL={off:"#10141a",white:"#ffffff",dim:"#88a8c0",cyan:"#00e5ff",gray:"#6b696b",
+  green:"#00ff00",yellow:"#ffff00",orange:"#ff7d00",red:"#ff0000",blue:"#0000ff",
+  amber:"#ff8800",sun:"#ffcc00",cloud:"#e0eefc",rain:"#00a0ff",airblue:"#00a0ff"};
+/* grille LED éteinte pré-rendue, blit à chaque frame */
+const gridCv=document.createElement("canvas");gridCv.width=cv.width;gridCv.height=cv.height;
+(function(){const g=gridCv.getContext("2d");g.fillStyle="#06080c";g.fillRect(0,0,gridCv.width,gridCv.height);
+  g.fillStyle=PAL.off;for(let y=0;y<LEDH;y++)for(let x=0;x<LEDW;x++){g.beginPath();g.arc(x*LED+LED/2,y*LED+LED/2,LED*0.40,0,7);g.fill();}})();
+function fc(){ctx.drawImage(gridCv,0,0);}
+function px(x,y,c){if(x<0||x>=LEDW||y<0||y>=LEDH)return;ctx.fillStyle=c;
+  ctx.beginPath();ctx.arc((x|0)*LED+LED/2,(y|0)*LED+LED/2,LED*0.45,0,7);ctx.fill();}
+function rect(x,y,w,h,c){for(let j=0;j<h;j++)for(let i=0;i<w;i++)px(x+i,y+j,c);}
+function disc(cx,cy,r,c){for(let y=-r;y<=r;y++)for(let x=-r;x<=r;x++)if(x*x+y*y<=r*r+1)px(cx+x,cy+y,c);}
+function norm(s){return String(s||"").normalize("NFD").replace(/[̀-ͯ]/g,"").toUpperCase();}
+/* 5x7 intégrée, avec échelle (taille 2 = valeurs des écrans mesure) */
+function glyphAt(x,y,ch,c,sc=1){const g=FONT[ch]||FONT["?"];
+  for(let r=0;r<7;r++){const v=g[r];for(let col=0;col<5;col++)if((v>>(4-col))&1){
+    if(sc===1)px(x+col,y+r,c);else rect(x+col*sc,y+r*sc,sc,sc,c);}}}
+function text(x,y,s,c,sc=1){s=norm(s);let cx=x;for(const ch of s){glyphAt(cx,y,ch,c,sc);cx+=6*sc;}return cx-sc;}
+function textW(s,sc=1){return norm(s).length*6*sc-sc;}
+function textRight(xr,y,s,c,sc=1){text(xr-textW(s,sc),y,s,c,sc);}
+function textCenter(cx,y,s,c,sc=1){text(Math.round(cx-textW(s,sc)/2),y,s,c,sc);}
+/* polices GFX (baseline) */
+function gfxW(f,s){let w=0;for(const ch of s){const g=f.g[ch];if(g)w+=g.a;else w+=4;}return w;}
+function gfxText(f,x,by,s,c){let cx=x;for(const ch of s){const g=f.g[ch];if(!g){cx+=4;continue;}
+  for(let r=0;r<g.h;r++)for(let col=0;col<g.w;col++){const k=r*g.w+col;if((g.b[k>>3]>>(7-(k&7)))&1)px(cx+g.dx+col,by+g.dy+r,c);}
+  cx+=g.a;}return cx;}
+function gfxCenter(f,cx,by,s,c){return gfxText(f,Math.round(cx-gfxW(f,s)/2),by,s,c);}
+function gfxRight(f,xr,by,s,c){return gfxText(f,xr-gfxW(f,s),by,s,c);}
+function drawDegree(x,y,c){rect(x,y,3,1,c);px(x,y+1,c);px(x+2,y+1,c);rect(x,y+2,3,1,c);}
+function fmtK(v){if(v>=1000)return(v/1000).toFixed(v>=100000?0:1)+"K";if(v>=1)return v.toFixed(1);return v.toFixed(3);}
+/* pixel-art météo (repris du projet frère) */
+function sun(cx,cy,r=6){
+  for(const[dx,dy]of[[0,-1],[0,1],[-1,0],[1,0],[-1,-1],[1,-1],[-1,1],[1,1]]){
+    px(cx+dx*(r+1),cy+dy*(r+1),PAL.sun);px(cx+dx*(r+2),cy+dy*(r+2),PAL.sun);}
+  disc(cx,cy,r,PAL.sun);disc(cx,cy,r-2,"#fff1a6");}
+function cloud(x,y,c=PAL.cloud){disc(x+4,y+6,3,c);disc(x+9,y+4,4,c);disc(x+14,y+6,3,c);rect(x+3,y+7,13,3,c);}
+const wxCode=c=>{
+  if(c===0)return"sun";if(c<=2)return"sun-cloud";if(c===3)return"cloud";
+  if(c>=45&&c<=48)return"fog";if(c>=51&&c<=67)return"rain";if(c>=71&&c<=77)return"snow";
+  if(c>=80&&c<=82)return"shower";if(c>=95)return"storm";return"cloudy";};
+const wxGlyph=k=>({fog:"cloud",shower:"rain",cloudy:"cloud"}[k]||k);
+function drawWx(code,cx,cy){
+  const t=wxGlyph(wxCode(code));
+  if(t==="sun")sun(cx,cy,5);
+  else if(t==="sun-cloud"){sun(cx-1,cy-3,3);cloud(cx-9,cy);}
+  else if(t==="cloud")cloud(cx-9,cy-2);
+  else if(t==="rain"){cloud(cx-9,cy-4);for(const dx of[-4,1,6])rect(cx+dx,cy+7,2,3,PAL.rain);}
+  else if(t==="snow"){cloud(cx-9,cy-4);for(const dx of[-4,1,6])rect(cx+dx,cy+7,2,2,PAL.white);}
+  else if(t==="storm"){cloud(cx-9,cy-4);for(const[bx,by]of[[0,6],[-1,8],[1,9],[0,11]])px(cx+bx,cy+by,PAL.amber);}
+  else cloud(cx-9,cy-2);
+}
+
+/* ============================== SCREENS ==================================== */
+/* Seuils / couleurs / messages : port 1:1 de src/display.cpp */
+function lvl4(v,s1,s2,s3){return v<s1?[PAL.green,"good"]:v<s2?[PAL.yellow,"medium"]:v<s3?[PAL.orange,"degraded"]:[PAL.red,"bad"];}
+const METR={
+  pm1:{lbl:"PM1", unit:"ugm3",dec:0,lv:v=>lvl4(v,10,20,50)},
+  pm25:{lbl:"PM2.5",unit:"ugm3",dec:0,lv:v=>lvl4(v,10,20,50)},
+  pm10:{lbl:"PM10",unit:"ugm3",dec:0,lv:v=>lvl4(v,15,30,75)},
+  co2:{lbl:"CO2",unit:"ppm",dec:0,co2:true,
+    lv:v=>v<S.co2_good?[PAL.green,"good"]:v<S.co2_bad?[PAL.yellow,"vent"]:[PAL.red,"vent"]},
+  temp:{lbl:"TEMP",unit:"degc",dec:1,lv:v=>v<19?[PAL.blue,"cold"]:v<28?[PAL.green,"ok"]:[PAL.red,"hot"]},
+  humi:{lbl:"HUMI",unit:"pct",dec:0,lv:v=>v<40?[PAL.red,"dry"]:v<60?[PAL.green,"ideal"]:[PAL.red,"wet"]},
+  tvoc:{lbl:"COV",unit:"ppb",dec:0,lv:v=>lvl4(v,220,660,2200)},
+  hcho:{lbl:"HCHO",unit:"ppb",dec:0,lv:v=>lvl4(v,10,30,100)}
+};
+function liveVal(k){const v=LIVE[k];return(typeof v==="number"&&isFinite(v))?v:DEMOV[k];}
+function drawUnitCanvas(x,unit){
+  const c=PAL.gray,by=6;
+  if(unit==="ugm3")gfxText(TINYFONT,x,by,"µg/m³",c);
+  else if(unit==="ppm")gfxText(TINYFONT,x,by,"ppm",c);
+  else if(unit==="ppb")gfxText(TINYFONT,x,by,"ppb",c);
+  else if(unit==="pct")gfxText(TINYFONT,x,by,"%",c);
+  else if(unit==="degc"){drawDegree(x,1,c);gfxText(TINYFONT,x+4,by,"C",c);}
+}
+function drawMeasure(key){
+  const M=METR[key], v=liveVal(key);
+  const[col,mk]=M.lv(v);
+  /* label cyan haut-gauche (5x7) — CO2 avec 2 en indice comme le firmware */
+  let cx;
+  if(M.co2){cx=text(1,0,"CO",PAL.cyan);gfxText(TINYFONT,cx+2,7,"2",PAL.cyan);cx+=6;}
+  else cx=text(1,0,M.lbl,PAL.cyan);
+  /* unité grise à droite du label */
+  drawUnitCanvas(cx+4,M.unit);
+  /* carré de couleur 14x14 à (50,9) */
+  rect(50,9,14,14,col);
+  /* valeur en grand (5x7 ×2), centrée sur les 50 px de gauche, y=9 */
+  const s=v.toFixed(M.dec);
+  text(Math.max(0,Math.round((50-textW(s,2))/2)),9,s,PAL.white,2);
+  /* message d'état coloré centré y=25 */
+  textCenter(32,25,T().msg[mk],col);
+}
+/* écran d'erreur capteur : port de drawErrorScreen() */
+function drawErrCanvas(name){
+  text(1,0,T().msg.sensor,PAL.cyan);
+  /* triangle d'alerte 14x14 à (50,9) */
+  for(let r=0;r<14;r++){
+    const w=1+Math.round(r*12/13), x0=57-Math.round(w/2);
+    rect(x0,9+r,w,1,PAL.orange);
+  }
+  rect(56,13,2,5,PAL.white);rect(56,19,2,2,PAL.white);
+  text(Math.max(0,Math.round((50-textW(name,2))/2)),9,name,PAL.white,2);
+  textCenter(32,25,T().msg.error,PAL.red);
+}
+function drawClock(){
+  const d=new Date();
+  const s=String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0");
+  gfxCenter(CLKFONT,32,17,s,PAL.white);
+  const dd=String(d.getDate()).padStart(2,"0"),mm=String(d.getMonth()+1).padStart(2,"0");
+  textCenter(32,23,T().days[d.getDay()]+" "+dd+"/"+mm,PAL.cyan);
+}
+let WX=null; /* météo courante pour l'aperçu (open-meteo côté navigateur, sinon device/démo) */
+function wxData(){
+  if(WX)return WX;
+  if(S.weather&&S.weather.valid)return{temp:S.weather.temp,code:S.weather.code};
+  return{temp:DEFAULT_S.weather.temp,code:DEFAULT_S.weather.code};
+}
+function drawWeather(){
+  const d=wxData();
+  drawWx(d.code,12,13);
+  gfxRight(TINYFONT,62,7,norm(S.weather.city||"").slice(0,12),PAL.cyan);
+  const ex=gfxText(CLKFONT9,30,21,Math.round(d.temp)+"",PAL.white);
+  drawDegree(ex+2,9,PAL.white);
+  gfxCenter(TINYFONT,32,31,norm(T().wx[wxCode(d.code)]||"").slice(0,16),PAL.amber);
+}
+const DEMO_CRYPTO=[{sym:"BTC",price:67240,chg:1.24},{sym:"ETH",price:3210.5,chg:-0.8},{sym:"SOL",price:146,chg:5.4}];
+function cryptoItems(){
+  const it=(S.crypto&&Array.isArray(S.crypto.items))?S.crypto.items.filter(x=>x&&x.sym&&typeof x.price==="number"):[];
+  if(it.length)return it;
+  const ids=(S.crypto.ids||"").split(",").filter(Boolean);
+  if(!ids.length)return DEMO_CRYPTO;
+  return ids.slice(0,4).map((id,i)=>({sym:(COINSYM[id]||id.slice(0,4)).toUpperCase(),
+    price:DEMO_CRYPTO[i%3].price,chg:DEMO_CRYPTO[i%3].chg}));
+}
+function drawCrypto(){
+  cryptoItems().slice(0,3).forEach((c,i)=>{
+    const y=2+i*10, up=(c.chg??0)>=0;
+    text(2,y,c.sym,PAL.white);
+    textRight(57,y,fmtK(c.price),PAL.cyan);
+    glyphAt(59,y,up?"▲":"▼",up?PAL.green:PAL.red);
+  });
+}
+function drawLogoScreen(){
+  textCenter(32,4,"MODULE",PAL.white);
+  textCenter(32,14,"AIR",PAL.airblue);
+  rect(23,26,4,3,PAL.green);rect(30,26,4,3,PAL.yellow);rect(37,26,4,3,PAL.red);
+}
+/* famille capteur en erreur → écran erreur comme la dalle */
+function familyName(dep){return{npm:"PM",mhz19:"CO2",bme280:"BME",ccs811:"COV",sfa40:"HCHO"}[dep]||"?";}
+function paintScreen(key){
+  fc();
+  if(key==="clock")return drawClock();
+  if(key==="weather")return drawWeather();
+  if(key==="crypto")return drawCrypto();
+  if(key==="logo")return drawLogoScreen();
+  if(METR[key]){
+    const dep=DEP[key];
+    if(DEVICE&&dep&&S.sensors[dep]&&SENSOK[dep]===false)return drawErrCanvas(familyName(dep));
+    return drawMeasure(key);
+  }
+  drawClock();
+}
+</script>
+
+<script>
+"use strict";
+/* ============================== DOM refs =================================== */
+const $=id=>document.getElementById(id);
+const splashEl=$("splash"),appEl=$("app"),dvTabs=$("dvTabs"),cycleNote=$("cycleNote"),
+  demoNote=$("demoNote"),scrList=$("scrList"),mgrCount=$("mgrCount"),
+  tileGrid=$("tileGrid"),sensorList=$("sensorList"),logBox=$("logBox"),
+  sysGrid=$("sysGrid"),updBox=$("updBox"),setModal=$("setModal"),
+  alertBanner=$("alertBanner"),alertText=$("alertText"),
+  pillDot=$("pillDot"),pillName=$("pillName");
+const RM=matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+/* ============================== ICONS ====================================== */
+const I=(inner)=>`<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${inner}</svg>`;
+const ICONS={
+  clock:I('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'),
+  pm1:I('<circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="6.5" cy="8" r="1.1" fill="currentColor" stroke="none"/><circle cx="17.2" cy="7.2" r="1.1" fill="currentColor" stroke="none"/><circle cx="7.2" cy="16.8" r="1.1" fill="currentColor" stroke="none"/><circle cx="16.8" cy="16.4" r="1.1" fill="currentColor" stroke="none"/><circle cx="12" cy="5" r=".9" fill="currentColor" stroke="none"/><circle cx="12" cy="19" r=".9" fill="currentColor" stroke="none"/>'),
+  pm25:I('<circle cx="11" cy="12" r="2.6" fill="currentColor" stroke="none"/><circle cx="17" cy="8" r="1.6" fill="currentColor" stroke="none"/><circle cx="6.5" cy="7" r="1.2" fill="currentColor" stroke="none"/><circle cx="17" cy="16.5" r="1.2" fill="currentColor" stroke="none"/><circle cx="6.8" cy="17" r="1.6" fill="currentColor" stroke="none"/>'),
+  pm10:I('<circle cx="11.5" cy="12.5" r="4.2" fill="currentColor" stroke="none"/><circle cx="18" cy="7.5" r="1.8" fill="currentColor" stroke="none"/><circle cx="18.4" cy="16.5" r="1.2" fill="currentColor" stroke="none"/><circle cx="6" cy="6.2" r="1.2" fill="currentColor" stroke="none"/>'),
+  co2:I('<circle cx="9" cy="10.5" r="4.6"/><circle cx="16.4" cy="14.5" r="2.9"/><circle cx="15" cy="6.4" r="1.5"/>'),
+  temp:I('<path d="M10 4.5a2 2 0 0 1 4 0v8.2a4.2 4.2 0 1 1-4 0z"/><path d="M12 9.5V15"/><circle cx="12" cy="16.6" r="1.3" fill="currentColor" stroke="none"/>'),
+  humi:I('<path d="M12 3.4s6 6.6 6 10.8a6 6 0 0 1-12 0C6 10 12 3.4 12 3.4z"/><path d="M9.5 14.5a2.6 2.6 0 0 0 2.4 2.6"/>'),
+  tvoc:I('<path d="M10 3.5h4M11 3.5v5l-4.8 8.6A2.4 2.4 0 0 0 8.3 20.5h7.4a2.4 2.4 0 0 0 2.1-3.4L13 8.5v-5"/><path d="M8.6 14.5h6.8"/>'),
+  hcho:I('<path d="M12 3.2l7 4v9.6l-7 4-7-4V7.2z"/><circle cx="12" cy="12" r="2.1"/>'),
+  weather:I('<circle cx="9" cy="9" r="3.2"/><path d="M9 2.5V4M9 14v1.5M2.5 9H4M14 9h1.5M4.4 4.4l1 1M13.6 4.4l-1 1"/><path d="M17 20a3 3 0 0 0 0-6 4.2 4.2 0 0 0-8-.6A3.2 3.2 0 0 0 9.5 20H17z" fill="currentColor" stroke="none" opacity=".9"/>'),
+  crypto:I('<path d="M3 17l5-5 3 3 7-8"/><path d="M16 4h5v5"/>'),
+  logo:I('<rect x="4" y="4" width="7" height="7" rx="2"/><rect x="13" y="4" width="7" height="7" rx="2"/><rect x="4" y="13" width="7" height="7" rx="2"/><rect x="13" y="13" width="7" height="7" rx="2"/>')
+};
+const SICONS={npm:ICONS.pm25,mhz19:ICONS.co2,bme280:ICONS.temp,ccs811:ICONS.tvoc,sfa40:ICONS.hcho};
+const GRIP='<svg width="10" height="17" viewBox="0 0 10 17" fill="currentColor" aria-hidden="true"><circle cx="2.5" cy="2.5" r="1.4"/><circle cx="7.5" cy="2.5" r="1.4"/><circle cx="2.5" cy="8.5" r="1.4"/><circle cx="7.5" cy="8.5" r="1.4"/><circle cx="2.5" cy="14.5" r="1.4"/><circle cx="7.5" cy="14.5" r="1.4"/></svg>';
+const UNITTXT={ugm3:"µg/m³",ppm:"ppm",ppb:"ppb",degc:"°C",pct:"%"};
+
+/* ============================== PREVIEW ==================================== */
+let curKey=null, cycleOn=true, cycleTimer=null, rafId=null, lastT=0;
+function enabledScreen(k){return k==="logo"?!!(S.enabled.logo_ma||S.enabled.logo_ac||S.enabled.logo_as):!!S.enabled[k];}
+function gated(k){const d=DEP[k];return!!(d&&!S.sensors[d]);}
+function activeScreens(){return S.order.filter(k=>enabledScreen(k)&&!gated(k));}
+function paint(){paintScreen(curKey||activeScreens()[0]||"clock");}
+function loop(t){rafId=requestAnimationFrame(loop);if(t-lastT<38)return;lastT=t;paint();}
+function ensureLoop(){if(!rafId)rafId=requestAnimationFrame(loop);}
+function showSlide(k,{animate=true}={}){
+  if(k!==curKey&&animate&&!RM){cv.style.opacity="0";setTimeout(()=>{cv.style.opacity="1";},150);}
+  curKey=k;syncTabs();ensureLoop();
+}
+function startCycle(){
+  clearInterval(cycleTimer);
+  if(!cycleOn)return;
+  cycleTimer=setInterval(()=>{
+    const list=activeScreens();if(list.length<2)return;
+    const i=list.indexOf(curKey);
+    showSlide(list[(i+1)%list.length]);
+  },4600);
+}
+function pausePeek(k){ /* saut temporaire sur un écran fraîchement activé */
+  cycleOn=false;clearInterval(cycleTimer);refreshCycleUI();showSlide(k);
+  setTimeout(()=>{cycleOn=true;refreshCycleUI();startCycle();},2600);
+}
+function refreshCycleUI(){
+  const ic=$("cycleIcon");
+  ic.innerHTML=cycleOn
+    ?'<rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/>'
+    :'<path d="M7 5l12 7-12 7z"/>';
+  const n=activeScreens().length;
+  cycleNote.innerHTML=cycleOn
+    ?`<span style="width:6px;height:6px;border-radius:50%;background:var(--accent)"></span> ${T().loop_on} · ${n} ${n>1?T().scr_p:T().scr_s} · ${S.rotation}${T().per_s}`
+    :(n?T().loop_off:T().no_screen);
+}
+$("cycleBtn").onclick=()=>{
+  cycleOn=!cycleOn;refreshCycleUI();
+  if(cycleOn)startCycle();else clearInterval(cycleTimer);
+};
+function buildTabs(){
+  const list=activeScreens();
+  dvTabs.innerHTML=list.map(k=>
+    `<button class="dv-tab" data-tab="${k}"><span class="g"></span>${esc(T().tab[k])}</button>`).join("");
+  dvTabs.querySelectorAll(".dv-tab").forEach(b=>b.onclick=()=>{
+    cycleOn=false;clearInterval(cycleTimer);refreshCycleUI();
+    showSlide(b.dataset.tab);
+  });
+  if(!list.includes(curKey))curKey=list[0]||null;
+  syncTabs();
+}
+function syncTabs(){dvTabs.querySelectorAll(".dv-tab").forEach(b=>b.classList.toggle("on",b.dataset.tab===curKey));}
+
+/* ============================== MANAGER ==================================== */
+function fmtVal(k){
+  const M=METR[k];if(!M)return"";
+  const v=DEVICE?LIVE[k]:DEMOV[k];
+  if(typeof v!=="number"||!isFinite(v))return"—";
+  return v.toFixed(M.dec)+" "+UNITTXT[M.unit];
+}
+function subtitle(k){
+  if(gated(k))return{txt:T().sensor_locked,warn:true};
+  if(k==="clock"){const d=new Date();
+    return{txt:String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0")+" · "+T().tag.clock};}
+  if(METR[k]){const v=fmtVal(k);return{txt:v==="—"?T().tag[k]:v};}
+  if(k==="weather"){const d=wxData();return{txt:`${S.weather.city} · ${Math.round(d.temp)}°`};}
+  if(k==="crypto"){const syms=cryptoItems().slice(0,4).map(c=>c.sym).join(" · ");
+    return{txt:syms||T().tag.crypto};}
+  if(k==="logo"){const n=(S.enabled.logo_ma?1:0)+(S.enabled.logo_ac?1:0)+(S.enabled.logo_as?1:0);
+    return{txt:T().logos_n(n)};}
+  return{txt:T().tag[k]||""};
+}
+function buildScreens(){
+  scrList.innerHTML=S.order.map(k=>{
+    const on=enabledScreen(k), lock=gated(k), sub=subtitle(k);
+    return`<div class="plugin ${on&&!lock?"on":""} ${lock?"locked":""}" data-key="${k}">
+      <div class="pg-top">
+        <span class="grip" data-grip aria-label="réordonner">${GRIP}</span>
+        <div class="pg-ic">${ICONS[k]}</div>
+        <div class="pg-meta"><b>${esc(T().name[k])}</b><small data-sub class="${sub.warn?"warn":""}">${esc(sub.txt)}</small></div>
+        <div class="tgl ${on?"on":""} ${lock?"locked":""}" data-toggle role="switch" aria-checked="${on}"></div>
+      </div>
+      <div class="pg-body"><div class="pg-inner" data-config></div></div>
+    </div>`;
+  }).join("");
+  scrList.querySelectorAll(".plugin").forEach(card=>{
+    const k=card.dataset.key;
+    card.querySelector("[data-toggle]").onclick=e=>{e.stopPropagation();toggleScreen(k);};
+    card.querySelector("[data-grip]").addEventListener("pointerdown",dndStart);
+    card.querySelector(".pg-top").onclick=e=>{
+      if(e.target.closest("[data-toggle]")||e.target.closest("[data-grip]"))return;
+      if(card.classList.contains("locked"))return;
+      const open=card.classList.contains("open");
+      scrList.querySelectorAll(".plugin").forEach(c=>c.classList.remove("open"));
+      if(!open){card.classList.add("open");buildConfig(k,card.querySelector("[data-config]"));}
+    };
+  });
+  refreshCount();
+}
+function refreshCount(){mgrCount.textContent=T().mgr_count(activeScreens().length,SCREENS.length);}
+function refreshCard(k){
+  const card=scrList.querySelector(`[data-key="${k}"]`);if(!card)return;
+  const on=enabledScreen(k),lock=gated(k),sub=subtitle(k);
+  card.classList.toggle("on",on&&!lock);
+  card.classList.toggle("locked",lock);
+  const tg=card.querySelector("[data-toggle]");
+  tg.classList.toggle("on",on);tg.classList.toggle("locked",lock);
+  tg.setAttribute("aria-checked",on);
+  const sm=card.querySelector("[data-sub]");
+  sm.textContent=sub.txt;sm.classList.toggle("warn",!!sub.warn);
+  refreshCount();
+}
+function refreshSubs(){S.order.forEach(k=>{
+  const card=scrList.querySelector(`[data-key="${k}"]`);if(!card)return;
+  const sub=subtitle(k),sm=card.querySelector("[data-sub]");
+  sm.textContent=sub.txt;sm.classList.toggle("warn",!!sub.warn);
+});}
+function flash(el,msg){if(!el)return;const o=el.textContent;el.textContent=msg;el.classList.add("err");
+  setTimeout(()=>{el.textContent=o;el.classList.remove("err");refreshCount();},1600);}
+let logoPrev=null;
+function toggleScreen(k){
+  if(gated(k))return;
+  const on=enabledScreen(k);
+  const act=activeScreens();
+  if(on&&act.length<=1&&act.includes(k)){
+    const card=scrList.querySelector(`[data-key="${k}"]`);
+    if(card){card.classList.add("shake");setTimeout(()=>card.classList.remove("shake"),420);}
+    flash(mgrCount,T().keep_one);
+    return;
+  }
+  if(k==="logo"){
+    if(on){
+      logoPrev={ma:S.enabled.logo_ma,ac:S.enabled.logo_ac,as:S.enabled.logo_as};
+      S.enabled.logo_ma=S.enabled.logo_ac=S.enabled.logo_as=false;
+      ["logo_ma","logo_ac","logo_as"].forEach(key=>apiPost("/set-screen",{key,val:0}));
+    }else{
+      const p=(logoPrev&&(logoPrev.ma||logoPrev.ac||logoPrev.as))?logoPrev:{ma:true,ac:true,as:true};
+      S.enabled.logo_ma=p.ma;S.enabled.logo_ac=p.ac;S.enabled.logo_as=p.as;
+      apiPost("/set-screen",{key:"logo_ma",val:p.ma?1:0});
+      apiPost("/set-screen",{key:"logo_ac",val:p.ac?1:0});
+      apiPost("/set-screen",{key:"logo_as",val:p.as?1:0});
+    }
+  }else{
+    S.enabled[k]=!on;
+    apiPost("/set-screen",{key:k,val:on?0:1});
+  }
+  save();refreshCard(k);buildTabs();refreshCycleUI();
+  const card=scrList.querySelector(`[data-key="${k}"].open`);
+  if(card)buildConfig(k,card.querySelector("[data-config]"));
+  if(!on)pausePeek(k);
+  else if(curKey===k){const l=activeScreens();showSlide(l[0]||"clock",{animate:false});}
+}
+
+/* ---- accordéons de config ---- */
+function buildConfig(k,box){
+  if(k==="weather"){
+    box.innerHTML=`<span class="lbl">${esc(T().wx_lbl)}</span>
+      <div class="field"><input type="text" id="wxq" placeholder="${esc(T().wx_ph)}" value="${esc(S.weather.city)}"></div>
+      <div id="wxResults" class="mini-list"></div><div class="state-msg" id="wxState"></div>`;
+    const inp=box.querySelector("#wxq"),res=box.querySelector("#wxResults");
+    let t;inp.oninput=()=>{clearTimeout(t);const q=inp.value.trim();
+      if(q.length<2){res.innerHTML="";return;}
+      t=setTimeout(()=>geocode(q,res,inp),350);};
+  }
+  else if(k==="crypto"){
+    box.innerHTML=`<span class="lbl">${esc(T().cr_lbl)}</span>
+      <div class="pg-row" id="selRow"></div>
+      <div class="field"><input type="text" id="coinq" placeholder="${esc(T().cr_ph)}"></div>
+      <div id="coinRes" class="mini-list"></div>
+      <span class="lbl">${esc(T().cr_pop)}</span>
+      <div class="pg-row" id="quickRow">${Object.entries(COINS).map(([id,sym])=>`<button class="chip" data-c="${id}">${sym}</button>`).join("")}</div>
+      <div class="state-msg" id="crState"></div>`;
+    const ids=()=>String(S.crypto.ids||"").split(",").filter(Boolean);
+    const setIds=arr=>{S.crypto.ids=arr.join(",");S.crypto.items=[];
+      apiPost("/set-crypto",{ids:S.crypto.ids});save();refreshCard("crypto");};
+    const renderSel=()=>{
+      const sr=box.querySelector("#selRow"),cur=ids();
+      sr.innerHTML=cur.length?cur.map(id=>`<button class="chip on" data-rm="${esc(id)}">${esc((COINSYM[id]||id.slice(0,5)).toUpperCase())} ×</button>`).join(""):`<span class="state-msg">${esc(T().cr_none)}</span>`;
+      sr.querySelectorAll("[data-rm]").forEach(b=>b.onclick=()=>{setIds(ids().filter(x=>x!==b.dataset.rm));renderSel();});
+      box.querySelectorAll("#quickRow [data-c]").forEach(b=>b.classList.toggle("on",cur.includes(b.dataset.c)));
+    };
+    const add=(id,sym)=>{
+      const cur=ids();
+      if(cur.includes(id))return;
+      if(cur.length>=4){flash(box.querySelector("#crState"),T().cr_max);return;}
+      if(sym)COINSYM[id]=sym;
+      setIds([...cur,id]);renderSel();
+    };
+    renderSel();
+    box.querySelectorAll("#quickRow [data-c]").forEach(b=>b.onclick=()=>{
+      const id=b.dataset.c;
+      if(ids().includes(id)){setIds(ids().filter(x=>x!==id));renderSel();}
+      else add(id,COINS[id]);
+    });
+    const q=box.querySelector("#coinq"),res=box.querySelector("#coinRes");
+    let t;q.oninput=()=>{clearTimeout(t);const v=q.value.trim();
+      if(v.length<2){res.innerHTML="";return;}
+      t=setTimeout(()=>coinSearch(v,res,add),350);};
+  }
+  else if(k==="logo"){
+    const subs=[["logo_ma",T().lg_ma],["logo_ac",T().lg_ac],["logo_as",T().lg_as]];
+    box.innerHTML=`<p class="state-msg">${esc(T().logo_desc)}</p>`+
+      subs.map(([key,nm])=>`<div class="sub-tgl"><span>${esc(nm)}</span>
+        <div class="tgl ${S.enabled[key]?"on":""}" data-lg="${key}" role="switch"></div></div>`).join("");
+    box.querySelectorAll("[data-lg]").forEach(tg=>tg.onclick=()=>{
+      const key=tg.dataset.lg,now=!S.enabled[key];
+      const cnt=(S.enabled.logo_ma?1:0)+(S.enabled.logo_ac?1:0)+(S.enabled.logo_as?1:0);
+      if(!now&&cnt<=1&&activeScreens().length<=1&&activeScreens()[0]==="logo"){
+        flash(mgrCount,T().keep_one);return;
+      }
+      S.enabled[key]=now;
+      apiPost("/set-screen",{key,val:now?1:0});
+      tg.classList.toggle("on",now);
+      save();refreshCard("logo");buildTabs();refreshCycleUI();
+    });
+  }
+  else if(k==="co2"){
+    box.innerHTML=`<p class="state-msg">${esc(T().co2_desc)}</p>
+      <div class="th-grid">
+        <div><span class="lbl" style="margin-top:0">${esc(T().c2_good)}</span>
+          <div class="field"><input type="number" id="thGood" min="400" max="5000" step="50" value="${S.co2_good}"></div></div>
+        <div><span class="lbl" style="margin-top:0">${esc(T().c2_bad)}</span>
+          <div class="field"><input type="number" id="thBad" min="500" max="10000" step="50" value="${S.co2_bad}"></div></div>
+      </div>
+      <div class="pg-row">
+        <button class="btn btn-primary" id="thApply" style="padding:10px 20px;font-size:14px">${esc(T().c2_apply)}</button>
+        <button class="chip" id="thDef">${esc(T().c2_def)}</button>
+      </div>
+      <div class="state-msg" id="thState"></div>`;
+    const st=box.querySelector("#thState");
+    const apply=(g,b)=>{
+      if(!(g>=400&&b>g&&b<=10000)){flash(st,T().c2_err);return;}
+      S.co2_good=g;S.co2_bad=b;
+      apiPost("/set-thresholds-co2",{good:g,bad:b});save();
+      st.textContent=T().c2_ok;setTimeout(()=>{if(st.textContent===T().c2_ok)st.textContent="";},1800);
+    };
+    box.querySelector("#thApply").onclick=()=>apply(parseInt(box.querySelector("#thGood").value,10),parseInt(box.querySelector("#thBad").value,10));
+    box.querySelector("#thDef").onclick=()=>{
+      box.querySelector("#thGood").value=800;box.querySelector("#thBad").value=1500;apply(800,1500);};
+  }
+  else{
+    box.innerHTML=`<p class="state-msg">${esc(T().desc[k]||T().tag[k]||"")}</p>`;
+  }
+}
+
+/* ---- recherches tierces (navigateur) ---- */
+const COINS={bitcoin:"BTC",ethereum:"ETH",solana:"SOL",ripple:"XRP",cardano:"ADA",dogecoin:"DOGE"};
+const COINSYM={bitcoin:"BTC",ethereum:"ETH",solana:"SOL",ripple:"XRP",cardano:"ADA",dogecoin:"DOGE"};
+async function geocode(q,res,inp){
+  res.innerHTML='<div class="skel" style="width:60%"></div>';
+  try{
+    const r=await fetchT(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=5&language=fr&format=json`);
+    const j=await r.json();
+    if(!j.results?.length){res.innerHTML=`<div class="state-msg">${esc(T().wx_none)}</div>`;return;}
+    res.innerHTML=j.results.map(c=>`<button class="mini-row" style="text-align:left;width:100%;padding:8px 4px" data-lat="${c.latitude}" data-lon="${c.longitude}" data-city="${esc(c.name)}">
+      <span class="k" style="min-width:auto">${esc(c.name)}</span>
+      <span style="color:var(--pebble);font-size:13px">${esc([c.admin1,c.country].filter(Boolean).join(", "))}</span></button>`).join("");
+    res.querySelectorAll("[data-city]").forEach(b=>b.onclick=()=>{
+      S.weather.city=b.dataset.city;S.weather.lat=+b.dataset.lat;S.weather.lon=+b.dataset.lon;
+      apiPost("/set-weather",{city:S.weather.city,lat:S.weather.lat,lon:S.weather.lon});
+      save();refreshCard("weather");res.innerHTML="";if(inp)inp.value=S.weather.city;
+      WX=null;loadWeatherBrowser();
+    });
+  }catch(e){res.innerHTML=`<div class="state-msg err">${esc(T().wx_err)}</div>`;}
+}
+async function coinSearch(q,res,add){
+  res.innerHTML='<div class="skel" style="width:60%"></div>';
+  try{
+    const r=await fetchT(`https://api.coingecko.com/api/v3/search?query=${encodeURIComponent(q)}`);
+    const j=await r.json();
+    const coins=(j.coins||[]).slice(0,6);
+    if(!coins.length){res.innerHTML=`<div class="state-msg">${esc(T().cr_nores)}</div>`;return;}
+    res.innerHTML=coins.map(c=>`<button class="mini-row" style="text-align:left;width:100%;padding:8px 4px" data-id="${esc(c.id)}" data-sym="${esc((c.symbol||"").toUpperCase())}">
+      <span class="k" style="min-width:auto">${esc((c.symbol||"").toUpperCase())}</span>
+      <span style="color:var(--pebble);font-size:13px">${esc(c.name)}</span></button>`).join("");
+    res.querySelectorAll("[data-id]").forEach(b=>b.onclick=()=>{add(b.dataset.id,b.dataset.sym);res.innerHTML="";});
+  }catch(e){res.innerHTML=`<div class="state-msg err">${esc(T().wx_err)}</div>`;}
+}
+async function loadWeatherBrowser(){
+  try{
+    const u=`https://api.open-meteo.com/v1/forecast?latitude=${S.weather.lat}&longitude=${S.weather.lon}&current=temperature_2m,weather_code&timezone=auto&forecast_days=1`;
+    const r=await fetchT(u);const j=await r.json();
+    if(j&&j.current&&typeof j.current.temperature_2m==="number")
+      WX={temp:j.current.temperature_2m,code:j.current.weather_code||0};
+    refreshSubs();
+  }catch(e){/* device/démo en secours */}
+}
+
+/* ============================== DND ======================================== */
+let DG=null;
+function dndStart(e){
+  if(DG)return;
+  e.preventDefault();
+  const card=e.currentTarget.closest(".plugin");
+  scrList.querySelectorAll(".plugin").forEach(c=>c.classList.remove("open"));
+  const r=card.getBoundingClientRect();
+  const ghost=card.cloneNode(true);
+  ghost.classList.add("drag-ghost");ghost.classList.remove("open");
+  Object.assign(ghost.style,{width:r.width+"px",left:r.left+"px",top:r.top+"px"});
+  document.body.appendChild(ghost);
+  card.classList.add("drag-src");
+  DG={card,ghost,dx:e.clientX-r.left,dy:e.clientY-r.top,orig:S.order.join(",")};
+  try{e.currentTarget.setPointerCapture(e.pointerId);}catch(_){}
+  window.addEventListener("pointermove",dndMove);
+  window.addEventListener("pointerup",dndEnd,{once:true});
+  window.addEventListener("pointercancel",dndEnd,{once:true});
+}
+function dndMove(e){
+  if(!DG)return;
+  DG.ghost.style.left=(e.clientX-DG.dx)+"px";
+  DG.ghost.style.top=(e.clientY-DG.dy)+"px";
+  /* auto-scroll près des bords */
+  if(e.clientY<80)window.scrollBy(0,-14);
+  else if(e.clientY>innerHeight-80)window.scrollBy(0,14);
+  const cards=[...scrList.querySelectorAll(".plugin")].filter(c=>c!==DG.card);
+  let before=null;
+  for(const c of cards){const cr=c.getBoundingClientRect();
+    if(e.clientY<cr.top+cr.height/2){before=c;break;}}
+  const cur=DG.card.nextElementSibling;
+  if(before===cur||(before===null&&cur===null))return;
+  const first=RM?null:new Map(cards.map(c=>[c,c.getBoundingClientRect().top]));
+  if(before)scrList.insertBefore(DG.card,before);else scrList.appendChild(DG.card);
+  if(first)cards.forEach(c=>{
+    const d=first.get(c)-c.getBoundingClientRect().top;
+    if(d){c.style.transition="none";c.style.transform=`translateY(${d}px)`;
+      requestAnimationFrame(()=>{c.style.transition="transform .18s ease";c.style.transform="";});}
+  });
+}
+function dndEnd(){
+  if(!DG)return;
+  window.removeEventListener("pointermove",dndMove);
+  DG.ghost.remove();
+  DG.card.classList.remove("drag-src");
+  const newOrder=[...scrList.querySelectorAll(".plugin")].map(c=>c.dataset.key);
+  if(newOrder.join(",")!==DG.orig){
+    S.order=newOrder;save();pushOrder();
+    buildTabs();refreshCycleUI();
+  }
+  DG=null;
+}
+
+/* ============================== LIVE DATA ================================== */
+function parseData(j){
+  const map={};
+  (j&&Array.isArray(j.sensordatavalues)?j.sensordatavalues:[]).forEach(e=>{
+    if(!e)return;
+    const t=String(e.value_type||"").toLowerCase(), v=parseFloat(e.value);
+    if(!isFinite(v))return;
+    if(t==="npm_p0"||t==="pm1"||t==="pm1.0"||t==="sds_p0")map.pm1=v;
+    else if(t==="npm_p2"||t==="pm2.5"||t==="pm25"||t==="sds_p2")map.pm25=v;
+    else if(t==="npm_p1"||t==="pm10"||t==="sds_p1")map.pm10=v;
+    else if(t.includes("temperature")||t==="temp")map.temp=v;
+    else if(t.includes("humidity")||t==="humi")map.humi=v;
+    else if(t.includes("pressure"))map.press=v>20000?v/100:v;
+    else if(t==="eco2"||t.includes("_eco2"))map.eco2=v;
+    else if(t.includes("co2"))map.co2=v;
+    else if(t.includes("ccs811")||t==="tvoc"||t.includes("voc"))map.tvoc=v;
+    else if(t.includes("hcho")||t.includes("formald"))map.hcho=v;
+  });
+  for(const k of Object.keys(LIVE))delete LIVE[k];
+  Object.assign(LIVE,map);
+}
+async function pollData(){
+  if(!DEVICE){renderTiles();refreshSubs();return;}
+  try{
+    const r=await fetchT("/data.json");
+    if(r.ok)parseData(await r.json());
+  }catch(e){}
+  renderTiles();refreshSubs();
+}
+const TILES=[
+  {k:"pm1",sensor:"npm",unit:"µg/m³",lv:v=>METR.pm1.lv(v)},
+  {k:"pm25",sensor:"npm",unit:"µg/m³",lv:v=>METR.pm25.lv(v)},
+  {k:"pm10",sensor:"npm",unit:"µg/m³",lv:v=>METR.pm10.lv(v)},
+  {k:"co2",sensor:"mhz19",unit:"ppm",lv:v=>METR.co2.lv(v)},
+  {k:"temp",sensor:"bme280",unit:"°C",dec:1,lv:v=>METR.temp.lv(v)},
+  {k:"humi",sensor:"bme280",unit:"%",lv:v=>METR.humi.lv(v)},
+  {k:"press",sensor:"bme280",unit:"hPa",lv:null},
+  {k:"tvoc",sensor:"ccs811",unit:"ppb",lv:v=>METR.tvoc.lv(v)},
+  {k:"eco2",sensor:"ccs811",unit:"ppm",lv:null,opt:true},
+  {k:"hcho",sensor:"sfa40",unit:"ppb",lv:v=>METR.hcho.lv(v)}
+];
+function renderTiles(){
+  $("mzNote").textContent=DEVICE?T().mz_note:T().mz_note_demo;
+  tileGrid.innerHTML=TILES.filter(d=>S.sensors[d.sensor]&&(!d.opt||typeof LIVE[d.k]==="number")).map(d=>{
+    const v=DEVICE?LIVE[d.k]:DEMOV[d.k];
+    const has=typeof v==="number"&&isFinite(v);
+    const err=DEVICE&&!has&&SENSOK[d.sensor]===false;
+    let dot="var(--fog)";
+    if(has&&d.lv)dot=d.lv(v)[0];
+    const val=err?esc(T().err_short):(has?v.toFixed(d.dec||0):"—");
+    return`<div class="tile ${err?"errt":(has?"":"off")}">
+      <div class="tn"><span class="dot" style="background:${dot}"></span>${esc(T().tile[d.k])}</div>
+      <div class="tv tnum">${val}${(has&&!err)?`<span class="tu">${esc(d.unit)}</span>`:""}</div>
+    </div>`;
+  }).join("");
+}
+function refreshBanner(){
+  const bad=[];
+  for(const k of SENSORS)if(S.sensors[k]&&SENSOK[k]===false)bad.push(T().sname[k]);
+  if(DEVICE&&bad.length){alertText.textContent=T().banner(bad.join(", "));alertBanner.hidden=false;}
+  else alertBanner.hidden=true;
+}
+async function pollInfo(){
+  if(!DEVICE){renderSys();refreshBanner();return;}
+  try{
+    const r=await fetchT("/api/info");
+    if(r.ok){
+      const j=await r.json();
+      INFO=j&&typeof j==="object"?j:INFO;
+      const sn=(INFO&&INFO.sensors)||{};
+      let changed=false;
+      for(const k of SENSORS){
+        const e=sn[k];
+        if(e&&typeof e==="object"){
+          if(typeof e.ok==="boolean")SENSOK[k]=e.ok;
+          if(typeof e.enabled==="boolean"&&e.enabled!==S.sensors[k]){S.sensors[k]=e.enabled;changed=true;}
+        }else if(typeof e==="boolean")SENSOK[k]=e;
+      }
+      if(INFO&&(INFO.hostname||INFO.chipId))pillName.textContent=INFO.hostname||("ModuleAir "+INFO.chipId);
+      if(changed){buildScreens();buildTabs();buildSensors();renderTiles();refreshCycleUI();}
+      else buildSensors();
+    }
+  }catch(e){}
+  renderSys();refreshBanner();renderTiles();
+}
+/* rafraîchit météo/crypto/timeValid côté device sans écraser l'édition en cours */
+async function pollDisplay(){
+  if(!DEVICE)return;
+  try{
+    const r=await fetchT("/api/display");
+    if(r.ok){
+      const j=await r.json();
+      if(j.weather&&typeof j.weather==="object"){
+        const w=j.weather;
+        if(typeof w.valid==="boolean")S.weather.valid=w.valid;
+        if(typeof w.temp==="number")S.weather.temp=w.temp;
+        if(typeof w.code==="number")S.weather.code=w.code;
+      }
+      if(j.crypto&&Array.isArray(j.crypto.items))S.crypto.items=j.crypto.items.filter(x=>x&&x.sym);
+      if(typeof j.timeValid==="boolean")S.timeValid=j.timeValid;
+      refreshSubs();
+    }
+  }catch(e){}
+}
+
+/* ============================== SENSORS ==================================== */
+function buildSensors(){
+  sensorList.innerHTML=SENSORS.map(k=>{
+    const on=!!S.sensors[k];
+    const ok=SENSOK[k];
+    const st=!on?["off",T().st_off]:(DEVICE?(ok===false?["ko",T().st_ko]:["ok",T().st_ok]):["ok",T().st_ok]);
+    return`<div class="sensor-row ${on?"on":""}" data-sensor="${k}">
+      <div class="pg-ic">${SICONS[k]}</div>
+      <div class="sensor-meta"><b>${esc(T().sname[k])}</b><small>${esc(T().stag[k])}</small></div>
+      <span class="st ${st[0]==="off"?"":st[0]}" ${st[0]==="off"?'style="background:var(--fog);color:var(--pebble)"':""}>${esc(st[1])}</span>
+      <div class="tgl ${on?"on":""}" data-stgl role="switch" aria-checked="${on}"></div>
+    </div>`;
+  }).join("");
+  sensorList.querySelectorAll("[data-stgl]").forEach(tg=>{
+    tg.onclick=()=>{
+      const k=tg.closest("[data-sensor]").dataset.sensor;
+      S.sensors[k]=!S.sensors[k];
+      apiPost("/set-sensor",{key:k,val:S.sensors[k]?1:0});
+      save();buildSensors();buildScreens();buildTabs();renderTiles();refreshCycleUI();refreshBanner();
+      const l=activeScreens();
+      if(!l.includes(curKey))showSlide(l[0]||"clock",{animate:false});
+    };
+  });
+}
+
+/* ============================== LOGS ======================================= */
+let logSeq=0,logPaused=false,demoLogIdx=0,demoLogTick=0;
+const DEMO_LOGS=[
+  "[Sensors] NextPM: PM1=4.2 PM2.5=6.8 PM10=11.0 ug/m3",
+  "[Sensors] MH-Z19: CO2=612 ppm",
+  "[Sensors] BME280: T=22.4C RH=48% P=1013.2 hPa",
+  "[Display](5s) Screen 2/9: PM2.5",
+  "[WiFi] RSSI -58 dBm",
+  "[Data] POST sensor.community: HTTP 201 (0.4s)",
+  "[Display](5s) Screen 3/9: CO2",
+  "[NetMonitor] internet OK, server OK"
+];
+function appendLog(txt){
+  const empty=$("logEmpty");if(empty)empty.remove();
+  const nearBottom=logBox.scrollHeight-logBox.scrollTop-logBox.clientHeight<40;
+  logBox.appendChild(document.createTextNode(txt.endsWith("\n")?txt:txt+"\n"));
+  logBox.normalize();
+  const node=logBox.firstChild;
+  if(node&&node.nodeType===3&&node.length>60000)node.deleteData(0,node.length-45000);
+  if(nearBottom)logBox.scrollTop=logBox.scrollHeight;
+}
+async function logTick(){
+  if(logPaused)return;
+  if(DEVICE){
+    try{
+      const r=await fetchT("/logs?since="+logSeq,{},4000);
+      if(!r.ok)return;
+      const seq=parseInt(r.headers.get("X-Log-Seq")||"",10);
+      const txt=await r.text();
+      if(txt)appendLog(txt);
+      if(isFinite(seq)&&seq>=0)logSeq=seq;
+    }catch(e){}
+  }else{
+    if(++demoLogTick%2)return;
+    const d=new Date(),ts=d.toTimeString().slice(0,8);
+    appendLog(ts+" "+DEMO_LOGS[demoLogIdx++%DEMO_LOGS.length]);
+  }
+}
+$("logPause").onclick=function(){
+  logPaused=!logPaused;
+  this.textContent=logPaused?T().lg_resume:T().lg_pause;
+  this.classList.toggle("on",logPaused);
+};
+$("logClear").onclick=()=>{
+  logBox.textContent="";
+  const s=document.createElement("span");s.className="log-empty";s.id="logEmpty";
+  s.textContent=DEVICE?T().lg_empty:T().lg_demo;
+  logBox.appendChild(s);
+};
+
+/* ============================== SYSTEM ===================================== */
+function barsSvg(rssi){
+  const q=Math.max(0,Math.min(100,2*(rssi+100)));
+  const hs=[4,7,10,13];
+  return`<svg width="20" height="14" viewBox="0 0 20 14" aria-hidden="true" style="vertical-align:-2px">${
+    hs.map((h,i)=>`<rect x="${i*5}" y="${14-h}" width="3.4" height="${h}" rx="1" fill="currentColor" opacity="${q>i*25?1:.22}"/>`).join("")
+  }</svg>`;
+}
+function renderSys(){
+  const F=T().sys;
+  const inf=DEVICE?(INFO||{}):{version:"0.7.0",ip:"192.168.1.20",ssid:"démo",rssi:-58,uptime:"2h 15m",chipId:"A1B2C3"};
+  const rows=[
+    [F.version,inf.version?("v"+esc(inf.version)):"—"],
+    [F.ip,esc(inf.ip||"—")],
+    [F.ssid,esc(inf.ssid||"—")],
+    [F.rssi,typeof inf.rssi==="number"?`${barsSvg(inf.rssi)} <span class="tnum">${inf.rssi} dBm</span>`:"—"],
+    [F.uptime,esc(inf.uptime||"—")],
+    [F.chip,esc(inf.chipId||"—")]
+  ];
+  sysGrid.innerHTML=rows.map(([k,v])=>`<div class="sys-row"><span class="k">${esc(k)}</span><span class="v">${v}</span></div>`).join("");
+}
+let updState="idle";
+function renderUpdIdle(){
+  updState="idle";
+  updBox.innerHTML=`<button class="btn btn-primary" id="updCheck" ${DEVICE?"":"disabled"}>${esc(T().sy_check)}</button>
+    <span class="state-msg">${DEVICE?"":esc(T().sy_demo)}</span>`;
+  const b=$("updCheck");
+  if(b)b.onclick=checkUpdate;
+}
+async function checkUpdate(){
+  if(updState!=="idle")return;
+  updState="checking";
+  updBox.innerHTML=`<button class="btn btn-primary" disabled><span class="spin"></span> ${esc(T().sy_checking)}</button>`;
+  try{
+    const r=await fetchT("/check-update",{},15000);
+    const j=await r.json();
+    if(j&&j.update){
+      updBox.innerHTML=`<span class="state-msg" style="font-weight:600;color:var(--ink)">${esc(T().sy_avail(j.current||"?",j.remote||"?"))}</span>
+        <button class="btn btn-accent" id="updDo">${esc(T().sy_do)}</button>
+        <button class="btn-link" id="updCancel">×</button>`;
+      $("updDo").onclick=doUpdate;
+      $("updCancel").onclick=renderUpdIdle;
+      updState="avail";
+    }else if(j&&j.error){
+      updBox.innerHTML=`<span class="state-msg err">${esc(T().sy_err)} — ${esc(j.error)}</span>`;
+      setTimeout(renderUpdIdle,4000);
+    }else{
+      updBox.innerHTML=`<span class="state-msg" style="color:#1c7c3d;font-weight:600">${esc(T().sy_uptodate((j&&j.current)||(INFO&&INFO.version)||"?"))}</span>`;
+      setTimeout(renderUpdIdle,4000);
+    }
+  }catch(e){
+    updBox.innerHTML=`<span class="state-msg err">${esc(T().sy_err)}</span>`;
+    setTimeout(renderUpdIdle,4000);
+  }
+}
+async function doUpdate(){
+  if(!confirm(T().cf_update))return;
+  updState="updating";
+  updBox.innerHTML=`<span class="spin" style="border-color:rgba(10,37,64,.25);border-top-color:var(--ink)"></span>
+    <span class="state-msg" style="font-weight:600">${esc(T().sy_updating)}</span>`;
+  try{await fetchT("/do-update",{},10000);}catch(e){}
+  /* le module flashe puis reboote : on attend son retour */
+  const t0=Date.now();
+  const poll=setInterval(async()=>{
+    if(Date.now()-t0>210000){clearInterval(poll);renderUpdIdle();return;}
+    if(Date.now()-t0<25000)return;
+    try{
+      const r=await fetchT("/api/info",{},3000);
+      if(r.ok){
+        clearInterval(poll);
+        updBox.innerHTML=`<span class="state-msg" style="color:#1c7c3d;font-weight:600">${esc(T().sy_back)}</span>`;
+        setTimeout(()=>location.reload(),1200);
+      }
+    }catch(e){}
+  },5000);
+}
+
+/* ============================== SETTINGS =================================== */
+$("openSettings").onclick=()=>{
+  $("brSlider").value=S.brightness;
+  $("brVal").textContent=S.brightness+"/255";
+  document.querySelectorAll("#langRow [data-lang]").forEach(b=>b.classList.toggle("on",b.dataset.lang===S.language));
+  $("dbgTgl").classList.toggle("on",!!S.debugSplash);
+  setModal.classList.add("show");
+};
+$("setClose").onclick=()=>setModal.classList.remove("show");
+setModal.onclick=e=>{if(e.target===setModal)setModal.classList.remove("show");};
+$("brSlider").oninput=function(){
+  S.brightness=+this.value;
+  $("brVal").textContent=this.value+"/255";
+  pushBrightness();save();
+};
+document.querySelectorAll("#langRow [data-lang]").forEach(b=>b.onclick=()=>setLang(b.dataset.lang));
+function setLang(l){
+  if(l!==S.language&&(l==="FR"||l==="EN")){
+    S.language=l;
+    document.documentElement.lang=l.toLowerCase();
+    apiPost("/set-lang",{lang:l});save();
+    renderAll();
+  }
+  document.querySelectorAll("#langRow [data-lang]").forEach(b=>b.classList.toggle("on",b.dataset.lang===S.language));
+}
+$("dbgTgl").onclick=function(){
+  S.debugSplash=!S.debugSplash;
+  this.classList.toggle("on",S.debugSplash);
+  apiPost("/debug-splash",{enabled:S.debugSplash?1:0});save();
+};
+$("btnForget").onclick=()=>{
+  if(!confirm(T().cf_reset))return;
+  if(DEVICE)apiPost("/reset");
+  else{localStorage.removeItem("moduleair_ui");location.reload();}
+  setModal.classList.remove("show");
+};
+$("btnReboot").onclick=()=>{
+  if(!confirm(T().cf_reboot))return;
+  if(DEVICE)apiPost("/reboot");
+  setModal.classList.remove("show");
+};
+
+/* ============================== ROTATION =================================== */
+const rotSlider=$("rotSlider"),rotVal=$("rotVal");
+rotSlider.oninput=function(){
+  S.rotation=+this.value;
+  rotVal.textContent=S.rotation+" s";
+  pushRotation();save();refreshCycleUI();
+};
+
+/* ============================== RENDER ALL / I18N ========================== */
+function applyStatic(){
+  document.querySelectorAll("[data-i18n]").forEach(el=>{
+    const v=T()[el.dataset.i18n];
+    if(typeof v==="string")el.textContent=v;
+  });
+  $("pcTitle").innerHTML=T().pc_title;
+  $("pcSub").textContent=T().pc_sub;
+  $("logPause").textContent=logPaused?T().lg_resume:T().lg_pause;
+  $("logClear").textContent=T().lg_clear;
+  const empty=$("logEmpty");
+  if(empty)empty.textContent=DEVICE?T().lg_empty:T().lg_demo;
+}
+function renderAll(){
+  applyStatic();
+  buildScreens();buildTabs();refreshCycleUI();
+  renderTiles();buildSensors();renderSys();refreshBanner();
+  if(updState==="idle"||updState==="avail")renderUpdIdle();
+  rotSlider.max=Math.max(30,S.rotation);
+  rotSlider.value=S.rotation;rotVal.textContent=S.rotation+" s";
+}
+
+/* ============================== BOOT ======================================= */
+function openApp(){
+  appEl.hidden=false;
+  pillDot.classList.toggle("on",DEVICE);
+  if(!DEVICE)pillName.textContent="ModuleAir · "+T().pill_demo;
+  demoNote.hidden=DEVICE;
+  renderAll();
+  const first=activeScreens()[0]||"clock";
+  showSlide(first,{animate:false});
+  startCycle();
+  /* pollers */
+  pollData();pollInfo();
+  setInterval(pollData,30000);
+  setInterval(pollInfo,30000);
+  if(DEVICE){pollDisplay();setInterval(pollDisplay,60000);}
+  setInterval(logTick,1000);
+  setInterval(refreshSubs,20000);
+  loadWeatherBrowser();
+  $("logClear").click(); /* pose le placeholder "en attente…" */
+}
+(async function boot(){
+  const t0=Date.now();
+  try{
+    const r=await fetchT("/api/display",{},2500);
+    if(r.ok){
+      const j=await r.json();
+      if(j&&typeof j==="object"){DEVICE=true;applyDeviceConfig(j);}
+    }
+  }catch(e){}
+  if(!DEVICE)loadLocal();
+  sanitizeOrder();
+  document.documentElement.lang=S.language.toLowerCase();
+  openApp();
+  const wait=Math.max(150,1200-(Date.now()-t0));
+  setTimeout(()=>{
+    splashEl.classList.add("gone");
+    setTimeout(()=>{splashEl.hidden=true;},600);
+  },wait);
+})();
+</script>
+</body>
+</html>

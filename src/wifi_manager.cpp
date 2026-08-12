@@ -17,6 +17,9 @@
 #include "data_sender.h"
 #include "logger.h"
 #include "i18n.h"
+#include "plugins.h"
+#include "web_index.h"   // SPA gzippée (générée depuis web/app.html par web_embed.py)
+#include <ArduinoJson.h>
 
 static WebServer server(80);
 static DNSServer dnsServer;
@@ -1101,10 +1104,19 @@ static void handleScan() {
   server.send(200, "application/json", json);
 }
 
+// SPA ModuleAir (web/app.html, gzippée en PROGMEM au build par web_embed.py).
+// Servie en streaming send_P : rien n'est copié en heap.
+static void handleApp() {
+  server.sendHeader("Content-Encoding", "gzip");
+  server.sendHeader("Cache-Control", "no-cache");
+  server.send_P(200, "text/html", (PGM_P)WEB_INDEX_GZ, WEB_INDEX_GZ_LEN);
+}
+
 static void handleRoot() {
   Logger.printf("[Web] Client %s requested /\n", server.client().remoteIP().toString().c_str());
   if (wifiState == WS_STA_CONNECTED) {
-    handleRootConnected();
+    // Nouvelle interface (SPA). L'ancien dashboard reste accessible sur /config.
+    handleApp();
   } else {
     handleRootAP();
   }
@@ -1202,9 +1214,162 @@ static void handleSetSensor() {
 static void handleSetScreen() {
   String key = server.arg("key");
   bool val = server.arg("val") == "1";
+  // Clés de toggle valides (≠ jetons d'ordre : ici les logos sont individuels).
+  static const char* const SCREEN_KEYS[] = {
+    "pm1", "pm25", "pm10", "co2", "temp", "humi", "tvoc", "hcho",
+    "clock", "weather", "crypto",
+    "logo_ma", "logo_ac", "logo_as",
+#ifdef BUILD_LAIRETMOI
+    "logo_lam",
+#endif
+  };
+  bool known = false;
+  for (auto k : SCREEN_KEYS) if (key == k) { known = true; break; }
+  if (!known) { server.send(400, "text/plain", "invalid key"); return; }
   settingsSetScreenEnabled(key.c_str(), val);
   Logger.printf("[Web] Screen %s = %s\n", key.c_str(), val ? "on" : "off");
   server.send(200, "text/plain", "ok");
+}
+
+// Ordre de rotation des écrans (drag & drop de la SPA) — CSV de jetons,
+// normalisé/validé par settingsSetScreenOrder (jetons inconnus retirés,
+// manquants ré-ajoutés en fin).
+static void handleSetScreenOrder() {
+  String order = server.arg("order");
+  if (order.isEmpty() || order.length() > 160) {
+    server.send(400, "text/plain", "invalid order");
+    return;
+  }
+  settingsSetScreenOrder(order);
+  server.send(200, "text/plain", "ok");
+}
+
+static void handleSetRotation() {
+  int val = server.arg("val").toInt();
+  if (val < 3 || val > 60) {
+    server.send(400, "text/plain", "invalid: 3..60");
+    return;
+  }
+  settingsSetRotationSec((uint16_t)val);
+  server.send(200, "text/plain", "ok");
+}
+
+// Ville météo (géocodée côté navigateur via geocoding-api.open-meteo.com).
+static void handleSetWeather() {
+  String city = server.arg("city");
+  float lat = server.arg("lat").toFloat();
+  float lon = server.arg("lon").toFloat();
+  city.trim();
+  if (city.isEmpty() || city.length() > 40 ||
+      lat < -90.0f || lat > 90.0f || lon < -180.0f || lon > 180.0f) {
+    server.send(400, "text/plain", "invalid place");
+    return;
+  }
+  pluginsSetWeatherPlace(city, lat, lon);
+  server.send(200, "text/plain", "ok");
+}
+
+// Ids CoinGecko (csv). On ne garde que [a-z0-9-] et les virgules, 4 ids max —
+// l'URL du fetch est construite avec cette valeur, donc on la contraint fort.
+static void handleSetCrypto() {
+  String ids = server.arg("ids");
+  String clean;
+  int nIds = 0;
+  bool tokenOpen = false;
+  for (size_t i = 0; i < ids.length() && clean.length() < 120; i++) {
+    char ch = ids[i];
+    if (ch >= 'A' && ch <= 'Z') ch = ch - 'A' + 'a';
+    if ((ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch == '-') {
+      if (!tokenOpen) {
+        if (nIds >= 4) break;
+        if (nIds > 0) clean += ',';
+        tokenOpen = true;
+        nIds++;
+      }
+      clean += ch;
+    } else if (ch == ',') {
+      tokenOpen = false;
+    }
+  }
+  pluginsSetCryptoIds(clean);   // vide autorisé = liste effacée
+  server.send(200, "text/plain", "ok");
+}
+
+// Config d'affichage + données live pour la SPA (aperçu LED, toggles, ordre).
+static void handleApiDisplay() {
+  const ScreenSettings& ss = settingsGetScreens();
+  const SensorSettings& sc = settingsGetSensors();
+  const ThresholdsCO2& th = settingsGetThresholdsCO2();
+  const PluginsConfig& pc = pluginsCfg();
+  const WeatherData& wd = pluginsWeather();
+  const CryptoData& cd = pluginsCrypto();
+
+  JsonDocument d;
+  d["rotation"] = settingsGetRotationSec();
+
+  JsonArray ord = d["order"].to<JsonArray>();
+  const String& order = settingsGetScreenOrder();
+  int start = 0;
+  while (start < (int)order.length()) {
+    int comma = order.indexOf(',', start);
+    if (comma < 0) comma = order.length();
+    ord.add(order.substring(start, comma));
+    start = comma + 1;
+  }
+
+  JsonObject en = d["enabled"].to<JsonObject>();
+  en["clock"] = ss.clock;  en["weather"] = ss.weather;  en["crypto"] = ss.crypto;
+  en["pm1"] = ss.pm1;      en["pm25"] = ss.pm25;        en["pm10"] = ss.pm10;
+  en["co2"] = ss.co2;      en["temp"] = ss.temp;        en["humi"] = ss.humi;
+  en["tvoc"] = ss.tvoc;    en["hcho"] = ss.hcho;
+  en["logo_ma"] = ss.logo_moduleair;
+  en["logo_ac"] = ss.logo_aircarto;
+  en["logo_as"] = ss.logo_atmosud;
+#ifdef BUILD_LAIRETMOI
+  en["logo_lam"] = ss.logo_lairetmoi;
+#endif
+
+  JsonObject sens = d["sensors"].to<JsonObject>();
+  sens["npm"] = sc.npm_enabled;
+  sens["mhz19"] = sc.mhz19_enabled;
+  sens["bme280"] = sc.bme280_enabled;
+  sens["ccs811"] = sc.ccs811_enabled;
+  sens["sfa40"] = sc.sfa40_enabled;
+
+  d["brightness"] = displayGetBrightness();
+  d["language"] = i18nGetLang() == LANG_EN ? "EN" : "FR";
+  d["debugSplash"] = displayGetDebugSplash();
+  d["co2_good"] = th.good;
+  d["co2_bad"] = th.bad;
+  d["timeValid"] = pluginsTimeValid();
+
+  JsonObject w = d["weather"].to<JsonObject>();
+  w["city"] = pc.wxCity;
+  w["lat"] = pc.wxLat;
+  w["lon"] = pc.wxLon;
+  w["valid"] = wd.valid;
+  if (wd.valid) {
+    w["temp"] = wd.temp;
+    w["code"] = wd.code;
+    w["max"] = wd.tmax;
+    w["min"] = wd.tmin;
+  }
+
+  JsonObject cj = d["crypto"].to<JsonObject>();
+  cj["ids"] = pc.cryptoIds;
+  JsonArray items = cj["items"].to<JsonArray>();
+  if (cd.valid) {
+    for (int i = 0; i < cd.count; i++) {
+      JsonObject it = items.add<JsonObject>();
+      it["sym"] = cd.items[i].sym;
+      it["price"] = cd.items[i].price;
+      it["chg"] = cd.items[i].change;
+    }
+  }
+
+  String out;
+  serializeJson(d, out);
+  server.send(200, "application/json", out);
 }
 
 static void handleSetLang() {
@@ -1547,6 +1712,12 @@ static void handleApiConfig() {
   jsonAddBoolField(json, "logo_lairetmoi", false, first);
 #endif
 
+  jsonAddBoolField(json, "screen_clock", ss.clock, first);
+  jsonAddBoolField(json, "screen_weather", ss.weather, first);
+  jsonAddBoolField(json, "screen_crypto", ss.crypto, first);
+  jsonAddStringField(json, "screen_order", settingsGetScreenOrder(), first);
+  jsonAddIntField(json, "screen_rotation_s", settingsGetRotationSec(), first);
+
   jsonAddIntField(json, "display_brightness", displayGetBrightness(), first);
   jsonAddBoolField(json, "debug_splash", displayGetDebugSplash(), first);
   jsonAddStringField(json, "language", i18nGetLang() == LANG_EN ? "EN" : "FR", first);
@@ -1740,8 +1911,10 @@ void wifiManagerInit() {
   }
 
   server.on("/", handleRoot);
+  server.on("/config", handleRootConnected);   // ancienne interface (secours)
   server.on("/api/info", handleApiInfo);
   server.on("/api/config", handleApiConfig);
+  server.on("/api/display", handleApiDisplay);
   server.on("/api/wifi", handleApiWifi);
   server.on("/data.json", handleDataJson);
   server.on("/scan", handleScan);
@@ -1755,6 +1928,10 @@ void wifiManagerInit() {
   server.on("/set-thresholds-co2", HTTP_POST, handleSetThresholdsCO2);
   server.on("/set-sensor", HTTP_POST, handleSetSensor);
   server.on("/set-screen", HTTP_POST, handleSetScreen);
+  server.on("/set-screen-order", HTTP_POST, handleSetScreenOrder);
+  server.on("/set-rotation", HTTP_POST, handleSetRotation);
+  server.on("/set-weather", HTTP_POST, handleSetWeather);
+  server.on("/set-crypto", HTTP_POST, handleSetCrypto);
   server.on("/set-lang", HTTP_POST, handleSetLang);
   server.on("/check-update", handleCheckUpdate);
   server.on("/do-update", handleDoUpdate);
