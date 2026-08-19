@@ -13,4 +13,12 @@
 // is its own boolean check) combined with Tasmota's 15-30s poll cadence.
 void networkMonitorInit();
 
+// Remontee du resultat des VRAIS envois de donnees (data_sender). La sonde
+// TCP ne voit que le chemin reseau ; un module etrangle en interne (ex. plus
+// assez de heap contigu pour le handshake TLS) envoie zero donnee avec un
+// badge au vert. Apres 2 echecs consecutifs le badge force NET_NO_SERVER ;
+// un succes le remet a NET_OK immediatement. A appeler uniquement pour une
+// tentative reelle (internet deja verifie) — pas pour un envoi saute.
+void networkMonitorReportSendResult(bool ok);
+
 #endif

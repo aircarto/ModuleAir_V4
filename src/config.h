@@ -3,7 +3,7 @@
 
 #include <Arduino.h>
 
-#define FIRMWARE_VERSION "0.7.0"
+#define FIRMWARE_VERSION "0.7.1"
 
 // ── Default sensor enable state ─────────────────────────────────────────────
 // These are the FACTORY DEFAULTS for each sensor's enabled flag — the value
@@ -43,9 +43,9 @@
 // AtmoSud logo is OFF by default — flip LOGO_ATMOSUD_DEFAULT to true if you
 // want it back in the rotation.
 // Écrans « info » (horloge / météo / bourse — données via plugins.cpp).
-// L'horloge est ON par défaut (aucune API requise, juste le NTP) ; météo et
-// bourse sont OFF — l'utilisateur les active depuis l'interface web.
-#define SCREEN_CLOCK_DEFAULT    true
+// Tous OFF par défaut : un ModuleAir sorti de boîte n'affiche que les mesures
+// d'air ; l'utilisateur active horloge/météo/bourse depuis l'interface web.
+#define SCREEN_CLOCK_DEFAULT    false
 #define SCREEN_WEATHER_DEFAULT  false
 #define SCREEN_CRYPTO_DEFAULT   false
 #define SCREEN_PM1_DEFAULT      true

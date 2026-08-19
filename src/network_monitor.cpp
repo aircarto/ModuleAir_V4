@@ -60,6 +60,24 @@ static NetStatus probeNetworkOnce() {
   return internet ? NET_NO_SERVER : NET_NO_INTERNET;
 }
 
+// ── Remontee des envois reels ────────────────────────────────────────────────
+// La sonde TCP valide le CHEMIN reseau (SYN/ACK), pas la capacite du module a
+// completer un envoi. Vu sur le terrain : BLE reste charge -> plus assez de
+// heap contigu pour le handshake TLS -> tous les envois echouent... pendant
+// que la sonde TCP passe et que le badge sourit. On croise donc la sonde avec
+// le resultat des VRAIS envois : apres SEND_FAIL_THRESHOLD echecs consecutifs
+// (internet verifie par l'appelant), le badge force NET_NO_SERVER — fleche
+// montante rouge — jusqu'au prochain envoi reussi, quelle que soit la cause
+// (serveur en rade, TLS etrangle, bug memoire...). Un envoi reussi, lui,
+// PROUVE serveur + internet : il force NET_OK immediatement.
+static const uint8_t SEND_FAIL_THRESHOLD = 2;
+static volatile uint8_t consecutiveSendFails = 0;
+
+static NetStatus applySendOverride(NetStatus s) {
+  if (s == NET_OK && consecutiveSendFails >= SEND_FAIL_THRESHOLD) return NET_NO_SERVER;
+  return s;
+}
+
 static const char* statusLabel(NetStatus s) {
   switch (s) {
     case NET_OFFLINE:     return "OFFLINE";
@@ -70,21 +88,42 @@ static const char* statusLabel(NetStatus s) {
   return "?";
 }
 
-static void networkMonitorTask(void *param) {
-  // Sentinel value so the FIRST probe always triggers a log + badge update,
-  // even if the result happens to match the (initial) NET_OFFLINE state.
-  int last = -1;
-  for (;;) {
-    NetStatus s = probeNetworkOnce();
-    if ((int)s != last) {
-      if (last == -1) {
-        Logger.printf("[NetMon] initial: %s\n", statusLabel(s));
-      } else {
-        Logger.printf("[NetMon] %s -> %s\n", statusLabel((NetStatus)last), statusLabel(s));
-      }
-      displaySetNetStatus(s);
-      last = (int)s;
+// Unique point d'ecriture du badge (tache netmon ET remontee d'envoi) : le
+// cache anti-spam est partage, donc les deux chemins ne peuvent pas se
+// contredire — ils appliquent le meme override via applySendOverride().
+// Sentinel -1 : le premier statut est toujours pousse + logue.
+static volatile int lastPushed = -1;
+
+static void pushStatus(NetStatus s) {
+  if ((int)s == lastPushed) return;
+  if (lastPushed == -1) {
+    Logger.printf("[NetMon] initial: %s\n", statusLabel(s));
+  } else {
+    Logger.printf("[NetMon] %s -> %s\n", statusLabel((NetStatus)lastPushed), statusLabel(s));
+  }
+  displaySetNetStatus(s);
+  lastPushed = (int)s;
+}
+
+void networkMonitorReportSendResult(bool ok) {
+  if (ok) {
+    consecutiveSendFails = 0;
+    // Un envoi vient d'aboutir : chemin complet prouve, badge OK sans
+    // attendre le prochain cycle de sonde (15 s).
+    pushStatus(NET_OK);
+  } else {
+    if (consecutiveSendFails < 255) consecutiveSendFails++;
+    if (consecutiveSendFails >= SEND_FAIL_THRESHOLD && WiFi.status() == WL_CONNECTED) {
+      // L'appelant a deja verifie l'acces internet avant de tenter l'envoi :
+      // "internet OK mais envoi impossible" = fleche montante rouge.
+      pushStatus(NET_NO_SERVER);
     }
+  }
+}
+
+static void networkMonitorTask(void *param) {
+  for (;;) {
+    pushStatus(applySendOverride(probeNetworkOnce()));
     vTaskDelay(pdMS_TO_TICKS(PROBE_INTERVAL_MS));
   }
 }

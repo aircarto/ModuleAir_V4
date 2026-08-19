@@ -4,6 +4,37 @@ Toutes les modifications notables du firmware ModuleAir V4 sont documentées ici
 
 Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versioning [Semantic Versioning](https://semver.org/).
 
+## [0.7.1] - 2026-08-19
+
+### Corrigé
+
+- **Module muet après une coupure de courant (TLS étranglé par le BLE).** Quand
+  le module redémarre avant la box, il tombe en mode AP + BLE Improv ; à la
+  reconnexion en arrière-plan, le softAP et le DNS étaient démontés mais
+  **`bleImprovStop()` n'était jamais appelé** (aucun appelant dans tout le
+  code). La pile NimBLE gardait ~50 Ko de heap → plus gros bloc contigu
+  ≈ 31 Ko, sous les ~40 Ko du handshake mbedTLS → **tous les envois HTTPS**
+  (AirCarto, AtmoSud, OTA) échouaient en « connection refused » alors que le
+  badge WiFi restait vert. Vu au labo sur deux modules (12/08). Correctif :
+  `bleImprovStop()` au teardown AP de la reconnexion + garde-fou no-op dans
+  l'état `WS_STA_CONNECTED` (le BLE ne tourne jamais en STA connecté).
+- **Badge de connectivité honnête.** La sonde TCP du network monitor ne voyait
+  pas un envoi qui échoue pour une cause interne au module. `data_sender`
+  remonte désormais le résultat réel via `networkMonitorReportSendResult()` :
+  2 échecs consécutifs (internet vérifié) → badge forcé « serveur
+  injoignable » (flèche montante rouge) ; un succès → badge OK immédiat, sans
+  attendre le prochain cycle de sonde. Point d'écriture du badge unifié
+  (`pushStatus`) entre la tâche netmon et la remontée d'envoi.
+- Le log d'échec AirCarto inclut `heap` et `maxBloc` : un code négatif avec
+  un bloc < ~40 Ko trahit un TLS à court de mémoire, pas un problème réseau
+  (même diag que `GET /check-update`).
+
+### Modifié
+
+- **Écran horloge OFF par défaut** (comme météo et bourse) : un ModuleAir
+  sorti de boîte n'affiche que les mesures d'air ; tout s'active depuis
+  l'interface web.
+
 ## [0.7.0] - 2026-08-12
 
 ### Ajouté

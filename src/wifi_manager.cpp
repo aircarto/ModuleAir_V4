@@ -2053,6 +2053,11 @@ void wifiManagerLoop() {
 
   switch (wifiState) {
     case WS_STA_CONNECTED:
+      // Invariant : le BLE Improv ne sert qu'au provisioning, il n'a JAMAIS
+      // le droit de tourner en STA connecte (cf. teardown AP plus haut). Ce
+      // filet couvre tout chemin — present ou futur — qui atteindrait cet
+      // etat sans passer par le teardown explicite. No-op si BLE arrete.
+      bleImprovStop();
       // First detection of a dropped association: enter the 3-min recovery
       // window rather than spamming reconnect() on every 1 Hz tick (which
       // was the old behaviour — it filled /logs with hundreds of
@@ -2119,6 +2124,13 @@ void wifiManagerLoop() {
         delay(500);  // let any in-flight HTTP response flush over the AP
         WiFi.softAPdisconnect(true);
         dnsServer.stop();
+        // Le BLE Improv demarre avec le mode AP ; il doit mourir avec lui.
+        // Laisse tourner, il confisque ~50 Ko de heap et le handshake mbedTLS
+        // (~40 Ko contigus) echoue sur TOUS les envois HTTPS en "connection
+        // refused" — panne silencieuse vue sur le terrain apres une coupure
+        // de courant (module boote avant la box -> fallback AP+BLE -> ce
+        // chemin de reconnexion, le seul qui sort du mode AP sans reboot).
+        bleImprovStop();
         WiFi.mode(WIFI_STA);
         setWifiState(WS_STA_CONNECTED);
         // Push the badge to OK instantly. The "Connecte" splash is drawn

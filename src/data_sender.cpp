@@ -8,6 +8,7 @@
 #include "data_sender.h"
 #include "logger.h"
 #include "settings.h"
+#include "network_monitor.h"
 
 // Vérifie l'accès internet en résolvant un DNS fiable
 static bool checkInternetAccess() {
@@ -307,7 +308,12 @@ SendResult dataSenderSend() {
         result = SEND_OK;
       }
     } else {
-      Logger.printf("[AirCarto] Internet OK mais serveur indisponible (%.1fs): %s\n", duration, http.errorToString(httpCode).c_str());
+      // Etat du tas dans le log d'echec : un code negatif (connexion jamais
+      // etablie) avec un plus gros bloc < ~40 Ko trahit un handshake TLS mort
+      // par manque de memoire, PAS un probleme reseau (cf. handleCheckUpdate).
+      Logger.printf("[AirCarto] Internet OK mais serveur indisponible (%.1fs): %s | heap=%u o, maxBloc=%u o\n",
+                    duration, http.errorToString(httpCode).c_str(),
+                    ESP.getFreeHeap(), ESP.getMaxAllocHeap());
     }
 
     http.end();
@@ -318,6 +324,11 @@ SendResult dataSenderSend() {
   } else {
     Logger.println("[AirCarto] Echec envoi - serveur data.moduleair.fr injoignable");
   }
+
+  // Badge de connectivite : la sonde TCP du network monitor ne voit pas un
+  // envoi qui echoue pour une cause interne au module — on lui remonte donc
+  // le resultat reel (2 echecs consecutifs -> fleche montante rouge).
+  networkMonitorReportSendResult(result == SEND_OK);
 
   // Envoi secondaire AtmoSud : compile uniquement si secrets.ini fournit
   // l'URL (sinon zero trace du serveur dans le binaire), et gate PAR CAPTEUR
