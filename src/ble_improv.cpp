@@ -217,6 +217,12 @@ void bleImprovInit(const String& deviceName) {
 
   NimBLEAdvertising* pAdv = NimBLEDevice::getAdvertising();
   pAdv->addServiceUUID(SERVICE_UUID);
+  // setScanResponse OBLIGATOIRE : deviceName vaut "ModuleAir-<device ID complet>",
+  // soit 22 caractères. Avec les 3 octets de flags et les 18 octets de l'UUID 128
+  // bits ajouté ci-dessus, le nom ne tient pas dans les 31 octets de la trame
+  // d'annonce. NimBLE le bascule alors ENTIER dans la réponse de scan (24 octets
+  // sur 31) ; sans réponse de scan il le TRONQUERAIT, et l'appli mobile ne
+  // recevrait qu'un device ID amputé. Cf. NimBLEAdvertising::start().
   pAdv->setScanResponse(true);
   pAdv->start();
 

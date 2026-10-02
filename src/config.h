@@ -3,7 +3,7 @@
 
 #include <Arduino.h>
 
-#define FIRMWARE_VERSION "0.7.2"
+#define FIRMWARE_VERSION "0.7.3"
 
 // ── Default sensor enable state ─────────────────────────────────────────────
 // These are the FACTORY DEFAULTS for each sensor's enabled flag — the value
@@ -173,7 +173,8 @@
 
 // Device ID (computed from MAC at startup)
 extern String deviceId;     // ex: "AABBCCDDEEFF"
-extern String apSSID;       // ex: "ModuleAir-DDEEFF"
+extern String apSSID;       // ex: "ModuleAir-DDEEFF"        (SSID du point d'accès)
+extern String bleName;      // ex: "ModuleAir-AABBCCDDEEFF"  (annonce BLE, device ID complet)
 
 void configInit();
 

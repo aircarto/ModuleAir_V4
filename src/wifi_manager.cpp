@@ -1900,7 +1900,9 @@ void wifiManagerInit() {
     bleImprovOnCredentials([](const String& ssid, const String& password) {
       wifiSaveCredentialsAndRestart(ssid, password);
     });
-    bleImprovInit(apSSID);
+    // bleName, pas apSSID : l'annonce BLE porte le device ID COMPLET pour que
+    // l'appli mobile puisse identifier le capteur avant toute connexion.
+    bleImprovInit(bleName);
   }
 
   if (MDNS.begin(MDNS_NAME)) {

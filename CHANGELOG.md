@@ -4,6 +4,27 @@ Toutes les modifications notables du firmware ModuleAir V4 sont documentées ici
 
 Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versioning [Semantic Versioning](https://semver.org/).
 
+## [0.7.3] - non publiée
+
+### Modifié
+
+- **L'annonce BLE porte le device ID COMPLET** : un capteur en mode configuration
+  s'annonce désormais `ModuleAir-AABBCCDDEEFF` au lieu de `ModuleAir-DDEEFF`.
+  Le device ID est aussi le token côté serveur : l'appli mobile peut donc, dès la
+  liste des capteurs détectés, interroger `getPublicName.php` et afficher le vrai
+  nom du capteur (« moduleair-m103 ») plutôt qu'un suffixe de MAC. Auparavant ce
+  nom n'était résolvable qu'APRÈS le provisioning, quand le résultat RPC Improv
+  livre enfin le device ID — la liste d'appairage était condamnée au suffixe brut.
+  Nouvelle variable `bleName` (`config.cpp`), passée à `bleImprovInit()`.
+  - **Le SSID du point d'accès ne change pas** — toujours `ModuleAir-XXXXXX`,
+    comme documenté dans le guide utilisateur et l'interface web.
+  - Contrainte BLE : 22 caractères ne tiennent pas dans les 31 octets de la trame
+    d'annonce (l'UUID 128 bits du service Improv en prend 18 à lui seul). NimBLE
+    bascule alors le nom ENTIER dans la réponse de scan, déjà activée par
+    `setScanResponse(true)` — sans elle il le tronquerait.
+  - Rétrocompatible avec les versions antérieures de l'appli : elles ne lisent que
+    les 6 derniers caractères hexadécimaux du nom, inchangés.
+
 ## [0.7.2] - 2026-10-02
 
 ### Corrigé
