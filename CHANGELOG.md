@@ -4,6 +4,19 @@ Toutes les modifications notables du firmware ModuleAir V4 sont documentées ici
 
 Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), versioning [Semantic Versioning](https://semver.org/).
 
+## [0.7.2] - 2026-10-02
+
+### Corrigé
+
+- **Envoi AtmoSud (MicroSpot) sous le bon identifiant.** Depuis le passage au
+  firmware V4, `atmosudSend()` n'envoyait que les 16 bits de poids fort du MAC,
+  en minuscules (`moduleairid` = `b47e`), au lieu de l'identifiant complet en
+  majuscules qu'envoyait le firmware V2.1 (`B47E84455F34`). MicroSpot créait
+  donc un second appareil pour chaque capteur passé au V4, et l'appareil
+  d'origine semblait muet (cas du M122, signalé par AtmoSud le 02/10/2026).
+  Le `moduleairid`, l'en-tête `X-Sensor` et le User-Agent reprennent désormais
+  `deviceId`, l'identifiant complet déjà utilisé pour l'envoi AirCarto.
+
 ## [0.7.1] - 2026-08-19
 
 ### Corrigé

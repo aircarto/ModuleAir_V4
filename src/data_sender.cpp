@@ -96,8 +96,11 @@ bool dataSenderIsAtmosudDevice() {
 // Compile uniquement si secrets.ini fournit ATMOSUD_SERVER_URL ; gate par
 // capteur via dataSenderIsAtmosudDevice() (cf. dataSenderSend plus bas).
 static void atmosudSend(const SensorData& d) {
-  // chip id court, identique à esp_chipid de Next-Gen
-  String chipid = String((uint16_t)(ESP.getEfuseMac() >> 32), HEX);
+  // Identifiant COMPLET, majuscules (ex. "B47E84455F34") : c'est l'esp_chipid
+  // de l'ancien firmware V2.1, donc l'UID sous lequel MicroSpot connaît le
+  // capteur. Ne PAS le tronquer : jusqu'en 0.7.1 seuls les 16 bits de poids
+  // fort partaient ("b47e"), et MicroSpot créait un second appareil.
+  const String& chipid = deviceId;
 
   String payload = "{\"moduleairid\": \"";
   payload += chipid;
